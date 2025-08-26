@@ -19,6 +19,7 @@ export default function App(){
           <div className="ms-auto d-flex gap-2">
             {!isAuthed && <Link to="/signup" className="btn btn-khaki">Sign Up</Link>}
             {!isAuthed && <Link to="/login" className="btn btn-outline-light">Login</Link>}
+            {isAuthed && <Link to="/dashboard" className="btn btn-khaki">Dashboard</Link>}
             {isAuthed && <button className="btn btn-outline-light" onClick={logout}>Logout</button>}
           </div>
         </div>

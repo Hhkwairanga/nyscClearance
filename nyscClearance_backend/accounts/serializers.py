@@ -240,7 +240,10 @@ class CorpMemberSerializer(serializers.ModelSerializer):
         read_only_fields = ('face_encoding',)
 
     def validate(self, attrs):
-        if not attrs.get('branch'):
+        # For organization users, branch is required. For branch admins, default later.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if getattr(user, 'role', None) == 'ORG' and not attrs.get('branch'):
             raise serializers.ValidationError({'branch': 'Branch is required'})
         return attrs
 
@@ -264,7 +267,29 @@ class CorpMemberSerializer(serializers.ModelSerializer):
             corper_user.set_unusable_password()
             corper_user.save()
 
-        cm = CorpMember.objects.create(user=owner, account=corper_user, **validated_data)
+        # Determine owning organization and default branch if created by a branch admin
+        from .models import BranchOffice
+        org_user = owner
+        if getattr(owner, 'role', None) == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=owner).first()
+            if b:
+                org_user = b.user
+                # Default branch to admin's branch if not provided
+                if not validated_data.get('branch'):
+                    validated_data['branch'] = b
+        elif getattr(owner, 'role', None) == 'CORPER':
+            raise serializers.ValidationError('Not allowed')
+
+        # Validate that department/unit selections are consistent with chosen branch
+        branch = validated_data.get('branch')
+        dept = validated_data.get('department')
+        unit = validated_data.get('unit')
+        if dept and branch and getattr(dept, 'branch_id', None) != getattr(branch, 'id', None):
+            raise serializers.ValidationError({'department': 'Department does not belong to the selected branch'})
+        if unit and dept and getattr(unit, 'department_id', None) != getattr(dept, 'id', None):
+            raise serializers.ValidationError({'unit': 'Unit does not belong to the selected department'})
+
+        cm = CorpMember.objects.create(user=org_user, account=corper_user, **validated_data)
 
         token = generate_email_token(corper_user.id)
         verify_url = self._build_verify_url(token)
@@ -285,6 +310,17 @@ class CorpMemberSerializer(serializers.ModelSerializer):
             f"If you didn't expect this, you can ignore this email."
         )
         send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
+
+    def update(self, instance, validated_data):
+        # When updating, ensure branch/dept/unit consistency
+        branch = validated_data.get('branch', instance.branch)
+        dept = validated_data.get('department', instance.department)
+        unit = validated_data.get('unit', instance.unit)
+        if dept and branch and getattr(dept, 'branch_id', None) != getattr(branch, 'id', None):
+            raise serializers.ValidationError({'department': 'Department does not belong to the selected branch'})
+        if unit and dept and getattr(unit, 'department_id', None) != getattr(dept, 'id', None):
+            raise serializers.ValidationError({'unit': 'Unit does not belong to the selected department'})
+        return super().update(instance, validated_data)
 
 
 class NotificationSerializer(serializers.ModelSerializer):

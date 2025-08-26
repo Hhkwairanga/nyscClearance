@@ -21,6 +21,7 @@ export default function Signup(){
     e.preventDefault()
     setStatus('pending')
     try {
+      await ensureCsrf()
       await api.post('/api/auth/register/', {
         ...form,
         number_of_corpers: parseInt(form.number_of_corpers || '0', 10)

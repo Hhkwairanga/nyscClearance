@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import action
+from django.middleware.csrf import get_token
 
 from .serializers import (
     OrganizationRegisterSerializer,
@@ -61,11 +62,21 @@ class VerifyEmailView(APIView):
         user.save(update_fields=['is_active', 'is_email_verified'])
 
         # Redirect to frontend page. If user has no usable password, include token for password setup
-        base = getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173').rstrip('/')
+        # Prefer request Origin if it matches configured FRONTEND_ORIGINS for better DX (5173/5174)
+        request_origin = request.headers.get('Origin')
+        try:
+            allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
+        except Exception:
+            allowed = set()
+        base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
         # If the user has no password (invited admin/corper), send to password set page with token
         role = request.query_params.get('role') or getattr(user, 'role', None)
+        # For invited roles (branch admin, corper), always allow setting password on first verify
+        if role in ('BRANCH', 'CORPER'):
+            return redirect(f"{base}/verify-success?token={token}&role={role}")
+        # For org accounts, only show password set if they don't already have one
         if not user.has_usable_password():
-            return redirect(f"{base}/verify-success?token={token}{f'&role={role}' if role else ''}")
+            return redirect(f"{base}/verify-success?token={token}")
         # Otherwise, show success page (no password needed)
         return redirect(f"{base}/verify-success")
 
@@ -145,7 +156,9 @@ class CSRFView(APIView):
     authentication_classes = []
 
     def get(self, request):
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        # Generate CSRF token, set cookie, and return it for debugging
+        token = get_token(request)
+        return Response({'csrfToken': token})
 
 
 class LoginView(APIView):
@@ -217,7 +230,18 @@ class BranchOfficeViewSet(viewsets.ModelViewSet):
     serializer_class = BranchOfficeSerializer
 
     def get_queryset(self):
-        return BranchOffice.objects.filter(user=self.request.user)
+        user = self.request.user
+        if getattr(user, 'role', None) == 'ORG':
+            return BranchOffice.objects.filter(user=user)
+        if getattr(user, 'role', None) == 'BRANCH':
+            return BranchOffice.objects.filter(admin=user)
+        if getattr(user, 'role', None) == 'CORPER':
+            try:
+                br_id = user.corper_profile.branch_id
+                return BranchOffice.objects.filter(id=br_id)
+            except Exception:
+                return BranchOffice.objects.none()
+        return BranchOffice.objects.none()
 
     def perform_create(self, serializer):
         # user is set inside the serializer using request from context
@@ -227,7 +251,18 @@ class BranchOfficeViewSet(viewsets.ModelViewSet):
 class DepartmentViewSet(viewsets.ModelViewSet):
     serializer_class = DepartmentSerializer
     def get_queryset(self):
-        return Department.objects.filter(branch__user=self.request.user)
+        user = self.request.user
+        if getattr(user, 'role', None) == 'ORG':
+            return Department.objects.filter(branch__user=user)
+        if getattr(user, 'role', None) == 'BRANCH':
+            return Department.objects.filter(branch__admin=user)
+        if getattr(user, 'role', None) == 'CORPER':
+            try:
+                br = user.corper_profile.branch
+                return Department.objects.filter(branch=br)
+            except Exception:
+                return Department.objects.none()
+        return Department.objects.none()
 
     def perform_create(self, serializer):
         # ensure branch belongs to user
@@ -240,7 +275,18 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 class UnitViewSet(viewsets.ModelViewSet):
     serializer_class = UnitSerializer
     def get_queryset(self):
-        return Unit.objects.filter(department__branch__user=self.request.user)
+        user = self.request.user
+        if getattr(user, 'role', None) == 'ORG':
+            return Unit.objects.filter(department__branch__user=user)
+        if getattr(user, 'role', None) == 'BRANCH':
+            return Unit.objects.filter(department__branch__admin=user)
+        if getattr(user, 'role', None) == 'CORPER':
+            try:
+                br = user.corper_profile.branch
+                return Unit.objects.filter(department__branch=br)
+            except Exception:
+                return Unit.objects.none()
+        return Unit.objects.none()
 
     def perform_create(self, serializer):
         dept = serializer.validated_data.get('department')
@@ -255,7 +301,8 @@ class CorpMemberViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.role == 'ORG':
-            return CorpMember.objects.filter(user=user)
+            # Include any corpers owned by this org or whose branch belongs to this org
+            return CorpMember.objects.filter(models.Q(user=user) | models.Q(branch__user=user)).distinct()
         if user.role == 'BRANCH':
             branches = BranchOffice.objects.filter(admin=user)
             return CorpMember.objects.filter(branch__in=branches)
@@ -267,7 +314,30 @@ class CorpMemberViewSet(viewsets.ModelViewSet):
         return CorpMember.objects.none()
 
     def perform_create(self, serializer):
-        # user is set inside the serializer using request from context
+        # Serializer will map the owning organization correctly and default branch for branch admins
+        serializer.save()
+
+    def perform_update(self, serializer):
+        """Restrict branch admins to editing only their corpers and to their own branches/departments/units."""
+        user = self.request.user
+        instance = self.get_object()
+        if getattr(user, 'role', None) == 'BRANCH':
+            # Ensure the corper is in one of the admin's branches
+            admin_branch = BranchOffice.objects.filter(admin=user)
+            if not admin_branch.filter(id=getattr(instance.branch, 'id', None)).exists():
+                raise PermissionDenied('Not allowed to edit this corper')
+            # If updating branch/department/unit, constrain them to admin's branches
+            data = serializer.validated_data
+            new_branch = data.get('branch') or instance.branch
+            if new_branch and not admin_branch.filter(id=new_branch.id).exists():
+                raise PermissionDenied('Cannot move corper outside your branch')
+            # Validate department/unit consistency if provided
+            dept = data.get('department')
+            unit = data.get('unit')
+            if dept and new_branch and getattr(dept, 'branch_id', None) != getattr(new_branch, 'id', None):
+                raise PermissionDenied('Department does not belong to your branch')
+            if unit and dept and getattr(unit, 'department_id', None) != getattr(dept, 'id', None):
+                raise PermissionDenied('Unit does not belong to the selected department')
         serializer.save()
 
 
@@ -277,7 +347,7 @@ class PublicHolidayViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if getattr(user, 'role', 'ORG') == 'ORG':
-            return PublicHoliday.objects.filter(user=user).order_by('date')
+            return PublicHoliday.objects.filter(user=user).order_by('start_date')
         # For branch admin/corper, map to their org
         org_user = None
         if user.role == 'BRANCH':
@@ -288,7 +358,7 @@ class PublicHolidayViewSet(viewsets.ModelViewSet):
                 org_user = user.corper_profile.user
             except Exception:
                 org_user = None
-        return PublicHoliday.objects.filter(user=org_user).order_by('date')
+        return PublicHoliday.objects.filter(user=org_user).order_by('start_date')
 
     def perform_create(self, serializer):
         if self.request.user.role != 'ORG':

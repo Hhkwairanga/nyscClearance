@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import api, { ensureCsrf } from '../api/axios'
 import { useNavigate } from 'react-router-dom'
 
@@ -52,10 +52,17 @@ export default function VerifySuccess(){
     )
   }
 
+  useEffect(() => {
+    const id = setTimeout(() => navigate('/login'), 1800)
+    return () => clearTimeout(id)
+  }, [navigate])
+
   return (
     <div className="text-center py-5">
       <h1 className="display-6 text-olive">Email Verified</h1>
-      <p className="lead">Your account is now active. You may close this window.</p>
+      <p className="lead mb-4">Your account is now active.</p>
+      <a href="/login" className="btn btn-olive">Go to Login</a>
+      <div className="small text-muted mt-2">Redirecting to login…</div>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from corsheaders.defaults import default_headers
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -105,11 +106,24 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'opnn gmqq vzst ksfo')
 DEFAULT_FROM_EMAIL = os.getenv('DJANGO_DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
 # CORS / CSRF for React dev server
-CORS_ALLOWED_ORIGINS = [
-    os.getenv('FRONTEND_ORIGIN', 'http://localhost:5173'),
-]
-CSRF_TRUSTED_ORIGINS = [
-    os.getenv('FRONTEND_ORIGIN', 'http://localhost:5173'),
+# Allow multiple frontend origins (comma-separated via FRONTEND_ORIGINS)
+def _csv_env(name, default_list):
+    val = os.getenv(name)
+    if val:
+        return [v.strip() for v in val.split(',') if v.strip()]
+    return default_list
+
+FRONTEND_ORIGINS = _csv_env('FRONTEND_ORIGINS', [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+])
+
+CORS_ALLOWED_ORIGINS = FRONTEND_ORIGINS
+CSRF_TRUSTED_ORIGINS = FRONTEND_ORIGINS
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'x-csrftoken',
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -123,7 +137,7 @@ REST_FRAMEWORK = {
 }
 
 # Expose frontend origin as a setting for redirects
-FRONTEND_ORIGIN = os.getenv('FRONTEND_ORIGIN', 'http://localhost:5173')
+FRONTEND_ORIGIN = os.getenv('FRONTEND_ORIGIN', FRONTEND_ORIGINS[0])
 
 # Media uploads (e.g., organization logos)
 MEDIA_URL = '/media/'
@@ -133,3 +147,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 CSRF_COOKIE_NAME = 'csrftoken'
 SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SAMESITE = 'Lax'
+if DEBUG:
+    # Dev-friendly cookie settings for http://localhost
+    CSRF_COOKIE_SECURE = False
+    SESSION_COOKIE_SECURE = False

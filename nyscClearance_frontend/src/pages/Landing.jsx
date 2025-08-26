@@ -10,8 +10,8 @@ export default function Landing(){
             <h1 className="display-5 fw-bold text-olive">Automate Monthly Performance Clearance</h1>
             <p className="lead mt-3">Streamline corpers’ clearance with secure onboarding, tracked performance, and instant clearance letters — all in one place.</p>
             <div className="mt-4 d-flex gap-3">
-              <Link className="btn btn-olive btn-lg" to="/signup">Get Started</Link>
-              <a className="btn btn-outline-secondary btn-lg" href="#features">Learn More</a>
+              <Link className="btn btn-olive btn-lg" to="/signup">Sign Up</Link>
+              <Link className="btn btn-outline-secondary btn-lg" to="/login">Log In</Link>
             </div>
           </div>
           <div className="col-lg-6 mt-4 mt-lg-0">
@@ -61,4 +61,3 @@ export default function Landing(){
     </div>
   )
 }
-

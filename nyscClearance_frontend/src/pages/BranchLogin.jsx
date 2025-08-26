@@ -10,7 +10,7 @@ export default function BranchLogin(){
   const onChange = e => setForm(f => ({...f, [e.target.name]: e.target.value}))
   const submit = async (e) => {
     e.preventDefault(); setStatus('pending')
-    try{ await api.post('/api/auth/login/', { ...form, role:'BRANCH' }); navigate('/dashboard') }catch(err){ setStatus('error:'+(err?.response?.data?.detail||'Login failed')) }
+    try{ await ensureCsrf(); await api.post('/api/auth/login/', { ...form, role:'BRANCH' }); navigate('/dashboard') }catch(err){ setStatus('error:'+(err?.response?.data?.detail||'Login failed')) }
   }
   return (
     <div className="row justify-content-center">

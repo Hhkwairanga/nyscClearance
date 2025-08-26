@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
 import MapPicker from '../components/MapPicker'
 import { Bar, Doughnut } from 'react-chartjs-2'
@@ -7,6 +8,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, ArcElement, BarElement, T
 ChartJS.register(CategoryScale, LinearScale, ArcElement, BarElement, Tooltip, Legend)
 
 export default function Dashboard(){
+  const navigate = useNavigate()
   const [profile, setProfile] = useState(null)
   const [me, setMe] = useState(null)
   const [branches, setBranches] = useState([])
@@ -26,6 +28,12 @@ export default function Dashboard(){
       await refreshAll()
     })()
   }, [])
+
+  useEffect(() => {
+    if(me && me.authenticated === false){
+      navigate('/login')
+    }
+  }, [me, navigate])
 
   async function refreshAll(){
     try{
@@ -90,6 +98,9 @@ export default function Dashboard(){
     e.preventDefault(); setStatus('pending')
     const fd = new FormData(e.target)
     const data = Object.fromEntries(fd)
+    // Drop empty values and branch for branch-admins (defaults server-side)
+    Object.keys(data).forEach(k => { if(data[k] === '') delete data[k] })
+    if(me?.role === 'BRANCH') delete data.branch
     try{
       await api.post('/api/auth/corpers/', data)
       await refreshAll(); setStatus('saved:corper')
@@ -479,13 +490,15 @@ export default function Dashboard(){
                         <label className="form-label">Passing Out Date</label>
                         <input className="form-control" type="date" name="passing_out_date" required/>
                       </div>
-                      <div className="col-md-3">
-                        <label className="form-label">Branch</label>
-                        <select className="form-select" name="branch" required>
-                          <option value="">Select branch</option>
-                          {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                        </select>
-                      </div>
+                      {me?.role==='ORG' && (
+                        <div className="col-md-3">
+                          <label className="form-label">Branch</label>
+                          <select className="form-select" name="branch" required>
+                            <option value="">Select branch</option>
+                            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                          </select>
+                        </div>
+                      )}
                       <div className="col-md-3">
                         <label className="form-label">Department (optional)</label>
                         <select className="form-select" name="department">
@@ -521,6 +534,9 @@ export default function Dashboard(){
                         <th>Email</th>
                         <th>State Code</th>
                         <th>Branch</th>
+                        {(me?.role==='BRANCH' || me?.role==='ORG') && <th>Department</th>}
+                        {(me?.role==='BRANCH' || me?.role==='ORG') && <th>Unit</th>}
+                        {(me?.role==='BRANCH' || me?.role==='ORG') && <th>Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -530,7 +546,53 @@ export default function Dashboard(){
                           <td>{c.full_name}</td>
                           <td>{c.email}</td>
                           <td>{c.state_code}</td>
-                          <td>{(branches.find(b=>b.id===c.branch)?.name) || '—'}</td>
+                          <td>
+                            {me?.role==='ORG' ? (
+                              <select className="form-select form-select-sm" defaultValue={c.branch || ''} onChange={e=>{ c._newBranch = e.target.value }}>
+                                <option value="">—</option>
+                                {branches.map(b=> (
+                                  <option key={b.id} value={b.id}>{b.name}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              (branches.find(b=>b.id===c.branch)?.name) || '—'
+                            )}
+                          </td>
+                          {(me?.role==='BRANCH' || me?.role==='ORG') && (
+                            <>
+                              <td>
+                                <select className="form-select form-select-sm" defaultValue={c.department || ''} onChange={e=>{ c._newDept = e.target.value }}>
+                                  <option value="">—</option>
+                                  {deps.filter(d=> {
+                                    const branchId = Number(c._newBranch || c.branch)
+                                    return d.branch === branchId
+                                  }).map(d=> (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td>
+                                <select className="form-select form-select-sm" defaultValue={c.unit || ''} onChange={e=>{ c._newUnit = e.target.value }}>
+                                  <option value="">—</option>
+                                  {units.filter(u=> {
+                                    const deptId = Number(c._newDept || c.department)
+                                    return !deptId || u.department === deptId
+                                  }).map(u=> (
+                                    <option key={u.id} value={u.id}>{u.name}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td>
+                                <button className="btn btn-sm btn-olive" onClick={async()=>{
+                                  const payload = {}
+                                  if(c._newBranch!==undefined){ payload.branch = c._newBranch || null; payload.department = null; payload.unit = null }
+                                  if(c._newDept!==undefined){ payload.department = c._newDept || null; if(!payload.branch && c._newDept) { payload.branch = deps.find(d=>d.id===Number(c._newDept))?.branch } }
+                                  if(c._newUnit!==undefined){ payload.unit = c._newUnit || null }
+                                  try{ await api.put(`/api/auth/corpers/${c.id}/`, payload); await refreshAll() }catch(e){}
+                                }}>Save</button>
+                              </td>
+                            </>
+                          )}
                         </tr>
                       ))}
                       {corpers.length===0 && (
