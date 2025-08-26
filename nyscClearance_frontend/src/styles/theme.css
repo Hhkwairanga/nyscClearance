@@ -1,0 +1,38 @@
+:root{
+  --olive:#556B2F;
+  --khaki:#BDB76B;
+}
+
+.bg-olive{ background-color: var(--olive) !important; }
+.text-olive{ color: var(--olive) !important; }
+.btn-olive{ background-color: var(--olive); color:#fff; border-color: var(--olive); }
+.btn-olive:hover{ background-color: #465826; border-color:#465826; }
+
+.btn-khaki{ background-color: var(--khaki); color:#222; border-color: var(--khaki); }
+.btn-khaki:hover{ background-color:#a79a52; border-color:#a79a52; }
+
+body{ background-color:#f7f9f6; }
+
+/* Landing hero styling and simple animation */
+.landing-hero{
+  background: radial-gradient(1200px 600px at 10% 10%, rgba(189,183,107,0.25), transparent),
+              radial-gradient(800px 400px at 90% 20%, rgba(85,107,47,0.18), transparent);
+}
+.animation-card{ position: relative; height: 280px; }
+.animation-card .bubble{ position:absolute; border-radius:50%; opacity:0.5; animation: float 8s ease-in-out infinite; }
+.animation-card .b1{ width:120px; height:120px; background: var(--khaki); top:10%; left:10%; animation-delay:0s; }
+.animation-card .b2{ width:80px; height:80px; background: var(--olive); bottom:15%; right:15%; animation-delay:1.5s; }
+.animation-card .b3{ width:60px; height:60px; background: #88a34e; top:50%; right:35%; animation-delay:3s; }
+@keyframes float{ 0%{ transform: translateY(0) } 50%{ transform: translateY(-14px) } 100%{ transform: translateY(0) } }
+.animation-card .doc{ position:absolute; left:50%; top:50%; transform: translate(-50%,-50%); background:#fff; border-radius:12px; padding:20px; width:320px; }
+.animation-card .doc .line{ height:10px; background:#eef2ea; border-radius:6px; margin-bottom:10px; }
+.animation-card .doc .status{ margin-top:12px; color: var(--olive); font-weight:600; }
+
+.feature-card:hover{ transform: translateY(-3px); transition: transform .2s ease; }
+
+.app-footer{ position: fixed; right: 1rem; bottom: .75rem; color: rgba(0,0,0,.6); font-size: .9rem; }
+
+/* Top navbar hover effects */
+.topnav .btn.btn-outline-secondary{ border-color: #d0d6cb; color:#495057; background:#fff; }
+.topnav .btn.btn-outline-secondary:hover{ background:#eef2ea; border-color:#c5ccb9; color:#222; transition: all .15s ease-in-out; }
+.topnav .btn.btn-olive{ color:#fff; }

@@ -1,0 +1,15 @@
+:root{
+  --olive:#556B2F;
+  --khaki:#BDB76B;
+}
+
+.bg-olive{ background-color: var(--olive) !important; }
+.text-olive{ color: var(--olive) !important; }
+.btn-olive{ background-color: var(--olive); color:#fff; border-color: var(--olive); }
+.btn-olive:hover{ background-color: #465826; border-color:#465826; }
+
+.btn-khaki{ background-color: var(--khaki); color:#222; border-color: var(--khaki); }
+.btn-khaki:hover{ background-color:#a79a52; border-color:#a79a52; }
+
+body{ background-color:#f7f9f6; }
+

@@ -1,0 +1,23 @@
+# Python/Django
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.log
+*.sqlite3
+*.db
+media/
+staticfiles/
+.env
+venv/
+
+# Node/React
+nyscClearance_frontend/node_modules/
+**/node_modules/
+**/dist/
+**/build/
+*.map
+
+# IDE/OS
+.idea/
+.vscode/
+.DS_Store
