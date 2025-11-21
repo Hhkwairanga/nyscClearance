@@ -99,7 +99,8 @@
         headers: { 'X-CSRFToken': csrftoken },
       }).then(r=>r.json()).then(data => {
         if(data.status === 'ok'){
-          btn.textContent = 'Saved';
+          // Redirect back to frontend dashboard with success flag
+          window.location.href = '{{ frontend_base }}/dashboard?capture=success';
         }else{
           btn.textContent = 'Failed'; btn.classList.replace('btn-olive','btn-danger');
         }

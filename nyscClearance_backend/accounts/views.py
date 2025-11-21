@@ -107,10 +107,19 @@ def capture_page(request, corper_id: int):
         raise PermissionDenied('Not allowed')
 
     _reset_capture_state(corper_id)
+    # Prefer request Origin if it matches configured FRONTEND_ORIGINS
+    request_origin = request.headers.get('Origin')
+    try:
+        allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
+    except Exception:
+        allowed = set()
+    frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
+
     ctx = {
         'corper_id': corper.id,
         'full_name': corper.full_name,
         'state_code': corper.state_code,
+        'frontend_base': frontend_base,
     }
     return render(request, 'capture.html', ctx)
 

@@ -32,6 +32,18 @@ export default function Dashboard(){
     })()
   }, [])
 
+  // Show success after capture finalize
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    if(sp.get('capture') === 'success'){
+      setStatus('saved:face-capture')
+      // Clean the query param without reloading
+      const url = new URL(window.location.href)
+      url.searchParams.delete('capture')
+      window.history.replaceState({}, '', url)
+    }
+  }, [])
+
   useEffect(() => {
     if(me && me.authenticated === false){
       navigate('/login')
@@ -367,9 +379,10 @@ export default function Dashboard(){
                         ))}
                         {holidays.length===0 && <li className="list-group-item text-muted">No holidays configured.</li>}
                       </ul>
-                    </div>
-                  </div>
                 </div>
+                {status==='saved:face-capture' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Face encoding saved successfully.</AutoFadeAlert>}
+              </div>
+            </div>
                 <div className="col-lg-6">
                   <div className="card shadow-sm">
                     <div className="card-body">
