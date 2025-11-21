@@ -21,6 +21,9 @@ export default function Dashboard(){
   const [notifications, setNotifications] = useState([])
   const [status, setStatus] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
+  // Local helpers for enroll form filtering
+  const [enrollBranch, setEnrollBranch] = useState('')
+  const [enrollDept, setEnrollDept] = useState('')
 
   useEffect(() => {
     (async () => {
@@ -106,6 +109,34 @@ export default function Dashboard(){
       await refreshAll(); setStatus('saved:corper')
       e.target.reset()
     }catch(e){ setStatus('error:corper') }
+  }
+
+  function enrollBranchOptions(){
+    return branches
+  }
+
+  function enrollDeptOptions(){
+    const bid = Number(enrollBranch || 0)
+    if(!bid){
+      if(me?.role === 'BRANCH'){
+        const b = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
+        const targetId = b?.id
+        return deps.filter(d => d.branch === targetId)
+      }
+      return deps
+    }
+    return deps.filter(d => d.branch === bid)
+  }
+
+  function enrollUnitOptions(){
+    const did = Number(enrollDept || 0)
+    if(did){ return units.filter(u => u.department === did) }
+    const bid = Number(enrollBranch || 0)
+    if(bid){
+      const deptIds = deps.filter(d => d.branch === bid).map(d => d.id)
+      return units.filter(u => deptIds.includes(u.department))
+    }
+    return units
   }
 
   async function createLeave(e){
@@ -570,24 +601,26 @@ export default function Dashboard(){
                       {me?.role==='ORG' && (
                         <div className="col-md-3">
                           <label className="form-label">Branch</label>
-                          <select className="form-select" name="branch" required>
+                          <select className="form-select" name="branch" required value={enrollBranch}
+                                  onChange={(e)=>{ setEnrollBranch(e.target.value); setEnrollDept('') }}>
                             <option value="">Select branch</option>
-                            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                            {enrollBranchOptions().map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                           </select>
                         </div>
                       )}
                       <div className="col-md-3">
                         <label className="form-label">Department (optional)</label>
-                        <select className="form-select" name="department">
+                        <select className="form-select" name="department" value={enrollDept}
+                                onChange={(e)=> setEnrollDept(e.target.value)}>
                           <option value="">Department (optional)</option>
-                          {deps.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                          {enrollDeptOptions().map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
                       </div>
                       <div className="col-md-3">
                         <label className="form-label">Unit (optional)</label>
                         <select className="form-select" name="unit">
                           <option value="">Unit (optional)</option>
-                          {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          {enrollUnitOptions().map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                         </select>
                       </div>
                       <div className="col-md-3 d-grid">
@@ -669,7 +702,11 @@ export default function Dashboard(){
                                   if(c._newBranch!==undefined){ payload.branch = c._newBranch || null; payload.department = null; payload.unit = null }
                                   if(c._newDept!==undefined){ payload.department = c._newDept || null; if(!payload.branch && c._newDept) { payload.branch = deps.find(d=>d.id===Number(c._newDept))?.branch } }
                                   if(c._newUnit!==undefined){ payload.unit = c._newUnit || null }
-                                  try{ await api.put(`/api/auth/corpers/${c.id}/`, payload); await refreshAll() }catch(e){}
+                                  try{
+                                    await api.put(`/api/auth/corpers/${c.id}/`, payload)
+                                    setStatus('saved:corper-update')
+                                    await refreshAll()
+                                  }catch(e){ setStatus('error:corper-update') }
                                 }}>Save</button>
                               </td>
                             </>
@@ -682,6 +719,8 @@ export default function Dashboard(){
                     </tbody>
                   </table>
                 </div>
+                {status==='saved:corper-update' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Corper updated successfully.</AutoFadeAlert>}
+                {status==='error:corper-update' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not update corper.</AutoFadeAlert>}
               </div>
             </div>
             </>
