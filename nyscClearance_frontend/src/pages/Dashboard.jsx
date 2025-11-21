@@ -467,9 +467,15 @@ export default function Dashboard(){
                                     <button
                                       className="btn btn-sm btn-outline-secondary"
                                       onClick={() => {
-                                        const newName = prompt('Edit department name', d.name)
-                                        if(newName && newName.trim()){
-                                          (async()=>{ try{ await api.put(`/api/auth/departments/${d.id}/`, { name: newName.trim(), branch: d.branch }); await refreshAll() }catch(e){} })()
+                                        const newName = prompt('Edit department name (leave empty to delete)', d.name)
+                                        if(newName === null) return; // cancelled
+                                        const trimmed = (newName || '').trim()
+                                        if(trimmed === ''){
+                                          if(confirm('Delete this department and its units?')){
+                                            (async()=>{ try{ await api.delete(`/api/auth/departments/${d.id}/`); await refreshAll() }catch(e){} })()
+                                          }
+                                        }else{
+                                          (async()=>{ try{ await api.put(`/api/auth/departments/${d.id}/`, { name: trimmed, branch: d.branch }); await refreshAll() }catch(e){} })()
                                         }
                                       }}
                                     >Edit</button>
@@ -482,9 +488,15 @@ export default function Dashboard(){
                                         <button
                                           className="btn btn-sm btn-link text-decoration-none ms-1"
                                           onClick={() => {
-                                            const newUnitName = prompt('Edit unit name', u.name)
-                                            if(newUnitName && newUnitName.trim()){
-                                              (async()=>{ try{ await api.put(`/api/auth/units/${u.id}/`, { name: newUnitName.trim(), department: u.department }); await refreshAll() }catch(e){} })()
+                                            const newUnitName = prompt('Edit unit name (leave empty to delete)', u.name)
+                                            if(newUnitName === null) return; // cancelled
+                                            const trimmed = (newUnitName || '').trim()
+                                            if(trimmed === ''){
+                                              if(confirm('Delete this unit?')){
+                                                (async()=>{ try{ await api.delete(`/api/auth/units/${u.id}/`); await refreshAll() }catch(e){} })()
+                                              }
+                                            }else{
+                                              (async()=>{ try{ await api.put(`/api/auth/units/${u.id}/`, { name: trimmed, department: u.department }); await refreshAll() }catch(e){} })()
                                             }
                                           }}
                                         >Edit</button>
