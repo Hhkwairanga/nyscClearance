@@ -21,6 +21,7 @@ from .views import (
     NotificationViewSet,
     capture_page,
     capture_process_frame,
+    capture_finalize,
 )
 
 router = DefaultRouter()
@@ -47,5 +48,6 @@ urlpatterns = [
     # Face capture (HTML page + processing endpoint)
     path('capture/<int:corper_id>/', capture_page, name='capture'),
     path('capture/<int:corper_id>/process/', capture_process_frame, name='capture-process'),
+    path('capture/<int:corper_id>/finalize/', capture_finalize, name='capture-finalize'),
     path('', include(router.urls)),
 ]

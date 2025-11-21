@@ -45,8 +45,9 @@
         </div>
       </div>
 
-      <div class="d-grid gap-2 mb-3">
+      <div class="d-flex gap-2 mb-3">
         <button id="start-btn" class="btn btn-success">Start Webcam</button>
+        <button id="submit-btn" class="btn btn-olive" disabled>Submit Encodings</button>
       </div>
 
       <div class="video-wrap">
@@ -80,6 +81,7 @@
               // Stop when 10 frames saved
               try{ stream.getTracks().forEach(t=>t.stop()) }catch(e){}
               document.getElementById('start-btn').disabled = true;
+              document.getElementById('submit-btn').disabled = false;
             } else {
               requestAnimationFrame(loop);
             }
@@ -87,6 +89,21 @@
         }
         requestAnimationFrame(loop);
       }).catch(err => { console.error('Camera error', err) })
+    })
+    // Submit to finalize (compute average encodings)
+    document.getElementById('submit-btn').addEventListener('click', function(){
+      const csrftoken = getCookie('csrftoken');
+      const btn = this; btn.disabled = true; btn.textContent = 'Submitting…';
+      fetch(window.location.pathname.replace(/\/$/, '') + '/finalize/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+      }).then(r=>r.json()).then(data => {
+        if(data.status === 'ok'){
+          btn.textContent = 'Saved';
+        }else{
+          btn.textContent = 'Failed'; btn.classList.replace('btn-olive','btn-danger');
+        }
+      }).catch(err => { console.error('Finalize error', err); btn.textContent = 'Failed'; btn.classList.replace('btn-olive','btn-danger'); })
     })
   </script>
 </body>

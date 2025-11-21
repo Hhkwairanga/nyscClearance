@@ -15,6 +15,8 @@ import base64
 import numpy as np
 import cv2
 import os
+import shutil
+import face_recognition
 
 from .serializers import (
     OrganizationRegisterSerializer,
@@ -127,6 +129,73 @@ def capture_process_frame(request, corper_id: int):
     if not processed:
         return JsonResponse({'detail': 'Processing failed'}, status=500)
     return JsonResponse({'frame': processed, 'saved': count})
+
+
+@csrf_exempt
+def capture_finalize(request, corper_id: int):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+
+    # Auth similar to capture_page
+    user = request.user
+    try:
+        corper = CorpMember.objects.get(pk=corper_id)
+    except CorpMember.DoesNotExist:
+        return HttpResponseNotFound('Corper not found')
+
+    allowed = False
+    if getattr(user, 'role', None) == 'ORG' and getattr(corper.user, 'id', None) == user.id:
+        allowed = True
+    if getattr(user, 'role', None) == 'BRANCH':
+        b = BranchOffice.objects.filter(admin=user).first()
+        if b and b.id == getattr(corper.branch, 'id', None):
+            allowed = True
+    if getattr(user, 'role', None) == 'CORPER' and getattr(corper.account, 'id', None) == user.id:
+        allowed = True
+    if not allowed:
+        return JsonResponse({'detail': 'Not allowed'}, status=403)
+
+    media_root = getattr(settings, 'MEDIA_ROOT', os.path.join(os.getcwd(), 'media'))
+    save_dir = os.path.join(media_root, 'captures', str(corper_id))
+    if not os.path.isdir(save_dir):
+        return JsonResponse({'detail': 'No captured images'}, status=400)
+
+    # Load up to 10 images and compute encodings
+    files = sorted([f for f in os.listdir(save_dir) if f.lower().endswith('.jpg')])
+    encodings = []
+    for fname in files[:10]:
+        path = os.path.join(save_dir, fname)
+        try:
+            img = face_recognition.load_image_file(path)
+            encs = face_recognition.face_encodings(img)
+            if encs:
+                encodings.append(encs[0])
+        except Exception:
+            continue
+
+    if not encodings:
+        return JsonResponse({'detail': 'No encodings found; ensure face is visible'}, status=400)
+
+    # Average encoding
+    avg = np.mean(np.stack(encodings, axis=0), axis=0)
+    # Save to model as JSON list of floats
+    try:
+        import json
+        corper.face_encoding = json.dumps(avg.tolist())
+        corper.save(update_fields=['face_encoding'])
+    except Exception as e:
+        return JsonResponse({'detail': f'Failed to save encoding: {e}'}, status=500)
+
+    # Cleanup captured images
+    try:
+        shutil.rmtree(save_dir)
+    except Exception:
+        pass
+
+    # Reset in-memory state
+    _reset_capture_state(corper_id)
+
+    return JsonResponse({'status': 'ok', 'encodings': len(encodings)})
 
 
 class RegisterView(APIView):
