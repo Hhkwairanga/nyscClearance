@@ -701,7 +701,7 @@ export default function Dashboard(){
                                   ))}
                                 </select>
                               </td>
-                              <td>
+                              <td className="d-flex gap-2">
                                 <button className="btn btn-sm btn-olive" onClick={async()=>{
                                   const payload = {}
                                   if(c._newBranch!==undefined){ payload.branch = c._newBranch || null; payload.department = null; payload.unit = null }
@@ -713,6 +713,7 @@ export default function Dashboard(){
                                     await refreshAll()
                                   }catch(e){ setStatus('error:corper-update') }
                                 }}>Save</button>
+                                <a className="btn btn-sm btn-outline-secondary" href={`/api/auth/capture/${c.id}/`} target="_blank" rel="noreferrer">Capture Face</a>
                               </td>
                             </>
                           )}

@@ -19,6 +19,8 @@ from .views import (
     PublicHolidayViewSet,
     LeaveRequestViewSet,
     NotificationViewSet,
+    capture_page,
+    capture_process_frame,
 )
 
 router = DefaultRouter()
@@ -42,5 +44,8 @@ urlpatterns = [
     path('me/', MeView.as_view(), name='me'),
     path('profile/', ProfileView.as_view(), name='profile'),
     path('stats/', StatsView.as_view(), name='stats'),
+    # Face capture (HTML page + processing endpoint)
+    path('capture/<int:corper_id>/', capture_page, name='capture'),
+    path('capture/<int:corper_id>/process/', capture_process_frame, name='capture-process'),
     path('', include(router.urls)),
 ]

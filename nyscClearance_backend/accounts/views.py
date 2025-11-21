@@ -7,6 +7,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from django.middleware.csrf import get_token
+from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import render
+from django.utils.decorators import method_decorator
+import base64
+import numpy as np
+import cv2
+import os
 
 from .serializers import (
     OrganizationRegisterSerializer,
@@ -27,6 +34,98 @@ from django.db import models
 
 
 User = get_user_model()
+
+# In-memory capture state per corper_id
+_CAPTURE_STATE = {}
+
+def _reset_capture_state(corper_id: int):
+    _CAPTURE_STATE[corper_id] = {
+        'image_count': 0,
+        'prev_frame': None,
+    }
+
+def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
+    st = _CAPTURE_STATE.setdefault(corper_id, {'image_count': 0, 'prev_frame': None})
+    img_data = base64.b64decode(b64_frame)
+    nparr = np.frombuffer(img_data, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return None, st['image_count']
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30,30))
+
+    if st['prev_frame'] is not None:
+        diff = cv2.absdiff(st['prev_frame'], gray)
+        _, thresh = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
+        if np.sum(thresh) == 0 and st['image_count'] < 10:
+            os.makedirs(save_dir, exist_ok=True)
+            for (x,y,w,h) in faces:
+                face_roi = gray[y:y+h, x:x+w]
+                if face_roi.size == 0:
+                    continue
+                resized_face = cv2.resize(face_roi, (100, 100))
+                normalized_face = resized_face / 255.0
+                equalized_face = cv2.equalizeHist((normalized_face * 255).astype('uint8'))
+                if st['image_count'] < 10:
+                    out_path = os.path.join(save_dir, f"frame_{st['image_count']}.jpg")
+                    cv2.imwrite(out_path, equalized_face)
+                    st['image_count'] += 1
+
+    # draw overlays
+    for (x,y,w,h) in faces:
+        cv2.rectangle(img, (x,y), (x+w,y+h), (0,255,0), 2)
+        cv2.putText(img, f'Image {st["image_count"]}', (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2, cv2.LINE_AA)
+    st['prev_frame'] = gray.copy()
+    _, buffer = cv2.imencode('.jpg', img)
+    processed_frame = base64.b64encode(buffer).decode('utf-8')
+    return processed_frame, st['image_count']
+
+
+def capture_page(request, corper_id: int):
+    # Authorization: ORG or BRANCH can access; corper can also view own page
+    user = request.user
+    try:
+        corper = CorpMember.objects.get(pk=corper_id)
+    except CorpMember.DoesNotExist:
+        return Response({'detail': 'Corper not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Basic auth checks
+    allowed = False
+    if getattr(user, 'role', None) == 'ORG' and getattr(corper.user, 'id', None) == user.id:
+        allowed = True
+    if getattr(user, 'role', None) == 'BRANCH':
+        b = BranchOffice.objects.filter(admin=user).first()
+        if b and b.id == getattr(corper.branch, 'id', None):
+            allowed = True
+    if getattr(user, 'role', None) == 'CORPER' and getattr(corper.account, 'id', None) == user.id:
+        allowed = True
+    if not allowed:
+        raise PermissionDenied('Not allowed')
+
+    _reset_capture_state(corper_id)
+    ctx = {
+        'corper_id': corper.id,
+        'full_name': corper.full_name,
+        'state_code': corper.state_code,
+    }
+    return render(request, 'capture.html', ctx)
+
+
+@csrf_exempt
+def capture_process_frame(request, corper_id: int):
+    if request.method != 'POST':
+        return Response({'detail': 'Only POST allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    frame = request.POST.get('frame')
+    if not frame:
+        return Response({'detail': 'Missing frame'}, status=status.HTTP_400_BAD_REQUEST)
+    # Save dir per corper under media/captures/{id}
+    media_root = getattr(settings, 'MEDIA_ROOT', os.path.join(os.getcwd(), 'media'))
+    save_dir = os.path.join(media_root, 'captures', str(corper_id))
+    processed, count = _process_capture_frame(corper_id, frame, save_dir)
+    if not processed:
+        return Response({'detail': 'Processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response({'frame': processed, 'saved': count})
 
 
 class RegisterView(APIView):
