@@ -505,6 +505,23 @@ export default function Dashboard(){
                                   </div>
                                 </div>
                               ))}
+                              {me?.role==='ORG' && (
+                                <div className="mt-3">
+                                  <div className="small mb-1">Inherit from another branch</div>
+                                  <div className="d-flex gap-2">
+                                    <select className="form-select form-select-sm" defaultValue="" onChange={(e)=>{ b._copyFrom = e.target.value }} style={{maxWidth: '60%'}}>
+                                      <option value="">Select source branch</option>
+                                      {branches.filter(x => x.id !== b.id).map(x => (
+                                        <option key={x.id} value={x.id}>{x.name}</option>
+                                      ))}
+                                    </select>
+                                    <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{
+                                      if(!b._copyFrom){ alert('Select a source branch first'); return }
+                                      try{ await api.post(`/api/auth/branches/${b.id}/clone_structure/`, { source: Number(b._copyFrom) }); await refreshAll() }catch(e){}
+                                    }}>Copy</button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>

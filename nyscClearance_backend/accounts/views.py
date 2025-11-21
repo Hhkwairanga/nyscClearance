@@ -253,6 +253,62 @@ class BranchOfficeViewSet(viewsets.ModelViewSet):
         # user is set inside the serializer using request from context
         serializer.save()
 
+    @action(detail=True, methods=['post'])
+    def clone_structure(self, request, pk=None):
+        """Copy departments and units from a source branch into this branch.
+
+        Body: { "source": <branch_id> }
+        - If a department with the same name exists in the target, reuse it.
+        - If a unit with the same name exists under the matched department, reuse it.
+        """
+        try:
+            target = BranchOffice.objects.get(pk=pk)
+        except BranchOffice.DoesNotExist:
+            return Response({ 'detail': 'Target branch not found' }, status=status.HTTP_404_NOT_FOUND)
+
+        source_id = request.data.get('source') or request.data.get('source_branch')
+        if not source_id:
+            return Response({ 'detail': 'source is required' }, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            source = BranchOffice.objects.get(pk=source_id)
+        except BranchOffice.DoesNotExist:
+            return Response({ 'detail': 'Source branch not found' }, status=status.HTTP_404_NOT_FOUND)
+
+        # Authorization: ensure both branches belong to the same organization for the requester
+        user = request.user
+        if getattr(user, 'role', None) == 'ORG':
+            if target.user_id != user.id or source.user_id != user.id:
+                raise PermissionDenied('Branches must belong to your organization')
+        elif getattr(user, 'role', None) == 'BRANCH':
+            # Branch admin can clone into their own branch only, and only from within same org
+            if target.admin_id != user.id:
+                raise PermissionDenied('Not allowed for this target branch')
+            if source.user_id != target.user_id:
+                raise PermissionDenied('Source must belong to the same organization')
+        else:
+            raise PermissionDenied('Not allowed')
+
+        from .models import Department, Unit
+        created_deps = 0
+        created_units = 0
+        # Map department name -> department instance for target
+        existing_target_deps = { d.name: d for d in Department.objects.filter(branch=target) }
+        for d in Department.objects.filter(branch=source).order_by('name'):
+            t_dep = existing_target_deps.get(d.name)
+            if not t_dep:
+                t_dep = Department.objects.create(branch=target, name=d.name)
+                existing_target_deps[d.name] = t_dep
+                created_deps += 1
+            # Units under department
+            existing_units = { u.name: u for u in Unit.objects.filter(department=t_dep) }
+            for u in Unit.objects.filter(department=d).order_by('name'):
+                if u.name in existing_units:
+                    continue
+                Unit.objects.create(department=t_dep, name=u.name)
+                created_units += 1
+
+        return Response({ 'created_departments': created_deps, 'created_units': created_units })
+
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     serializer_class = DepartmentSerializer
