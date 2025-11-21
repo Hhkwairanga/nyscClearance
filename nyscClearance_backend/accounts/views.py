@@ -88,8 +88,11 @@ class PasswordSetView(APIView):
     def post(self, request):
         token = request.data.get('token')
         password = request.data.get('password')
+        password_confirm = request.data.get('password_confirm')
         if not token or not password:
             return Response({'detail': 'token and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if password_confirm is not None and password != password_confirm:
+            return Response({'detail': 'Passwords do not match'}, status=status.HTTP_400_BAD_REQUEST)
         user_id = validate_email_token(token)
         if not user_id:
             return Response({'detail': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
@@ -137,8 +140,11 @@ class PasswordResetConfirmView(APIView):
     def post(self, request):
         token = request.data.get('token')
         password = request.data.get('password')
+        password_confirm = request.data.get('password_confirm')
         if not token or not password:
             return Response({'detail': 'token and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if password_confirm is not None and password != password_confirm:
+            return Response({'detail': 'Passwords do not match'}, status=status.HTTP_400_BAD_REQUEST)
         user_id = validate_email_token(token)
         if not user_id:
             return Response({'detail': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
