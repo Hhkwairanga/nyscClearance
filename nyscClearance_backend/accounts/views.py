@@ -13,6 +13,7 @@ from django.http import JsonResponse, HttpResponseNotAllowed, HttpResponseNotFou
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 import base64
+import math
 import numpy as np
 import cv2
 import os
@@ -239,6 +240,64 @@ def attendance_page(request):
     return render(request, 'attendance.html', ctx)
 
 
+def _get_target_location_for_corper(cm):
+    """Return (lat, lng, source) for the corper's expected location.
+    Prefer branch location; fallback to organization profile location.
+    """
+    lat = lng = None
+    src = None
+    try:
+        br = cm.branch
+        if br and br.latitude is not None and br.longitude is not None:
+            lat, lng, src = br.latitude, br.longitude, 'branch'
+    except Exception:
+        pass
+    if lat is None or lng is None:
+        try:
+            prof = OrganizationProfile.objects.filter(user=cm.user).first()
+            if prof and prof.location_lat is not None and prof.location_lng is not None:
+                lat, lng, src = prof.location_lat, prof.location_lng, 'org'
+        except Exception:
+            pass
+    return lat, lng, src
+
+
+def _haversine_m(lat1, lon1, lat2, lon2):
+    R = 6371000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dphi/2.0)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dl/2.0)**2
+    c = 2*math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R*c
+
+
+@csrf_exempt
+def attendance_authorize(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    user = request.user
+    if getattr(user, 'role', None) != 'CORPER':
+        return JsonResponse({'detail': 'Not allowed'}, status=403)
+    cm = getattr(user, 'corper_profile', None)
+    if not cm:
+        return JsonResponse({'detail': 'Corper profile not found'}, status=404)
+    try:
+        lat = float(request.POST.get('lat'))
+        lng = float(request.POST.get('lng'))
+    except Exception:
+        return JsonResponse({'detail': 'Invalid coordinates'}, status=400)
+    tgt_lat, tgt_lng, src = _get_target_location_for_corper(cm)
+    if tgt_lat is None or tgt_lng is None:
+        return JsonResponse({'allowed': False, 'detail': 'Organization location not configured'}, status=400)
+    # Threshold (meters); can be tuned or moved to settings
+    threshold = getattr(settings, 'ATTENDANCE_GEOFENCE_METERS', 250)
+    dist = _haversine_m(lat, lng, tgt_lat, tgt_lng)
+    allowed = dist <= threshold
+    return JsonResponse({'allowed': allowed, 'distance_m': round(dist, 1), 'threshold_m': threshold, 'source': src or 'unknown'})
+
+
 @csrf_exempt
 def attendance_process_frame(request):
     if request.method != 'POST':
@@ -336,6 +395,20 @@ def attendance_finalize(request):
     st = _ATTENDANCE_STATE.get(cm.id, {'hits': 0})
     if st.get('hits', 0) < 3:
         return JsonResponse({'detail': 'Face not recognized'}, status=400)
+    # Geofence check (require lat/lng in request)
+    try:
+        lat = float(request.POST.get('lat')) if request.method == 'POST' else None
+        lng = float(request.POST.get('lng')) if request.method == 'POST' else None
+    except Exception:
+        lat = lng = None
+    tgt_lat, tgt_lng, _ = _get_target_location_for_corper(cm)
+    if tgt_lat is None or tgt_lng is None:
+        return JsonResponse({'detail': 'Organization location not configured'}, status=400)
+    if lat is None or lng is None:
+        return JsonResponse({'detail': 'Missing location; enable location to mark attendance'}, status=400)
+    threshold = getattr(settings, 'ATTENDANCE_GEOFENCE_METERS', 250)
+    if _haversine_m(lat, lng, tgt_lat, tgt_lng) > threshold:
+        return JsonResponse({'detail': 'You are not within the attendance proximity'}, status=403)
     # Persist attendance log: create/update today's record
     from .models import AttendanceLog
     today = timezone.localdate()
