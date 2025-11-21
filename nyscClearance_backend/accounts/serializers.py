@@ -171,34 +171,54 @@ class BranchOfficeSerializer(serializers.ModelSerializer):
         admin_email = validated_data.pop('admin_email', None)
         admin_staff_id = validated_data.pop('admin_staff_id', None)
 
+        # Apply basic field updates first
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
+
+        # Track previous admin email to decide if we should send a fresh invite
+        prev_admin_email = (getattr(instance.admin, 'email', None) or '').lower()
+        invite_needed = False
 
         if admin_email is not None:
             admin_email = admin_email.strip()
             if admin_email:
-                admin_user, created = User.objects.get_or_create(
-                    email=admin_email,
-                    defaults={
-                        'name': (admin_name or admin_email.split('@')[0]) if admin_name is not None else admin_email.split('@')[0],
-                        'is_active': False,
-                        'is_email_verified': False,
-                        'role': 'BRANCH',
-                    }
-                )
-                if created:
-                    admin_user.set_unusable_password()
-                    admin_user.save()
-                instance.admin = admin_user
-                token = generate_email_token(admin_user.id)
-                verify_url = self._build_verify_url(token)
-                self._send_verification_email(admin_user.email, admin_user.name, verify_url)
+                if admin_email.lower() != prev_admin_email:
+                    # New/different admin email → (re)assign and send activation link
+                    admin_user, created = User.objects.get_or_create(
+                        email=admin_email,
+                        defaults={
+                            'name': (admin_name or admin_email.split('@')[0]) if admin_name is not None else admin_email.split('@')[0],
+                            'is_active': False,
+                            'is_email_verified': False,
+                            'role': 'BRANCH',
+                        }
+                    )
+                    if created:
+                        admin_user.set_unusable_password()
+                        admin_user.save()
+                    instance.admin = admin_user
+                    invite_needed = True
+                else:
+                    # Same admin email; optionally update name if provided
+                    if admin_name is not None and instance.admin:
+                        new_name = admin_name.strip()
+                        if new_name and new_name != instance.admin.name:
+                            instance.admin.name = new_name
+                            instance.admin.save(update_fields=['name'])
             else:
+                # Empty string clears admin
                 instance.admin = None
+
         if admin_staff_id is not None:
             instance.admin_staff_id = admin_staff_id
 
         instance.save()
+
+        if invite_needed and instance.admin:
+            token = generate_email_token(instance.admin.id)
+            verify_url = self._build_verify_url(token)
+            self._send_verification_email(instance.admin.email, instance.admin.name, verify_url)
+
         return instance
 
 
