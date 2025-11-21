@@ -9,6 +9,7 @@ from rest_framework.decorators import action
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
+from django.http import JsonResponse, HttpResponseNotAllowed, HttpResponseNotFound
 from django.utils.decorators import method_decorator
 import base64
 import numpy as np
@@ -88,7 +89,7 @@ def capture_page(request, corper_id: int):
     try:
         corper = CorpMember.objects.get(pk=corper_id)
     except CorpMember.DoesNotExist:
-        return Response({'detail': 'Corper not found'}, status=status.HTTP_404_NOT_FOUND)
+        return HttpResponseNotFound('Corper not found')
 
     # Basic auth checks
     allowed = False
@@ -115,17 +116,17 @@ def capture_page(request, corper_id: int):
 @csrf_exempt
 def capture_process_frame(request, corper_id: int):
     if request.method != 'POST':
-        return Response({'detail': 'Only POST allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return HttpResponseNotAllowed(['POST'])
     frame = request.POST.get('frame')
     if not frame:
-        return Response({'detail': 'Missing frame'}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse({'detail': 'Missing frame'}, status=400)
     # Save dir per corper under media/captures/{id}
     media_root = getattr(settings, 'MEDIA_ROOT', os.path.join(os.getcwd(), 'media'))
     save_dir = os.path.join(media_root, 'captures', str(corper_id))
     processed, count = _process_capture_frame(corper_id, frame, save_dir)
     if not processed:
-        return Response({'detail': 'Processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    return Response({'frame': processed, 'saved': count})
+        return JsonResponse({'detail': 'Processing failed'}, status=500)
+    return JsonResponse({'frame': processed, 'saved': count})
 
 
 class RegisterView(APIView):
