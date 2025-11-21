@@ -63,6 +63,8 @@
       const csrftoken = getCookie('csrftoken');
       navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
         video.srcObject = stream; video.play();
+        // Show processed preview while camera is active
+        processed.style.display = 'block';
         const loop = () => {
           const canvas = document.createElement('canvas');
           canvas.width = video.videoWidth; canvas.height = video.videoHeight;
