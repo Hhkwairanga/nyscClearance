@@ -890,7 +890,12 @@ export default function Dashboard(){
           {activeTab==='attendance' && (
             <>
               <h2 className="mb-3 text-olive">Attendance</h2>
-              <div className="alert alert-info">Attendance module coming next: daily logs, late tracking using your configured times.</div>
+              {me?.role==='CORPER' && (
+                <div className="mb-3">
+                  <a className="btn btn-olive" href="/api/auth/attendance/" target="_blank" rel="noreferrer">Mark Attendance</a>
+                </div>
+              )}
+              <div className="alert alert-info">Attendance logs and late tracking coming next.</div>
             </>
           )}
 

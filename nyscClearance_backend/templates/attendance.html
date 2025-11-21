@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Attendance</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body{ background:#f7f9f6 }
+    .frame{ max-width: 720px; margin: 0 auto; }
+    .video-wrap{ background:#000; border-radius: 8px; overflow:hidden; width: 360px; max-width: 100%; margin: 0 auto; }
+    #processed { width: 100%; height: auto; display:block }
+  </style>
+  <script>
+    function getCookie(name){
+      const v = document.cookie.match('(^|;)\\s*'+name+'\\s*=\\s*([^;]+)')
+      return v ? v.pop() : ''
+    }
+  </script>
+</head>
+<body>
+  <div class="container py-4">
+    <div class="frame">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h1 class="h5 text-success m-0">Attendance</h1>
+        <a class="btn btn-outline-secondary" href="/dashboard">Back</a>
+      </div>
+
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="small text-muted">ID</div>
+              <div class="fw-semibold">{{ corper_id }}</div>
+            </div>
+            <div class="col-md-4">
+              <div class="small text-muted">Name</div>
+              <div class="fw-semibold">{{ full_name }}</div>
+            </div>
+            <div class="col-md-4">
+              <div class="small text-muted">State Code</div>
+              <div class="fw-semibold">{{ state_code }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 mb-3">
+        <button id="start-btn" class="btn btn-success">Start Webcam</button>
+        <button id="submit-btn" class="btn btn-olive btn-lg shadow-sm" disabled>
+          Mark Attendance
+        </button>
+      </div>
+
+      <div class="video-wrap">
+        <video id="video" width="640" height="480" autoplay hidden></video>
+        <img id="processed" alt="Processed frame" style="display:none" />
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('start-btn').addEventListener('click', function(){
+      const video = document.getElementById('video');
+      const processed = document.getElementById('processed');
+      const csrftoken = getCookie('csrftoken');
+      navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+        video.srcObject = stream; video.play();
+        processed.style.display = 'block';
+        const FPS = 12;
+        const loop = () => {
+          const vw = video.videoWidth || 640;
+          const vh = video.videoHeight || 480;
+          const MAX_W = 360, MAX_H = 270;
+          const scale = Math.min(MAX_W / vw, MAX_H / vh);
+          const cw = Math.max(1, Math.round(vw * scale));
+          const ch = Math.max(1, Math.round(vh * scale));
+
+          const canvas = document.createElement('canvas');
+          canvas.width = cw; canvas.height = ch;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, cw, ch);
+          const frame = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+          fetch(window.location.pathname + 'process/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrftoken },
+            body: 'frame=' + encodeURIComponent(frame)
+          }).then(r=>r.json()).then(data => {
+            if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
+            if(data.recognized){
+              try{ stream.getTracks().forEach(t=>t.stop()) }catch(e){}
+              document.getElementById('start-btn').disabled = true;
+              document.getElementById('submit-btn').disabled = false;
+            } else {
+              setTimeout(loop, Math.floor(1000 / FPS));
+            }
+          }).catch(err => { console.warn('process error', err); setTimeout(loop, Math.floor(1000 / FPS)); })
+        }
+        setTimeout(loop, Math.floor(1000 / FPS));
+      }).catch(err => { console.error('Camera error', err) })
+    })
+
+    document.getElementById('submit-btn').addEventListener('click', function(){
+      const csrftoken = getCookie('csrftoken');
+      const btn = this; btn.disabled = true; btn.textContent = 'Submitting…';
+      fetch(window.location.pathname.replace(/\/$/, '') + '/finalize/', {
+        method: 'POST', headers: { 'X-CSRFToken': csrftoken },
+      }).then(r=>r.json()).then(data => {
+        if(data.status === 'ok'){
+          window.location.href = '{{ frontend_base }}/dashboard?attendance=success';
+        } else {
+          btn.textContent = 'Failed'; btn.classList.replace('btn-olive','btn-danger');
+        }
+      }).catch(err => { console.error('Finalize error', err); btn.textContent = 'Failed'; btn.classList.replace('btn-olive','btn-danger'); })
+    })
+  </script>
+</body>
+</html>
+

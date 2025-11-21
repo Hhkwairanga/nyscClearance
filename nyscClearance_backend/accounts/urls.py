@@ -22,6 +22,9 @@ from .views import (
     capture_page,
     capture_process_frame,
     capture_finalize,
+    attendance_page,
+    attendance_process_frame,
+    attendance_finalize,
 )
 
 router = DefaultRouter()
@@ -49,5 +52,9 @@ urlpatterns = [
     path('capture/<int:corper_id>/', capture_page, name='capture'),
     path('capture/<int:corper_id>/process/', capture_process_frame, name='capture-process'),
     path('capture/<int:corper_id>/finalize/', capture_finalize, name='capture-finalize'),
+    # Attendance (self-service for corpers)
+    path('attendance/', attendance_page, name='attendance'),
+    path('attendance/process/', attendance_process_frame, name='attendance-process'),
+    path('attendance/finalize/', attendance_finalize, name='attendance-finalize'),
     path('', include(router.urls)),
 ]

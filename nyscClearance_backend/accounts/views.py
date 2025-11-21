@@ -40,10 +40,16 @@ User = get_user_model()
 
 # In-memory capture state per corper_id
 _CAPTURE_STATE = {}
+_ATTENDANCE_STATE = {}
 
 def _reset_capture_state(corper_id: int):
     _CAPTURE_STATE[corper_id] = {
         'image_count': 0,
+    }
+
+def _reset_attendance_state(corper_id: int):
+    _ATTENDANCE_STATE[corper_id] = {
+        'hits': 0,
     }
 
 def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
@@ -202,6 +208,111 @@ def capture_finalize(request, corper_id: int):
     _reset_capture_state(corper_id)
 
     return JsonResponse({'status': 'ok', 'encodings': len(encodings)})
+
+
+def attendance_page(request):
+    # Only corpers can mark attendance for themselves
+    user = request.user
+    if getattr(user, 'role', None) != 'CORPER':
+        raise PermissionDenied('Only corpers can access attendance')
+    cm = getattr(user, 'corper_profile', None)
+    if not cm:
+        return HttpResponseNotFound('Corper profile not found')
+
+    _reset_attendance_state(cm.id)
+
+    # Prefer request Origin if it matches configured FRONTEND_ORIGINS
+    request_origin = request.headers.get('Origin')
+    try:
+        allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
+    except Exception:
+        allowed = set()
+    frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
+
+    ctx = {
+        'corper_id': cm.id,
+        'full_name': cm.full_name,
+        'state_code': cm.state_code,
+        'frontend_base': frontend_base,
+    }
+    return render(request, 'attendance.html', ctx)
+
+
+@csrf_exempt
+def attendance_process_frame(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    user = request.user
+    if getattr(user, 'role', None) != 'CORPER':
+        return JsonResponse({'detail': 'Not allowed'}, status=403)
+    cm = getattr(user, 'corper_profile', None)
+    if not cm:
+        return JsonResponse({'detail': 'Corper profile not found'}, status=404)
+    frame = request.POST.get('frame')
+    if not frame:
+        return JsonResponse({'detail': 'Missing frame'}, status=400)
+
+    # Load stored encoding
+    import json
+    try:
+        saved = np.array(json.loads(cm.face_encoding), dtype='float32') if cm.face_encoding else None
+    except Exception:
+        saved = None
+    if saved is None:
+        return JsonResponse({'detail': 'No face encoding on file'}, status=400)
+
+    # Decode incoming frame and detect face(s)
+    img_data = base64.b64decode(frame)
+    nparr = np.frombuffer(img_data, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return JsonResponse({'detail': 'Invalid frame'}, status=400)
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # Use face_recognition to get encodings directly (it internal-detects faces)
+    try:
+        encs = face_recognition.face_encodings(rgb)
+    except Exception:
+        encs = []
+
+    recognized = False
+    if encs:
+        # Compare first face encoding to saved
+        dists = face_recognition.face_distance([saved], encs[0])
+        dist = float(dists[0]) if len(dists) else 1.0
+        # Typical good threshold ~0.6; adjust if needed
+        if dist <= 0.6:
+            st = _ATTENDANCE_STATE.setdefault(cm.id, {'hits': 0})
+            st['hits'] = min(10, st.get('hits', 0) + 1)
+            if st['hits'] >= 3:  # require 3 consecutive hits
+                recognized = True
+        else:
+            _ATTENDANCE_STATE.setdefault(cm.id, {'hits': 0})['hits'] = 0
+
+    # Draw overlay with status
+    label = 'RECOGNIZED' if recognized else 'Scanning…'
+    color = (0, 200, 0) if recognized else (0, 200, 200)
+    cv2.putText(img, label, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2, cv2.LINE_AA)
+    _, buffer = cv2.imencode('.jpg', img)
+    processed_frame = base64.b64encode(buffer).decode('utf-8')
+    return JsonResponse({'frame': processed_frame, 'recognized': recognized})
+
+
+@csrf_exempt
+def attendance_finalize(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    user = request.user
+    if getattr(user, 'role', None) != 'CORPER':
+        return JsonResponse({'detail': 'Not allowed'}, status=403)
+    cm = getattr(user, 'corper_profile', None)
+    if not cm:
+        return JsonResponse({'detail': 'Corper profile not found'}, status=404)
+    st = _ATTENDANCE_STATE.get(cm.id, {'hits': 0})
+    if st.get('hits', 0) < 3:
+        return JsonResponse({'detail': 'Face not recognized'}, status=400)
+    # In a future iteration, persist a log here.
+    _reset_attendance_state(cm.id)
+    return JsonResponse({'status': 'ok'})
 
 
 class RegisterView(APIView):
