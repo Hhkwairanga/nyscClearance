@@ -242,24 +242,32 @@ def attendance_page(request):
 
 def _get_target_location_for_corper(cm):
     """Return (lat, lng, source) for the corper's expected location.
-    Prefer branch location; fallback to organization profile location.
+    If both branch and org locations exist, use their midpoint as an "average" center.
     """
-    lat = lng = None
-    src = None
+    br_lat = br_lng = None
+    org_lat = org_lng = None
     try:
         br = cm.branch
         if br and br.latitude is not None and br.longitude is not None:
-            lat, lng, src = br.latitude, br.longitude, 'branch'
+            br_lat, br_lng = br.latitude, br.longitude
     except Exception:
         pass
-    if lat is None or lng is None:
-        try:
-            prof = OrganizationProfile.objects.filter(user=cm.user).first()
-            if prof and prof.location_lat is not None and prof.location_lng is not None:
-                lat, lng, src = prof.location_lat, prof.location_lng, 'org'
-        except Exception:
-            pass
-    return lat, lng, src
+    try:
+        prof = OrganizationProfile.objects.filter(user=cm.user).first()
+        if prof and prof.location_lat is not None and prof.location_lng is not None:
+            org_lat, org_lng = prof.location_lat, prof.location_lng
+    except Exception:
+        pass
+    if br_lat is not None and org_lat is not None:
+        # Midpoint (approx) as average geofence center
+        lat = (br_lat + org_lat) / 2.0
+        lng = (br_lng + org_lng) / 2.0
+        return lat, lng, 'avg'
+    if br_lat is not None:
+        return br_lat, br_lng, 'branch'
+    if org_lat is not None:
+        return org_lat, org_lng, 'org'
+    return None, None, None
 
 
 def _haversine_m(lat1, lon1, lat2, lon2):

@@ -144,3 +144,6 @@ if DEBUG:
     # Dev-friendly cookie settings for http://localhost
     CSRF_COOKIE_SECURE = False
     SESSION_COOKIE_SECURE = False
+
+# Attendance geofence radius (meters); "average" default that's not too strict
+ATTENDANCE_GEOFENCE_METERS = int(os.getenv('ATTENDANCE_GEOFENCE_METERS', '300'))

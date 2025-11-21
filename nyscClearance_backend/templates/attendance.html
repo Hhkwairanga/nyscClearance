@@ -120,7 +120,7 @@
             setTimeout(loop, Math.floor(1000 / FPS));
           }).catch(err => { console.error('Camera error', err); document.getElementById('start-btn').hidden=false })
         }).catch(err => { console.error('Authorize error', err); document.getElementById('start-btn').hidden=false })
-      }, (err) => { alert('Location permission is required for attendance.'); document.getElementById('start-btn').hidden=false })
+      }, (err) => { alert('Location permission is required for attendance.'); document.getElementById('start-btn').hidden=false }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 })
     })
   </script>
 </body>
