@@ -130,9 +130,9 @@ export default function Dashboard(){
       <nav className="navbar navbar-light bg-white border-bottom px-3 sticky-top d-flex justify-content-between topnav">
         <div className="d-flex align-items-center">
           {logoUrl ? (
-            <img src={logoUrl} alt="Org Logo" style={{height:36, width:36, objectFit:'cover', borderRadius:6}}/>
+            <img src={logoUrl} alt="Organization Logo" className="org-logo"/>
           ) : (
-            <div style={{height:36, width:36, borderRadius:6, background:'#eef2ea'}}></div>
+            <div className="org-logo-placeholder"/>
           )}
           <div className="ms-2">
             <div className="fw-semibold small">{me?.name || 'Organization'}</div>
@@ -284,6 +284,14 @@ export default function Dashboard(){
                         <div className="col-6 col-md-3">
                           <label className="form-label">Closing Time</label>
                           <input className="form-control" type="time" name="closing_time" defaultValue={profile?.closing_time || ''} />
+                        </div>
+                        <div className="col-6 col-md-3">
+                          <label className="form-label">Max Days Late</label>
+                          <input className="form-control" type="number" min="0" step="1" name="max_days_late" defaultValue={profile?.max_days_late ?? ''} placeholder="e.g., 3" />
+                        </div>
+                        <div className="col-6 col-md-3">
+                          <label className="form-label">Max Days Absent</label>
+                          <input className="form-control" type="number" min="0" step="1" name="max_days_absent" defaultValue={profile?.max_days_absent ?? ''} placeholder="e.g., 2" />
                         </div>
                         <div className="col-12 col-md-3">
                           <label className="form-label">Logo</label>

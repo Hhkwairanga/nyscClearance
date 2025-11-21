@@ -32,7 +32,7 @@ class OrganizationUserAdmin(BaseUserAdmin):
 
 @admin.register(OrganizationProfile)
 class OrganizationProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'late_time', 'closing_time')
+    list_display = ('user', 'late_time', 'closing_time', 'max_days_late', 'max_days_absent')
 
 
 @admin.register(BranchOffice)

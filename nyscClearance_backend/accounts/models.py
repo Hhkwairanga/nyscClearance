@@ -61,6 +61,8 @@ class OrganizationProfile(models.Model):
     logo = models.ImageField(upload_to='org_logos/', blank=True, null=True)
     late_time = models.TimeField(blank=True, null=True)
     closing_time = models.TimeField(blank=True, null=True)
+    max_days_late = models.PositiveSmallIntegerField(blank=True, null=True)
+    max_days_absent = models.PositiveSmallIntegerField(blank=True, null=True)
     location_lat = models.FloatField(blank=True, null=True)
     location_lng = models.FloatField(blank=True, null=True)
 

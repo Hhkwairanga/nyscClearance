@@ -13,6 +13,11 @@
 
 body{ background-color:#f7f9f6; }
 
+/* Organization logo sizing (dashboard header)
+   Let the uploaded image define width; cap height for navbar fit */
+.org-logo{ display:block; height:auto; width:auto; max-height: 48px; object-fit: contain; border-radius:6px; }
+.org-logo-placeholder{ height: 40px; width: 40px; background:#eef2ea; border-radius:6px; }
+
 /* Landing hero styling and simple animation */
 .landing-hero{
   background: radial-gradient(1200px 600px at 10% 10%, rgba(189,183,107,0.25), transparent),

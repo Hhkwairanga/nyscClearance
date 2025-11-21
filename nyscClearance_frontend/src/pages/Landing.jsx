@@ -7,8 +7,8 @@ export default function Landing(){
       <div className="container py-5">
         <div className="row align-items-center">
           <div className="col-lg-6">
-            <h1 className="display-5 fw-bold text-olive">Automate Monthly Performance Clearance</h1>
-            <p className="lead mt-3">Streamline corpers’ clearance with secure onboarding, tracked performance, and instant clearance letters — all in one place.</p>
+            <h1 className="display-5 fw-bold text-olive">Effortless NYSC Monthly Clearance</h1>
+            <p className="lead mt-3">Onboard corpers, manage branches, approve leaves and publish holidays, then generate clearance in minutes. Simple, secure, and made for speed.</p>
             <div className="mt-4 d-flex gap-3">
               <Link className="btn btn-olive btn-lg" to="/signup">Sign Up</Link>
               <Link className="btn btn-outline-secondary btn-lg" to="/login">Log In</Link>
@@ -34,24 +34,24 @@ export default function Landing(){
             <div className="col-md-4">
               <div className="card h-100 shadow-sm feature-card">
                 <div className="card-body">
-                  <h5 className="card-title">Email Verification</h5>
-                  <p className="card-text">Secure organization onboarding with verified accounts and controlled access.</p>
+                  <h5 className="card-title">Verified Onboarding</h5>
+                  <p className="card-text">Invite organizations, branch admins, and corpers with email verification to keep access locked down and accounts authentic.</p>
                 </div>
               </div>
             </div>
             <div className="col-md-4">
               <div className="card h-100 shadow-sm feature-card">
                 <div className="card-body">
-                  <h5 className="card-title">Automated Workflow</h5>
-                  <p className="card-text">Monthly performance capture to generate official clearance letters automatically.</p>
+                  <h5 className="card-title">Leaves & Holidays</h5>
+                  <p className="card-text">Approve or reject leave requests, set organization-wide public holidays, and keep your calendar coordinated across branches.</p>
                 </div>
               </div>
             </div>
             <div className="col-md-4">
               <div className="card h-100 shadow-sm feature-card">
                 <div className="card-body">
-                  <h5 className="card-title">Bootstrap Design</h5>
-                  <p className="card-text">Clean olive/khaki theme aligned with NYSC style for consistency.</p>
+                  <h5 className="card-title">Role-Based Dashboards</h5>
+                  <p className="card-text">Clear views for organizations, branch admins, and corpers. See exactly what matters, act fast, and stay audit-ready.</p>
                 </div>
               </div>
             </div>

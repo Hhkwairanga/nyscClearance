@@ -13,8 +13,7 @@ Backend (Django)
 - Setup
   - `cd nyscClearance/nyscClearance_backend`
   - Create venv (optional) and install: `pip install -r requirements.txt`
-  - Set env vars as needed (email backend, DB, CORS, `FRONTEND_ORIGIN`)
-  - For local dev, SQLite fallback is enabled (`USE_SQLITE=true`)
+  - Set env vars as needed (email backend, Postgres DB, CORS, `FRONTEND_ORIGIN`)
   - Migrate: `python manage.py migrate`
   - Run: `python manage.py runserver 0.0.0.0:8000`
 - Key endpoints (prefix `/api/auth/`)
@@ -53,5 +52,4 @@ Environment & Security
 
 Development Notes
 - Migrations live in `nyscClearance_backend/accounts/migrations/`
-- SQLite fallback for local; production should use Postgres (set `USE_SQLITE=false` + DB vars)
-
+- Database is PostgreSQL only. Configure via `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`.

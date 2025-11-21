@@ -76,7 +76,7 @@ class LoginSerializer(serializers.Serializer):
 class OrganizationProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrganizationProfile
-        fields = ('late_time', 'closing_time', 'logo', 'location_lat', 'location_lng')
+        fields = ('late_time', 'closing_time', 'max_days_late', 'max_days_absent', 'logo', 'location_lat', 'location_lng')
 
 
 class BranchOfficeSerializer(serializers.ModelSerializer):
