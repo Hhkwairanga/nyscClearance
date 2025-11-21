@@ -43,6 +43,13 @@ export default function Dashboard(){
       url.searchParams.delete('capture')
       window.history.replaceState({}, '', url)
     }
+    if(sp.get('attendance') === 'success'){
+      setStatus('saved:attendance')
+      setActiveTab('attendance')
+      const url = new URL(window.location.href)
+      url.searchParams.delete('attendance')
+      window.history.replaceState({}, '', url)
+    }
   }, [])
 
   useEffect(() => {
@@ -215,6 +222,9 @@ export default function Dashboard(){
       <main className="p-3 p-md-4">
         {status==='saved:face-capture' && (
           <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Face capture saved successfully.</AutoFadeAlert>
+        )}
+        {status==='saved:attendance' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Attendance marked successfully.</AutoFadeAlert>
         )}
           {activeTab==='overview' && (
             <>
