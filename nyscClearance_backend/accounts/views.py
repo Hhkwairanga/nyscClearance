@@ -44,11 +44,10 @@ _CAPTURE_STATE = {}
 def _reset_capture_state(corper_id: int):
     _CAPTURE_STATE[corper_id] = {
         'image_count': 0,
-        'prev_frame': None,
     }
 
 def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
-    st = _CAPTURE_STATE.setdefault(corper_id, {'image_count': 0, 'prev_frame': None})
+    st = _CAPTURE_STATE.setdefault(corper_id, {'image_count': 0})
     img_data = base64.b64decode(b64_frame)
     nparr = np.frombuffer(img_data, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -58,28 +57,24 @@ def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30,30))
 
-    if st['prev_frame'] is not None:
-        diff = cv2.absdiff(st['prev_frame'], gray)
-        _, thresh = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
-        if np.sum(thresh) == 0 and st['image_count'] < 10:
-            os.makedirs(save_dir, exist_ok=True)
-            for (x,y,w,h) in faces:
-                face_roi = gray[y:y+h, x:x+w]
-                if face_roi.size == 0:
-                    continue
-                resized_face = cv2.resize(face_roi, (100, 100))
-                normalized_face = resized_face / 255.0
-                equalized_face = cv2.equalizeHist((normalized_face * 255).astype('uint8'))
-                if st['image_count'] < 10:
-                    out_path = os.path.join(save_dir, f"frame_{st['image_count']}.jpg")
-                    cv2.imwrite(out_path, equalized_face)
-                    st['image_count'] += 1
+    # Save whenever a face is detected, up to 100 images
+    if len(faces) > 0 and st['image_count'] < 100:
+        os.makedirs(save_dir, exist_ok=True)
+        # take the first detected face per frame to avoid oversampling
+        (x,y,w,h) = faces[0]
+        face_roi = gray[y:y+h, x:x+w]
+        if face_roi.size != 0:
+            resized_face = cv2.resize(face_roi, (100, 100))
+            normalized_face = resized_face / 255.0
+            equalized_face = cv2.equalizeHist((normalized_face * 255).astype('uint8'))
+            out_path = os.path.join(save_dir, f"frame_{st['image_count']}.jpg")
+            cv2.imwrite(out_path, equalized_face)
+            st['image_count'] += 1
 
     # draw overlays
     for (x,y,w,h) in faces:
         cv2.rectangle(img, (x,y), (x+w,y+h), (0,255,0), 2)
         cv2.putText(img, f'Image {st["image_count"]}', (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2, cv2.LINE_AA)
-    st['prev_frame'] = gray.copy()
     _, buffer = cv2.imencode('.jpg', img)
     processed_frame = base64.b64encode(buffer).decode('utf-8')
     return processed_frame, st['image_count']
@@ -169,10 +164,10 @@ def capture_finalize(request, corper_id: int):
     if not os.path.isdir(save_dir):
         return JsonResponse({'detail': 'No captured images'}, status=400)
 
-    # Load up to 10 images and compute encodings
+    # Load up to 100 images and compute encodings
     files = sorted([f for f in os.listdir(save_dir) if f.lower().endswith('.jpg')])
     encodings = []
-    for fname in files[:10]:
+    for fname in files[:100]:
         path = os.path.join(save_dir, fname)
         try:
             img = face_recognition.load_image_file(path)

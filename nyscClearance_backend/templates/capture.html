@@ -53,7 +53,7 @@
         <img id="processed" alt="Processed frame" style="display:none" />
       </div>
 
-      <div class="form-text mt-2">Keep still while we capture 10 steady frames. A green box shows the detected face and a counter appears on the frame.</div>
+      
     </div>
   </div>
   <script>
@@ -77,7 +77,7 @@
             body: 'frame=' + encodeURIComponent(frame)
           }).then(r=>r.json()).then(data => {
             if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
-            if(data.saved >= 10){
+            if(data.saved >= 100){
               // Stop when 10 frames saved
               try{ stream.getTracks().forEach(t=>t.stop()) }catch(e){}
               document.getElementById('start-btn').disabled = true;
