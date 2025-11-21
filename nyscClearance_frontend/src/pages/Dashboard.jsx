@@ -653,7 +653,11 @@ export default function Dashboard(){
                                   <option value="">—</option>
                                   {units.filter(u=> {
                                     const deptId = Number(c._newDept || c.department)
-                                    return !deptId || u.department === deptId
+                                    if (deptId) return u.department === deptId
+                                    // No department selected: limit to units whose department is under the selected branch
+                                    const branchId = Number(c._newBranch || c.branch)
+                                    const deptIdsForBranch = deps.filter(d => d.branch === branchId).map(d => d.id)
+                                    return deptIdsForBranch.includes(u.department)
                                   }).map(u=> (
                                     <option key={u.id} value={u.id}>{u.name}</option>
                                   ))}
