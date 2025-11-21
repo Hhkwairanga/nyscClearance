@@ -44,7 +44,7 @@
       <div class="d-flex gap-2 mb-3">
         <button id="start-btn" class="btn btn-success">Start Webcam</button>
         <button id="submit-btn" class="btn btn-olive btn-lg shadow-sm" disabled>
-          <span class="me-1">✅</span> Submit Encodings
+          Submit
         </button>
       </div>
 
@@ -91,7 +91,7 @@
         requestAnimationFrame(loop);
       }).catch(err => { console.error('Camera error', err) })
     })
-    // Submit to finalize (compute average encodings)
+    // Submit to finalize (compute and save face data)
     document.getElementById('submit-btn').addEventListener('click', function(){
       const csrftoken = getCookie('csrftoken');
       const btn = this; btn.disabled = true; btn.textContent = 'Submitting…';

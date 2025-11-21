@@ -213,7 +213,7 @@ export default function Dashboard(){
       </nav>
       <main className="p-3 p-md-4">
         {status==='saved:face-capture' && (
-          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Face encoding saved successfully.</AutoFadeAlert>
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Face capture saved successfully.</AutoFadeAlert>
         )}
           {activeTab==='overview' && (
             <>
@@ -384,7 +384,7 @@ export default function Dashboard(){
                         {holidays.length===0 && <li className="list-group-item text-muted">No holidays configured.</li>}
                       </ul>
                 </div>
-                {status==='saved:face-capture' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Face encoding saved successfully.</AutoFadeAlert>}
+                {status==='saved:face-capture' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Face capture saved successfully.</AutoFadeAlert>}
               </div>
             </div>
                 <div className="col-lg-6">
