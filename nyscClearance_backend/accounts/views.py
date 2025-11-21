@@ -268,30 +268,55 @@ def attendance_process_frame(request):
     if img is None:
         return JsonResponse({'detail': 'Invalid frame'}, status=400)
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    # Use face_recognition to get encodings directly (it internal-detects faces)
+    # Detect faces and compute encodings with locations to draw overlays
     try:
-        encs = face_recognition.face_encodings(rgb)
+        face_locations = face_recognition.face_locations(rgb)
+        encs = face_recognition.face_encodings(rgb, face_locations)
     except Exception:
-        encs = []
+        face_locations, encs = [], []
 
     recognized = False
-    if encs:
-        # Compare first face encoding to saved
-        dists = face_recognition.face_distance([saved], encs[0])
-        dist = float(dists[0]) if len(dists) else 1.0
-        # Typical good threshold ~0.6; adjust if needed
-        if dist <= 0.6:
-            st = _ATTENDANCE_STATE.setdefault(cm.id, {'hits': 0})
-            st['hits'] = min(10, st.get('hits', 0) + 1)
-            if st['hits'] >= 3:  # require 3 consecutive hits
-                recognized = True
-        else:
-            _ATTENDANCE_STATE.setdefault(cm.id, {'hits': 0})['hits'] = 0
+    best_conf = 0.0
+    best_idx = -1
+    # Iterate faces, compute distance and draw rectangles + confidence bar
+    for idx, ((top, right, bottom, left), enc) in enumerate(zip(face_locations, encs)):
+        dist = float(face_recognition.face_distance([saved], enc)[0])
+        # Convert to 0-100 confidence; clamp
+        conf = max(0.0, min(100.0, (1.0 - dist) * 100.0))
+        is_match = dist <= 0.6
+        # Track best
+        if conf > best_conf:
+            best_conf = conf
+            best_idx = idx
+        # Rectangle around face
+        cv2.rectangle(img, (left, top), (right, bottom), (0, 255, 0) if is_match else (0, 0, 255), 2)
+        # Grey background bar
+        cv2.rectangle(img, (right + 10, top), (right + 30, bottom), (128, 128, 128), -1)
+        # Filled confidence portion (green if >=65 else red)
+        bar_height = bottom - top
+        filled = int(bar_height * (conf / 100.0))
+        color = (0, 255, 0) if conf >= 65 else (0, 0, 255)
+        cv2.rectangle(img, (right + 10, bottom - filled), (right + 30, bottom), color, -1)
+        # If confident, show name + state_code box
+        if conf >= 65:
+            cv2.rectangle(img, (right + 35, top), (right + 260, top + 45), (128, 128, 128), cv2.FILLED)
+            font = cv2.FONT_HERSHEY_DUPLEX
+            cv2.putText(img, f"{cm.full_name}", (right + 40, top + 40), font, 0.6, (0, 255, 0), 1)
+            cv2.putText(img, f"{cm.state_code}", (right + 40, top + 20), font, 0.6, (0, 255, 0), 1)
 
-    # Draw overlay with status
+    # Update recognition state using the best face confidence
+    st = _ATTENDANCE_STATE.setdefault(cm.id, {'hits': 0})
+    if best_conf >= 65:  # ~0.35 distance equivalence; empirical
+        st['hits'] = min(10, st.get('hits', 0) + 1)
+        if st['hits'] >= 3:
+            recognized = True
+    else:
+        st['hits'] = 0
+
+    # Header label
     label = 'RECOGNIZED' if recognized else 'Scanning…'
-    color = (0, 200, 0) if recognized else (0, 200, 200)
-    cv2.putText(img, label, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2, cv2.LINE_AA)
+    head_color = (0, 200, 0) if recognized else (0, 200, 200)
+    cv2.putText(img, label, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, head_color, 2, cv2.LINE_AA)
     _, buffer = cv2.imencode('.jpg', img)
     processed_frame = base64.b64encode(buffer).decode('utf-8')
     return JsonResponse({'frame': processed_frame, 'recognized': recognized})

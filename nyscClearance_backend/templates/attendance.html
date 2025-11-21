@@ -63,6 +63,8 @@
       const video = document.getElementById('video');
       const processed = document.getElementById('processed');
       const csrftoken = getCookie('csrftoken');
+      // Hide the start button to mimic the Recognition app behavior
+      this.hidden = true;
       navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
         video.srcObject = stream; video.play();
         processed.style.display = 'block';
@@ -115,4 +117,3 @@
   </script>
 </body>
 </html>
-
