@@ -258,7 +258,8 @@ class CorpMemberSerializer(serializers.ModelSerializer):
         # For organization users, branch is required. For branch admins, default later.
         request = self.context.get('request')
         user = getattr(request, 'user', None)
-        if getattr(user, 'role', None) == 'ORG' and not attrs.get('branch'):
+        # Only enforce branch on create; on update we can infer from instance
+        if self.instance is None and getattr(user, 'role', None) == 'ORG' and not attrs.get('branch'):
             raise serializers.ValidationError({'branch': 'Branch is required'})
         return attrs
 
