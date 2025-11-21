@@ -10,6 +10,7 @@ from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponseNotAllowed, HttpResponseNotFound
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 import base64
 import numpy as np
@@ -335,7 +336,35 @@ def attendance_finalize(request):
     st = _ATTENDANCE_STATE.get(cm.id, {'hits': 0})
     if st.get('hits', 0) < 3:
         return JsonResponse({'detail': 'Face not recognized'}, status=400)
-    # In a future iteration, persist a log here.
+    # Persist attendance log: create/update today's record
+    from .models import AttendanceLog
+    today = timezone.localdate()
+    now = timezone.localtime()
+    # Derive state from state_code if possible
+    state = ''
+    try:
+        state = (cm.state_code or '').split('/')[0]
+    except Exception:
+        state = ''
+    log, created = AttendanceLog.objects.get_or_create(
+        account=user,
+        date=today,
+        defaults={
+            'org': cm.user,
+            'name': cm.full_name,
+            'state': state,
+            'code': cm.state_code or '',
+        }
+    )
+    # If created, set time_in; else, fill missing time_in or time_out accordingly
+    if created or not log.time_in:
+        log.time_in = now.time()
+    elif not log.time_out:
+        # set time_out only if logically after time_in
+        if not log.time_in or now.time() >= log.time_in:
+            log.time_out = now.time()
+    log.save()
+
     _reset_attendance_state(cm.id)
     return JsonResponse({'status': 'ok'})
 

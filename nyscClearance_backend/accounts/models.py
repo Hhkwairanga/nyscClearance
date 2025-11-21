@@ -173,3 +173,28 @@ class CorpMember(models.Model):
 
     def __str__(self):
         return f"{self.full_name} ({self.state_code})"
+
+
+class AttendanceLog(models.Model):
+    # The corper's user account (login identity)
+    account = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='attendance_logs')
+    # Owning organization user (for easy scoping/filtering)
+    org = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='org_attendance_logs')
+    # Snapshot fields for display/reporting
+    name = models.CharField(max_length=255)
+    state = models.CharField(max_length=64, blank=True)
+    code = models.CharField(max_length=32, blank=True)  # state code
+
+    date = models.DateField()
+    time_in = models.TimeField(blank=True, null=True)
+    time_out = models.TimeField(blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('account', 'date')
+        ordering = ('-date', '-created_at')
+
+    def __str__(self):
+        return f"{self.name} {self.date} in:{self.time_in} out:{self.time_out}"

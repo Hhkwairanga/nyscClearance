@@ -7,6 +7,7 @@ from .models import (
     Department,
     Unit,
     CorpMember,
+    AttendanceLog,
 )
 
 
@@ -57,3 +58,10 @@ class UnitAdmin(admin.ModelAdmin):
 class CorpMemberAdmin(admin.ModelAdmin):
     list_display = ('full_name', 'state_code', 'gender', 'user', 'passing_out_date')
     search_fields = ('full_name', 'state_code', 'user__email')
+
+
+@admin.register(AttendanceLog)
+class AttendanceLogAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'date', 'time_in', 'time_out', 'org', 'account')
+    list_filter = ('date', 'org')
+    search_fields = ('name', 'code', 'account__email', 'org__email')
