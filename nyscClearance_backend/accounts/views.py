@@ -659,15 +659,23 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
 class StatsView(APIView):
     def get(self, request):
-        branches = BranchOffice.objects.filter(user=request.user)
-        corpers = CorpMember.objects.filter(user=request.user)
-        departments = Department.objects.filter(branch__user=request.user)
-        units = Unit.objects.filter(department__branch__user=request.user)
+        user = request.user
+        # Scope stats by role: ORG sees org-wide, BRANCH sees their managed branch only
+        if getattr(user, 'role', None) == 'BRANCH':
+            branch_qs = BranchOffice.objects.filter(admin=user)
+            corpers_qs = CorpMember.objects.filter(branch__in=branch_qs)
+            departments_qs = Department.objects.filter(branch__in=branch_qs)
+            units_qs = Unit.objects.filter(department__branch__in=branch_qs)
+        else:
+            branch_qs = BranchOffice.objects.filter(user=user)
+            corpers_qs = CorpMember.objects.filter(user=user)
+            departments_qs = Department.objects.filter(branch__user=user)
+            units_qs = Unit.objects.filter(department__branch__user=user)
 
         by_branch_qs = (
-            corpers.values('branch__name')
-                   .annotate(count=Count('id'))
-                   .order_by('branch__name')
+            corpers_qs.values('branch__name')
+                      .annotate(count=Count('id'))
+                      .order_by('branch__name')
         )
         corpers_by_branch = []
         for row in by_branch_qs:
@@ -676,10 +684,10 @@ class StatsView(APIView):
 
         data = {
             'totals': {
-                'branches': branches.count(),
-                'departments': departments.count(),
-                'units': units.count(),
-                'corpers': corpers.count(),
+                'branches': branch_qs.count(),
+                'departments': departments_qs.count(),
+                'units': units_qs.count(),
+                'corpers': corpers_qs.count(),
             },
             'corpers_by_branch': corpers_by_branch,
             'attendance': {

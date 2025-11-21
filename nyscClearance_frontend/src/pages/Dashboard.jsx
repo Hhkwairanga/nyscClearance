@@ -188,7 +188,7 @@ export default function Dashboard(){
             {me?.role!=='CORPER' && (
               <button className={`btn btn-sm ${activeTab==='overview'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('overview')}>Home</button>
             )}
-            {(me?.role==='ORG') && (
+            {(me?.role==='ORG' || me?.role==='BRANCH') && (
               <button className={`btn btn-sm ${activeTab==='structure'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('structure')}>Structure</button>
             )}
             {(me?.role==='ORG' || me?.role==='BRANCH') && (
@@ -579,6 +579,124 @@ export default function Dashboard(){
                 </div>
               </div>
               </div>
+            </>
+          )}
+
+          {activeTab==='structure' && me?.role==='BRANCH' && (
+            <>
+              <h2 className="mb-3 text-olive">Structure</h2>
+              {/* Identify the admin's own branch */}
+              {(() => {
+                const myBranch = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
+                if(!myBranch){ return (<div className="text-muted">No branch assigned.</div>) }
+                const myDeps = deps.filter(d => d.branch === myBranch.id)
+                const myUnits = units.filter(u => myDeps.some(d => d.id === u.department))
+                return (
+                  <div className="row g-4">
+                    <div className="col-lg-6">
+                      <div className="card shadow-sm">
+                        <div className="card-body">
+                          <h5 className="card-title">My Branch</h5>
+                          <div className="mb-2">
+                            <div className="fw-semibold">{myBranch.name}</div>
+                            <div className="small text-muted">{myBranch.address || '—'}</div>
+                            {(myBranch.latitude || myBranch.longitude) && (
+                              <div className="small mt-1">Lat: {myBranch.latitude ?? '—'} · Lng: {myBranch.longitude ?? '—'}</div>
+                            )}
+                          </div>
+                          <button className="btn btn-sm btn-outline-secondary" onClick={()=>{
+                            const name = prompt('Branch name', myBranch.name) || myBranch.name;
+                            const address = prompt('Address', myBranch.address||'') || '';
+                            const latitude = prompt('Latitude', myBranch.latitude ?? '') || '';
+                            const longitude = prompt('Longitude', myBranch.longitude ?? '') || '';
+                            (async()=>{ try{ await api.put(`/api/auth/branches/${myBranch.id}/`, { name, address, latitude, longitude }); await refreshAll() }catch(e){} })();
+                          }}>Edit Branch</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-lg-6">
+                      <div className="card shadow-sm">
+                        <div className="card-body">
+                          <h5 className="card-title">Create Department</h5>
+                          <form onSubmit={(e)=>{ e.preventDefault(); setStatus('pending'); const f = new FormData(e.target); const name = f.get('name'); (async()=>{ try{ await api.post('/api/auth/departments/', { branch: myBranch.id, name }); await refreshAll(); setStatus('saved:department'); e.target.reset() }catch(err){ setStatus('error:department') } })(); }}>
+                            <input className="form-control mb-2" name="name" placeholder="Department name" required/>
+                            <button className="btn btn-olive">Add Department</button>
+                          </form>
+                          {status==='saved:department' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Department created.</AutoFadeAlert>}
+                          {status==='error:department' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not create department.</AutoFadeAlert>}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-lg-6">
+                      <div className="card shadow-sm">
+                        <div className="card-body">
+                          <h5 className="card-title">Create Unit</h5>
+                          <form onSubmit={(e)=>{ e.preventDefault(); setStatus('pending'); const f = new FormData(e.target); const name = f.get('name'); const department = Number(f.get('department')); (async()=>{ try{ await api.post('/api/auth/units/', { name, department }); await refreshAll(); setStatus('saved:unit'); e.target.reset() }catch(err){ setStatus('error:unit') } })(); }}>
+                            <select className="form-select mb-2" name="department" required>
+                              <option value="">Select Department</option>
+                              {myDeps.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            </select>
+                            <input className="form-control mb-2" name="name" placeholder="Unit name" required/>
+                            <button className="btn btn-olive">Add Unit</button>
+                          </form>
+                          {status==='saved:unit' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Unit created.</AutoFadeAlert>}
+                          {status==='error:unit' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not create unit.</AutoFadeAlert>}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-12">
+                      <div className="card shadow-sm">
+                        <div className="card-body">
+                          <h5 className="card-title">Departments & Units</h5>
+                          {myDeps.length === 0 && <div className="text-muted">No departments yet.</div>}
+                          {myDeps.map(d => (
+                            <div key={d.id} className="small mt-2">
+                              <div className="d-flex align-items-center justify-content-between">
+                                <div className="fw-semibold">{d.name}</div>
+                                <button className="btn btn-sm btn-outline-secondary" onClick={() => {
+                                  const newName = prompt('Edit department name (leave empty to delete)', d.name)
+                                  if(newName === null) return;
+                                  const trimmed = (newName || '').trim()
+                                  if(trimmed === ''){
+                                    if(confirm('Delete this department and its units?')){
+                                      (async()=>{ try{ await api.delete(`/api/auth/departments/${d.id}/`); await refreshAll() }catch(e){} })()
+                                    }
+                                  }else{
+                                    (async()=>{ try{ await api.put(`/api/auth/departments/${d.id}/`, { name: trimmed, branch: d.branch }); await refreshAll() }catch(e){} })()
+                                  }
+                                }}>Edit</button>
+                              </div>
+                              <div className="text-muted mt-1">
+                                {units.filter(u => u.department === d.id).length === 0 && 'No units'}
+                                {units.filter(u => u.department === d.id).map(u => (
+                                  <span key={u.id} className="me-2 d-inline-flex align-items-center">
+                                    {u.name}
+                                    <button className="btn btn-sm btn-link text-decoration-none ms-1" onClick={() => {
+                                      const newUnitName = prompt('Edit unit name (leave empty to delete)', u.name)
+                                      if(newUnitName === null) return;
+                                      const trimmed = (newUnitName || '').trim()
+                                      if(trimmed === ''){
+                                        if(confirm('Delete this unit?')){
+                                          (async()=>{ try{ await api.delete(`/api/auth/units/${u.id}/`); await refreshAll() }catch(e){} })()
+                                        }
+                                      }else{
+                                        (async()=>{ try{ await api.put(`/api/auth/units/${u.id}/`, { name: trimmed, department: u.department }); await refreshAll() }catch(e){} })()
+                                      }
+                                    }}>Edit</button>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
             </>
           )}
 
