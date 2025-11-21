@@ -78,6 +78,21 @@ class OrganizationProfileSerializer(serializers.ModelSerializer):
         model = OrganizationProfile
         fields = ('late_time', 'closing_time', 'max_days_late', 'max_days_absent', 'logo', 'location_lat', 'location_lng')
 
+    def update(self, instance, validated_data):
+        # Do not overwrite existing logo when no new file is provided
+        if 'logo' in validated_data:
+            logo = validated_data.get('logo')
+            drop = False
+            if logo is None or logo == '':
+                drop = True
+            else:
+                size = getattr(logo, 'size', None)
+                if size == 0:
+                    drop = True
+            if drop:
+                validated_data.pop('logo', None)
+        return super().update(instance, validated_data)
+
 
 class BranchOfficeSerializer(serializers.ModelSerializer):
     # Incoming-only admin invite fields
