@@ -502,10 +502,17 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return Department.objects.none()
 
     def perform_create(self, serializer):
-        # ensure branch belongs to user
+        # ensure branch belongs to org or is managed by branch admin
         branch = serializer.validated_data.get('branch')
-        if branch.user_id != self.request.user.id:
-            raise PermissionDenied('Invalid branch')
+        user = self.request.user
+        if getattr(user, 'role', None) == 'ORG':
+            if branch.user_id != user.id:
+                raise PermissionDenied('Invalid branch')
+        elif getattr(user, 'role', None) == 'BRANCH':
+            if branch.admin_id != user.id:
+                raise PermissionDenied('Invalid branch for this admin')
+        else:
+            raise PermissionDenied('Not allowed')
         serializer.save()
 
 
@@ -527,8 +534,15 @@ class UnitViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         dept = serializer.validated_data.get('department')
-        if dept.branch.user_id != self.request.user.id:
-            raise PermissionDenied('Invalid department')
+        user = self.request.user
+        if getattr(user, 'role', None) == 'ORG':
+            if dept.branch.user_id != user.id:
+                raise PermissionDenied('Invalid department')
+        elif getattr(user, 'role', None) == 'BRANCH':
+            if dept.branch.admin_id != user.id:
+                raise PermissionDenied('Invalid department for this admin')
+        else:
+            raise PermissionDenied('Not allowed')
         serializer.save()
 
 

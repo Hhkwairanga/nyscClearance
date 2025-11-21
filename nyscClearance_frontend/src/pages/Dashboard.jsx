@@ -604,13 +604,32 @@ export default function Dashboard(){
                               <div className="small mt-1">Lat: {myBranch.latitude ?? '—'} · Lng: {myBranch.longitude ?? '—'}</div>
                             )}
                           </div>
-                          <button className="btn btn-sm btn-outline-secondary" onClick={()=>{
-                            const name = prompt('Branch name', myBranch.name) || myBranch.name;
-                            const address = prompt('Address', myBranch.address||'') || '';
-                            const latitude = prompt('Latitude', myBranch.latitude ?? '') || '';
-                            const longitude = prompt('Longitude', myBranch.longitude ?? '') || '';
-                            (async()=>{ try{ await api.put(`/api/auth/branches/${myBranch.id}/`, { name, address, latitude, longitude }); await refreshAll() }catch(e){} })();
-                          }}>Edit Branch</button>
+                          {/* Map to update branch location; includes "Use my current location" control */}
+                          <div className="mb-2">
+                            <MapPicker
+                              value={(myBranch.latitude && myBranch.longitude) ? { lat: myBranch.latitude, lng: myBranch.longitude } : null}
+                              onChange={(pos) => { myBranch._newPos = pos }}
+                              height={240}
+                              zoom={myBranch.latitude && myBranch.longitude ? 14 : 6}
+                            />
+                          </div>
+                          <div className="d-flex gap-2">
+                            <button className="btn btn-sm btn-outline-secondary" onClick={()=>{
+                              const name = prompt('Branch name', myBranch.name) || myBranch.name;
+                              const address = prompt('Address', myBranch.address||'') || '';
+                              const latitude = prompt('Latitude', myBranch.latitude ?? '') || '';
+                              const longitude = prompt('Longitude', myBranch.longitude ?? '') || '';
+                              (async()=>{ try{ await api.put(`/api/auth/branches/${myBranch.id}/`, { name, address, latitude, longitude }); await refreshAll() }catch(e){} })();
+                            }}>Edit Branch</button>
+                            <button className="btn btn-sm btn-olive" onClick={async()=>{
+                              const pos = myBranch._newPos
+                              if(!pos){ alert('Pick a location on the map or use the 📍 button first.'); return }
+                              try{
+                                await api.put(`/api/auth/branches/${myBranch.id}/`, { latitude: pos.lat, longitude: pos.lng, name: myBranch.name, address: myBranch.address||'' })
+                                await refreshAll()
+                              }catch(e){}
+                            }}>Save Location</button>
+                          </div>
                         </div>
                       </div>
                     </div>
