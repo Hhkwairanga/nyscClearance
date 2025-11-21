@@ -454,6 +454,21 @@ export default function Dashboard(){
                                 <div><span className="text-muted">Staff ID:</span> {b.admin_info.staff_id || '—'}</div>
                               </div>
                             )}
+                            {/* Departments and Units for this branch */}
+                            <div className="mt-2">
+                              <div className="fw-semibold small text-olive">Departments & Units</div>
+                              {deps.filter(d => d.branch === b.id).length === 0 && (
+                                <div className="small text-muted">No departments yet.</div>
+                              )}
+                              {deps.filter(d => d.branch === b.id).map(d => (
+                                <div key={d.id} className="small mt-1">
+                                  <div className="fw-semibold">{d.name}</div>
+                                  <div className="text-muted">
+                                    {units.filter(u => u.department === d.id).map(u => u.name).join(', ') || 'No units'}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       ))}
