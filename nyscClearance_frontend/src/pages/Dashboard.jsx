@@ -572,31 +572,36 @@ export default function Dashboard(){
                 <div className="card-body">
                   <h5 className="card-title">Enroll Corp Member</h5>
                   <form onSubmit={createCorper}>
-                    <div className="row g-2">
+                    {/* Row 1: Basic details */}
+                    <div className="row g-2 align-items-end mb-1">
                       <div className="col-md-4">
                         <label className="form-label">Email</label>
-                        <input className="form-control" type="email" name="email" placeholder="corper@example.com" required/>
+                        <input className="form-control" type="email" name="email" placeholder="corper@example.com" required />
                       </div>
                       <div className="col-md-4">
-                        <label className="form-label">Fullname</label>
-                        <input className="form-control" name="full_name" placeholder="surname first name lastname" required/>
+                        <label className="form-label">Full Name</label>
+                        <input className="form-control" name="full_name" placeholder="Surname Firstname Lastname" required />
                       </div>
                       <div className="col-md-2">
                         <label className="form-label">Gender</label>
                         <select className="form-select" name="gender" required>
-                          <option value="">Gender</option>
+                          <option value="">Select...</option>
                           <option value="M">Male</option>
                           <option value="F">Female</option>
                           <option value="O">Other</option>
                         </select>
                       </div>
-                      <div className="col-md-3">
-                        <label className="form-label">StateCode</label>
-                        <input className="form-control" name="state_code" placeholder="AA/00A/0000" required/>
+                      <div className="col-md-2">
+                        <label className="form-label">Passing Out</label>
+                        <input className="form-control" type="date" name="passing_out_date" required />
                       </div>
+                    </div>
+
+                    {/* Row 2: Placement */}
+                    <div className="row g-2 align-items-end">
                       <div className="col-md-3">
-                        <label className="form-label">Passing Out Date</label>
-                        <input className="form-control" type="date" name="passing_out_date" required/>
+                        <label className="form-label">State Code</label>
+                        <input className="form-control" name="state_code" placeholder="AA/00A/0000" required />
                       </div>
                       {me?.role==='ORG' && (
                         <div className="col-md-3">
@@ -612,18 +617,18 @@ export default function Dashboard(){
                         <label className="form-label">Department (optional)</label>
                         <select className="form-select" name="department" value={enrollDept}
                                 onChange={(e)=> setEnrollDept(e.target.value)}>
-                          <option value="">Department (optional)</option>
+                          <option value="">Select department</option>
                           {enrollDeptOptions().map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
                       </div>
                       <div className="col-md-3">
                         <label className="form-label">Unit (optional)</label>
                         <select className="form-select" name="unit">
-                          <option value="">Unit (optional)</option>
+                          <option value="">Select unit</option>
                           {enrollUnitOptions().map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                         </select>
                       </div>
-                      <div className="col-md-3 d-grid">
+                      <div className="col-12 col-md-2 d-grid">
                         <button className="btn btn-olive">Enroll</button>
                       </div>
                     </div>
