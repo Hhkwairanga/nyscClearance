@@ -314,11 +314,28 @@ export default function Dashboard(){
                 </div>
                 <div className="col-12 col-lg-6">
                   <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
-                    <h6 className="card-title">Attendance (Placeholder)</h6>
+                    <h6 className="card-title">Attendance</h6>
                     <Doughnut data={{
                       labels:['Today','This Month'],
                       datasets:[{ data:[stats?.attendance?.today||0, stats?.attendance?.this_month||0], backgroundColor:['#BDB76B','#556B2F'] }]
                     }} options={{ responsive:true, maintainAspectRatio:false }} />
+                  </div></div>
+                </div>
+              </div>
+              )}
+              {me?.role!=='CORPER' && (
+              <div className="row g-3 mt-1">
+                <div className="col-12">
+                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
+                    <h6 className="card-title">Attendance - Last 7 Days</h6>
+                    <Bar data={{
+                      labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
+                      datasets: [{
+                        label: 'Present',
+                        data: (stats?.attendance?.last7||[]).map(r=> r.count),
+                        backgroundColor: '#BDB76B'
+                      }]
+                    }} options={{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }} />
                   </div></div>
                 </div>
               </div>
@@ -905,7 +922,26 @@ export default function Dashboard(){
                   <a className="btn btn-olive" href="/api/auth/attendance/" target="_blank" rel="noreferrer">Mark Attendance</a>
                 </div>
               )}
-              <div className="alert alert-info">Attendance logs and late tracking coming next.</div>
+              <div className="row g-3">
+                <div className="col-12 col-lg-6">
+                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
+                    <h6 className="card-title">My Attendance</h6>
+                    <Bar data={{
+                      labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
+                      datasets: [{ label: 'Present', data: (stats?.attendance?.last7||[]).map(r=> r.count), backgroundColor: '#556B2F' }]
+                    }} options={{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }} />
+                  </div></div>
+                </div>
+                <div className="col-12 col-lg-6">
+                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
+                    <h6 className="card-title">Today vs Month</h6>
+                    <Doughnut data={{
+                      labels:['Today','This Month'],
+                      datasets:[{ data:[stats?.attendance?.today||0, stats?.attendance?.this_month||0], backgroundColor:['#BDB76B','#556B2F'] }]
+                    }} options={{ responsive:true, maintainAspectRatio:false }} />
+                  </div></div>
+                </div>
+              </div>
             </>
           )}
 

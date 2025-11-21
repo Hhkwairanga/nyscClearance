@@ -32,7 +32,7 @@ from .serializers import (
     NotificationSerializer,
 )
 from .tokens import validate_email_token, generate_email_token
-from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification
+from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog
 from django.db.models import Count
 from django.db import models
 
@@ -845,11 +845,18 @@ class StatsView(APIView):
             corpers_qs = CorpMember.objects.filter(branch__in=branch_qs)
             departments_qs = Department.objects.filter(branch__in=branch_qs)
             units_qs = Unit.objects.filter(department__branch__in=branch_qs)
+            # Attendance logs for accounts under these branches
+            att_qs = AttendanceLog.objects.filter(account__corper_profile__branch__in=branch_qs)
         else:
             branch_qs = BranchOffice.objects.filter(user=user)
             corpers_qs = CorpMember.objects.filter(user=user)
             departments_qs = Department.objects.filter(branch__user=user)
             units_qs = Unit.objects.filter(department__branch__user=user)
+            # Attendance logs for this organization
+            if getattr(user, 'role', None) == 'CORPER':
+                att_qs = AttendanceLog.objects.filter(account=user)
+            else:
+                att_qs = AttendanceLog.objects.filter(org=user)
 
         by_branch_qs = (
             corpers_qs.values('branch__name')
@@ -869,12 +876,28 @@ class StatsView(APIView):
                 'corpers': corpers_qs.count(),
             },
             'corpers_by_branch': corpers_by_branch,
-            'attendance': {
-                'today': 0,
-                'this_month': 0,
-            }
+            'attendance': self._attendance_stats(att_qs)
         }
         return Response(data)
+
+    def _attendance_stats(self, att_qs):
+        """Return counts for today, this month, and last 7 days timeline."""
+        today = timezone.localdate()
+        start_month = today.replace(day=1)
+        # Today count: any log present (time_in set counts as present)
+        today_count = att_qs.filter(date=today).count()
+        month_count = att_qs.filter(date__gte=start_month, date__lte=today).count()
+        # Last 7 days (inclusive today)
+        last7 = []
+        for i in range(6, -1, -1):
+            d = today - timezone.timedelta(days=i)
+            c = att_qs.filter(date=d).count()
+            last7.append({'date': d.isoformat(), 'count': c})
+        return {
+            'today': today_count,
+            'this_month': month_count,
+            'last7': last7,
+        }
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
