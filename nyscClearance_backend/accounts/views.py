@@ -53,6 +53,7 @@ def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
         return None, st['image_count']
+    # Detect on grayscale for speed/robustness
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30,30))
@@ -62,13 +63,14 @@ def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
         os.makedirs(save_dir, exist_ok=True)
         # take the first detected face per frame to avoid oversampling
         (x,y,w,h) = faces[0]
-        face_roi = gray[y:y+h, x:x+w]
-        if face_roi.size != 0:
-            resized_face = cv2.resize(face_roi, (100, 100))
-            normalized_face = resized_face / 255.0
-            equalized_face = cv2.equalizeHist((normalized_face * 255).astype('uint8'))
+        # Use color ROI for downstream encoding (RGB pipeline)
+        face_roi_color = img[y:y+h, x:x+w]
+        if face_roi_color.size != 0:
+            # Resize to a modest size to reduce disk + CPU
+            resized_color = cv2.resize(face_roi_color, (160, 160))
             out_path = os.path.join(save_dir, f"frame_{st['image_count']}.jpg")
-            cv2.imwrite(out_path, equalized_face)
+            # Save as color JPEG (BGR order expected by imwrite)
+            cv2.imwrite(out_path, resized_color)
             st['image_count'] += 1
 
     # draw overlays

@@ -8,7 +8,8 @@
   <style>
     body{ background:#f7f9f6 }
     .frame{ max-width: 720px; margin: 0 auto; }
-    .video-wrap{ background:#000; border-radius: 8px; overflow:hidden }
+    /* Minimize preview container to reduce rendering + bandwidth */
+    .video-wrap{ background:#000; border-radius: 8px; overflow:hidden; width: 360px; max-width: 100%; margin: 0 auto; }
     #processed { width: 100%; height: auto; display:block }
   </style>
   <script>
@@ -65,12 +66,23 @@
         video.srcObject = stream; video.play();
         // Show processed preview while camera is active
         processed.style.display = 'block';
+        const FPS = 12; // throttle capture to reduce load
         const loop = () => {
+          const vw = video.videoWidth || 640;
+          const vh = video.videoHeight || 480;
+          // Downscale frames before sending (reduce to ~360x270 while keeping aspect)
+          const MAX_W = 360;
+          const MAX_H = 270;
+          const scale = Math.min(MAX_W / vw, MAX_H / vh);
+          const cw = Math.max(1, Math.round(vw * scale));
+          const ch = Math.max(1, Math.round(vh * scale));
+
           const canvas = document.createElement('canvas');
-          canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+          canvas.width = cw; canvas.height = ch;
           const ctx = canvas.getContext('2d');
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const frame = canvas.toDataURL('image/jpeg').split(',')[1];
+          ctx.drawImage(video, 0, 0, cw, ch);
+          // JPEG at moderate quality keeps color (RGB) and shrinks size
+          const frame = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
           fetch(window.location.pathname + 'process/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrftoken },
@@ -78,17 +90,17 @@
           }).then(r=>r.json()).then(data => {
             if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
             if(data.saved >= 100){
-              // Stop when 10 frames saved
+              // Stop when 100 frames saved
               try{ stream.getTracks().forEach(t=>t.stop()) }catch(e){}
               document.getElementById('start-btn').disabled = true;
               document.getElementById('submit-btn').disabled = false;
               try { alert('Capture complete. Please press Submit to finalize.'); } catch(e){}
             } else {
-              requestAnimationFrame(loop);
+              setTimeout(loop, Math.floor(1000 / FPS));
             }
-          }).catch(err => { console.warn('process error', err); requestAnimationFrame(loop); })
+          }).catch(err => { console.warn('process error', err); setTimeout(loop, Math.floor(1000 / FPS)); })
         }
-        requestAnimationFrame(loop);
+        setTimeout(loop, Math.floor(1000 / FPS));
       }).catch(err => { console.error('Camera error', err) })
     })
     // Submit to finalize (compute and save face data)
