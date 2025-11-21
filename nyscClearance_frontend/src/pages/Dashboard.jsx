@@ -203,7 +203,8 @@ export default function Dashboard(){
             )}
             {(me?.role==='CORPER') && (
               <>
-                <button className={`btn btn-sm ${activeTab==='attendance'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('attendance')}>Attendance Overview</button>
+                <button className={`btn btn-sm ${activeTab==='overview'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('overview')}>Home</button>
+                <button className={`btn btn-sm ${activeTab==='attendance'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('attendance')}>Attendance</button>
                 <button className={`btn btn-sm ${activeTab==='leave'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('leave')}>Leave Management</button>
                 <button className={`btn btn-sm ${activeTab==='performance'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('performance')}>Performance Clearance</button>
               </>
