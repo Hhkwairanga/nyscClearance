@@ -703,7 +703,7 @@ export default function Dashboard(){
                                   if(c._newDept!==undefined){ payload.department = c._newDept || null; if(!payload.branch && c._newDept) { payload.branch = deps.find(d=>d.id===Number(c._newDept))?.branch } }
                                   if(c._newUnit!==undefined){ payload.unit = c._newUnit || null }
                                   try{
-                                    await api.put(`/api/auth/corpers/${c.id}/`, payload)
+                                    await api.patch(`/api/auth/corpers/${c.id}/`, payload)
                                     setStatus('saved:corper-update')
                                     await refreshAll()
                                   }catch(e){ setStatus('error:corper-update') }
