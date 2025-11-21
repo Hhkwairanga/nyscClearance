@@ -29,15 +29,11 @@
       <div class="card shadow-sm mb-3">
         <div class="card-body">
           <div class="row g-3">
-            <div class="col-md-4">
-              <div class="small text-muted">Corper ID</div>
-              <div class="fw-semibold">{{ corper_id }}</div>
-            </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
               <div class="small text-muted">Name</div>
               <div class="fw-semibold">{{ full_name }}</div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
               <div class="small text-muted">State Code</div>
               <div class="fw-semibold">{{ state_code }}</div>
             </div>
@@ -47,12 +43,14 @@
 
       <div class="d-flex gap-2 mb-3">
         <button id="start-btn" class="btn btn-success">Start Webcam</button>
-        <button id="submit-btn" class="btn btn-olive" disabled>Submit Encodings</button>
+        <button id="submit-btn" class="btn btn-olive btn-lg shadow-sm" disabled>
+          <span class="me-1">✅</span> Submit Encodings
+        </button>
       </div>
 
       <div class="video-wrap">
         <video id="video" width="640" height="480" autoplay hidden></video>
-        <img id="processed" alt="Processed frame" />
+        <img id="processed" alt="Processed frame" style="display:none" />
       </div>
 
       <div class="form-text mt-2">Keep still while we capture 10 steady frames. A green box shows the detected face and a counter appears on the frame.</div>
@@ -82,6 +80,7 @@
               try{ stream.getTracks().forEach(t=>t.stop()) }catch(e){}
               document.getElementById('start-btn').disabled = true;
               document.getElementById('submit-btn').disabled = false;
+              try { alert('Capture complete. Please press Submit to finalize.'); } catch(e){}
             } else {
               requestAnimationFrame(loop);
             }

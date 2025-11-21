@@ -37,6 +37,7 @@ export default function Dashboard(){
     const sp = new URLSearchParams(window.location.search)
     if(sp.get('capture') === 'success'){
       setStatus('saved:face-capture')
+      setActiveTab('corpers')
       // Clean the query param without reloading
       const url = new URL(window.location.href)
       url.searchParams.delete('capture')
@@ -211,6 +212,9 @@ export default function Dashboard(){
         </div>
       </nav>
       <main className="p-3 p-md-4">
+        {status==='saved:face-capture' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Face encoding saved successfully.</AutoFadeAlert>
+        )}
           {activeTab==='overview' && (
             <>
               <h2 className="mb-3 text-olive">Overview</h2>
