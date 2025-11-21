@@ -461,10 +461,35 @@ export default function Dashboard(){
                                 <div className="small text-muted">No departments yet.</div>
                               )}
                               {deps.filter(d => d.branch === b.id).map(d => (
-                                <div key={d.id} className="small mt-1">
-                                  <div className="fw-semibold">{d.name}</div>
-                                  <div className="text-muted">
-                                    {units.filter(u => u.department === d.id).map(u => u.name).join(', ') || 'No units'}
+                                <div key={d.id} className="small mt-2">
+                                  <div className="d-flex align-items-center justify-content-between">
+                                    <div className="fw-semibold">{d.name}</div>
+                                    <button
+                                      className="btn btn-sm btn-outline-secondary"
+                                      onClick={() => {
+                                        const newName = prompt('Edit department name', d.name)
+                                        if(newName && newName.trim()){
+                                          (async()=>{ try{ await api.put(`/api/auth/departments/${d.id}/`, { name: newName.trim(), branch: d.branch }); await refreshAll() }catch(e){} })()
+                                        }
+                                      }}
+                                    >Edit</button>
+                                  </div>
+                                  <div className="text-muted mt-1">
+                                    {units.filter(u => u.department === d.id).length === 0 && 'No units'}
+                                    {units.filter(u => u.department === d.id).map(u => (
+                                      <span key={u.id} className="me-2 d-inline-flex align-items-center">
+                                        {u.name}
+                                        <button
+                                          className="btn btn-sm btn-link text-decoration-none ms-1"
+                                          onClick={() => {
+                                            const newUnitName = prompt('Edit unit name', u.name)
+                                            if(newUnitName && newUnitName.trim()){
+                                              (async()=>{ try{ await api.put(`/api/auth/units/${u.id}/`, { name: newUnitName.trim(), department: u.department }); await refreshAll() }catch(e){} })()
+                                            }
+                                          }}
+                                        >Edit</button>
+                                      </span>
+                                    ))}
                                   </div>
                                 </div>
                               ))}
