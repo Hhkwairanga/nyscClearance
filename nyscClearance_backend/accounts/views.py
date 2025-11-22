@@ -292,6 +292,11 @@ def attendance_authorize(request):
     threshold = getattr(settings, 'ATTENDANCE_GEOFENCE_METERS', 250)
     dist = _haversine_m(lat, lng, tgt_lat, tgt_lng)
     allowed = dist <= threshold
+    # Block on public holidays for the organization
+    today = timezone.localdate()
+    is_holiday = PublicHoliday.objects.filter(user=cm.user, start_date__lte=today, end_date__gte=today).exists()
+    if is_holiday:
+        return JsonResponse({'allowed': False, 'detail': 'Today is a public holiday for your organization'}, status=403)
     return JsonResponse({'allowed': allowed, 'distance_m': round(dist, 1), 'threshold_m': threshold, 'source': src or 'unknown'})
 
 
@@ -406,9 +411,12 @@ def attendance_finalize(request):
     threshold = getattr(settings, 'ATTENDANCE_GEOFENCE_METERS', 250)
     if _haversine_m(lat, lng, tgt_lat, tgt_lng) > threshold:
         return JsonResponse({'detail': 'You are not within the attendance proximity'}, status=403)
+    # Block on public holidays
+    today = timezone.localdate()
+    if PublicHoliday.objects.filter(user=cm.user, start_date__lte=today, end_date__gte=today).exists():
+        return JsonResponse({'detail': 'Today is a public holiday for your organization'}, status=403)
     # Persist attendance log: create/update today's record
     from .models import AttendanceLog
-    today = timezone.localdate()
     now = timezone.localtime()
     # Derive state from state_code if possible
     state = ''
