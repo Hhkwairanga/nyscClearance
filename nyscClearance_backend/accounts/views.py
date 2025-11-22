@@ -954,9 +954,26 @@ class StatsView(APIView):
                 'corpers': corpers_qs.count(),
             },
             'corpers_by_branch': corpers_by_branch,
-            'attendance': self._attendance_stats(att_qs)
+            'attendance': _attendance_stats(att_qs)
         }
         return Response(data)
+
+def _attendance_stats(att_qs):
+    """Return counts for today, this month, and last 7 days timeline."""
+    today = timezone.localdate()
+    start_month = today.replace(day=1)
+    today_count = att_qs.filter(date=today).count()
+    month_count = att_qs.filter(date__gte=start_month, date__lte=today).count()
+    last7 = []
+    for i in range(6, -1, -1):
+        d = today - timezone.timedelta(days=i)
+        c = att_qs.filter(date=d).count()
+        last7.append({'date': d.isoformat(), 'count': c})
+    return {
+        'today': today_count,
+        'this_month': month_count,
+        'last7': last7,
+    }
 
 
 def _prev_month_bounds(today=None):
