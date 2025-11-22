@@ -998,6 +998,72 @@ def _working_days(user, start_date, end_date):
     return days
 
 
+def verify_clearance(request):
+    """Public endpoint to verify a clearance reference.
+
+    Expected format: NYSC-<STATE_CODE>-<YYYYMM>
+    Example: NYSC-FC/23C/2354-202510
+    """
+    ref = request.GET.get('ref', '').strip()
+    ctx = { 'ref': ref, 'valid': False, 'error': None }
+    try:
+        if not ref.startswith('NYSC-'):
+            ctx['error'] = 'Invalid reference format'
+            return render(request, 'verify_clearance.html', ctx, status=400)
+        rest = ref[5:]
+        dash = rest.rfind('-')
+        if dash == -1:
+            ctx['error'] = 'Invalid reference format'
+            return render(request, 'verify_clearance.html', ctx, status=400)
+        state_code = rest[:dash]
+        yyyymm = rest[dash+1:]
+        if len(yyyymm) != 6 or not yyyymm.isdigit():
+            ctx['error'] = 'Invalid month segment'
+            return render(request, 'verify_clearance.html', ctx, status=400)
+        year = int(yyyymm[:4])
+        month = int(yyyymm[4:])
+        if month < 1 or month > 12:
+            ctx['error'] = 'Invalid month value'
+            return render(request, 'verify_clearance.html', ctx, status=400)
+
+        # Locate the corper by state code
+        cm = CorpMember.objects.filter(state_code=state_code).select_related('user', 'account', 'branch').first()
+        if not cm:
+            ctx['error'] = 'Reference not found'
+            return render(request, 'verify_clearance.html', ctx, status=404)
+
+        # Compute the month bounds for provided year-month
+        from datetime import date
+        import calendar
+        start = date(year, month, 1)
+        last_day = calendar.monthrange(year, month)[1]
+        end = date(year, month, last_day)
+
+        # Basic corroboration: ensure attendance logs exist in that month for the account (optional)
+        has_any_log = AttendanceLog.objects.filter(account=cm.account, date__gte=start, date__lte=end).exists()
+
+        # Organization details / signatory
+        prof = OrganizationProfile.objects.filter(user=cm.user).first()
+        signatory_name = getattr(prof, 'signatory_name', '') if prof else ''
+        signature_url = getattr(prof.signature, 'url', '') if prof and getattr(prof, 'signature', None) else ''
+
+        ctx.update({
+            'valid': True,
+            'state_code': cm.state_code,
+            'name': cm.full_name,
+            'org_name': getattr(cm.user, 'name', ''),
+            'year': year,
+            'month': start.strftime('%B'),
+            'has_any_log': has_any_log,
+            'signatory_name': signatory_name,
+            'signature_url': signature_url,
+        })
+        return render(request, 'verify_clearance.html', ctx)
+    except Exception:
+        ctx['error'] = 'An unexpected error occurred'
+        return render(request, 'verify_clearance.html', ctx, status=500)
+
+
 def performance_summary(request):
     if getattr(request.user, 'role', None) != 'CORPER':
         raise PermissionDenied('Only corpers can access')
@@ -1047,8 +1113,8 @@ def performance_clearance_page(request):
     # Organization logo
     prof = OrganizationProfile.objects.filter(user=cm.user).first()
     logo_url = getattr(prof.logo, 'url', '') if prof and getattr(prof, 'logo', None) else ''
-    # Optional signature (if you later store it, pass real URL); keep blank for now
-    signature_url = ''
+    # Signatory details from organization profile
+    signature_url = getattr(prof.signature, 'url', '') if prof and getattr(prof, 'signature', None) else ''
 
     # Pronoun based on gender (possessive)
     gender = (cm.gender or '').upper()
@@ -1059,17 +1125,29 @@ def performance_clearance_page(request):
     else:
         pronoun = 'their'
 
+    # Organization contact details
+    org_address = getattr(cm.user, 'address', '') or ''
+    org_email = getattr(cm.user, 'email', '') or ''
+    org_phone = getattr(cm.user, 'phone_number', '') or ''
+
+    ref_number = f"NYSC-{cm.state_code}-{start.strftime('%Y%m')}"
+    verification_url = request.build_absolute_uri(f'/verify/?ref={ref_number}')
+
     ctx = {
-        'reference_number': f"NYSC-{cm.state_code}-{start.strftime('%Y%m')}",
+        'reference_number': ref_number,
         'date': timezone.localdate().strftime('%Y-%m-%d'),
         'month': start.strftime('%B').upper(),
         'year': start.strftime('%Y'),
         'name': cm.full_name.upper(),
         'state_code': cm.state_code,
-        'signatory_name': getattr(cm.user, 'name', 'Authorized Signatory'),
+        'signatory_name': (getattr(prof, 'signatory_name', '') if prof else ''),
         'pronoun': pronoun,
         'logo_url': logo_url,
         'signature_url': signature_url,
+        'verification_url': verification_url,
+        'org_address': org_address,
+        'org_email': org_email,
+        'org_phone': org_phone,
     }
     return render(request, 'performance_clearance.html', ctx)
 

@@ -76,7 +76,11 @@ class LoginSerializer(serializers.Serializer):
 class OrganizationProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrganizationProfile
-        fields = ('late_time', 'closing_time', 'max_days_late', 'max_days_absent', 'logo', 'location_lat', 'location_lng')
+        fields = (
+            'late_time', 'closing_time', 'max_days_late', 'max_days_absent',
+            'logo', 'location_lat', 'location_lng',
+            'signatory_name', 'signature'
+        )
 
     def update(self, instance, validated_data):
         # Do not overwrite existing logo when no new file is provided
@@ -91,6 +95,18 @@ class OrganizationProfileSerializer(serializers.ModelSerializer):
                     drop = True
             if drop:
                 validated_data.pop('logo', None)
+        # Do not overwrite existing signature when no new file is provided
+        if 'signature' in validated_data:
+            signature = validated_data.get('signature')
+            drop_sig = False
+            if signature is None or signature == '':
+                drop_sig = True
+            else:
+                size = getattr(signature, 'size', None)
+                if size == 0:
+                    drop_sig = True
+            if drop_sig:
+                validated_data.pop('signature', None)
         return super().update(instance, validated_data)
 
 

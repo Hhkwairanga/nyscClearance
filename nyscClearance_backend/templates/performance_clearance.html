@@ -111,6 +111,7 @@
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
     function downloadPDF() {
       const { jsPDF } = window.jspdf;
@@ -134,6 +135,15 @@
         document.querySelector('.buttons').style.display = 'flex';
       });
     }
+    document.addEventListener('DOMContentLoaded', function(){
+      try{
+        var el = document.getElementById('verification-qr');
+        var url = '{{ verification_url }}';
+        if(el && url){
+          new QRCode(el, { text: url, width: 64, height: 64, correctLevel: QRCode.CorrectLevel.M });
+        }
+      }catch(e){}
+    });
   </script>
 </head>
 <body>
@@ -145,9 +155,13 @@
     </div>
     <div class="row">
       <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center">
-          <img src="{{ logo_url }}" alt="Logo" style="height: 70px; margin-bottom: 35px;">
-          <p class="text-end" style="font-size: 14px;"><strong>Ref: {{ reference_number }}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Date: {{ date }}</strong></p>
+        <div class="d-flex justify-content-between align-items-start" style="margin-bottom: 10px;">
+          <img src="{{ logo_url }}" alt="Logo" style="height: 70px;">
+          <div class="text-end" style="font-size: 14px;">
+            <div><strong>Ref: {{ reference_number|upper }}</strong></div>
+            <div><strong>Date: {{ date|upper }}</strong></div>
+            <div id="verification-qr" style="display:inline-block; margin-top: 4px;"></div>
+          </div>
         </div>
         <p class="no-space"><strong>The State Coordinator,</strong></p>
         <p class="no-space"><strong>NYSC, FCT SECRETARIAT,</strong></p>
@@ -165,10 +179,8 @@
         <br>
         <div>
           <div class="footer-container">
-            <p class="footer-text">
-              Head office: No. 28, Port Harcourt Crescent, Off Gimbiya Street, P.M.B 564, Area 11, Garki, Abuja, Nigeria.<br>
-              Tel: +2348168401851&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Fax: 09-4602426&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;E-mail: <a href="info@nitda.gov.ng" class="footer-text">info@nitda.gov.ng</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;website: <a href="http://www.nitda.gov.ng" class="footer-text">www.nitda.gov.ng</a>
-            </p>
+            <p class="footer-text">Head office: {{ org_address|default:"" }}</p>
+            <p class="footer-text">Tel: {{ org_phone|default:"" }} &nbsp;&middot;&nbsp; E-mail: <a href="mailto:{{ org_email }}" class="footer-text">{{ org_email }}</a> &nbsp;&middot;&nbsp; <a href="https://nysc.sahabs.tech" class="footer-text">automate monthly perfomance cleanrace @nysc.sahabs.tech</a></p>
             <div class="footer-line"></div>
             <div class="footer-line1"></div>
           </div>

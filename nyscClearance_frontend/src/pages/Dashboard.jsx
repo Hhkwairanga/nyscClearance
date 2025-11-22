@@ -377,6 +377,14 @@ export default function Dashboard(){
                           <input className="form-control" type="file" name="logo" accept="image/*" />
                         {/* no preview under choose file as requested */}
                         </div>
+                        <div className="col-12 col-md-6">
+                          <label className="form-label">Director HR Name</label>
+                          <input className="form-control" type="text" name="signatory_name" defaultValue={profile?.signatory_name || ''} placeholder="e.g., Jane Doe" />
+                        </div>
+                        <div className="col-12 col-md-3">
+                          <label className="form-label">Director HR Signature</label>
+                          <input className="form-control" type="file" name="signature" accept="image/*" />
+                        </div>
                         <div className="col-6 col-md-3">
                           <label className="form-label">Org Latitude</label>
                           <input className="form-control" name="location_lat" defaultValue={profile?.location_lat ?? ''} placeholder="Latitude" />

@@ -59,6 +59,9 @@ class OrganizationUser(AbstractBaseUser, PermissionsMixin):
 class OrganizationProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
     logo = models.ImageField(upload_to='org_logos/', blank=True, null=True)
+    # Director Human Resource signatory details
+    signatory_name = models.CharField(max_length=255, blank=True)
+    signature = models.ImageField(upload_to='org_signatures/', blank=True, null=True)
     late_time = models.TimeField(blank=True, null=True)
     closing_time = models.TimeField(blank=True, null=True)
     max_days_late = models.PositiveSmallIntegerField(blank=True, null=True)
