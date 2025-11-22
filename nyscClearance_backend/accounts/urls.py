@@ -26,6 +26,8 @@ from .views import (
     attendance_process_frame,
     attendance_finalize,
     attendance_authorize,
+    performance_summary,
+    performance_clearance_page,
 )
 
 router = DefaultRouter()
@@ -58,5 +60,8 @@ urlpatterns = [
     path('attendance/authorize/', attendance_authorize, name='attendance-authorize'),
     path('attendance/process/', attendance_process_frame, name='attendance-process'),
     path('attendance/finalize/', attendance_finalize, name='attendance-finalize'),
+    # Performance clearance (corper)
+    path('performance/summary/', performance_summary, name='performance-summary'),
+    path('performance/clearance/', performance_clearance_page, name='performance-clearance'),
     path('', include(router.urls)),
 ]

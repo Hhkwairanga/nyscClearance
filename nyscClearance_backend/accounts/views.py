@@ -958,6 +958,87 @@ class StatsView(APIView):
         }
         return Response(data)
 
+
+def _prev_month_bounds(today=None):
+    today = today or timezone.localdate()
+    first_this = today.replace(day=1)
+    last_prev = first_this - timezone.timedelta(days=1)
+    first_prev = last_prev.replace(day=1)
+    return first_prev, last_prev
+
+
+def _working_days(user, start_date, end_date):
+    """Return list of working dates excluding weekends and org public holidays."""
+    days = []
+    d = start_date
+    holidays = PublicHoliday.objects.filter(user=user, start_date__lte=end_date, end_date__gte=start_date)
+    def is_holiday(x):
+        return holidays.filter(start_date__lte=x, end_date__gte=x).exists()
+    while d <= end_date:
+        if d.weekday() < 5 and not is_holiday(d):
+            days.append(d)
+        d += timezone.timedelta(days=1)
+    return days
+
+
+def performance_summary(request):
+    if getattr(request.user, 'role', None) != 'CORPER':
+        raise PermissionDenied('Only corpers can access')
+    cm = getattr(request.user, 'corper_profile', None)
+    if not cm:
+        return JsonResponse({'detail': 'Corper profile not found'}, status=404)
+    start, end = _prev_month_bounds()
+    work_days = _working_days(cm.user, start, end)
+    work_set = set(work_days)
+    logs = AttendanceLog.objects.filter(account=request.user, date__gte=start, date__lte=end)
+
+    present_dates = set(logs.values_list('date', flat=True))
+    present = len(present_dates & work_set)
+
+    # Late threshold: org profile late_time; if missing, consider none late
+    prof = OrganizationProfile.objects.filter(user=cm.user).first()
+    late_time = getattr(prof, 'late_time', None)
+    late = 0
+    if late_time:
+        for log in logs:
+            if log.date in work_set and log.time_in and log.time_in > late_time:
+                late += 1
+    absent = max(0, len(work_days) - present)
+    on_time = max(0, present - late)
+
+    data = {
+        'month': start.strftime('%B %Y'),
+        'range': {'start': start.isoformat(), 'end': end.isoformat()},
+        'working_days': len(work_days),
+        'present': present,
+        'absent': absent,
+        'late': late,
+        'on_time': on_time,
+        'name': cm.full_name,
+        'state_code': cm.state_code,
+    }
+    return JsonResponse(data)
+
+
+def performance_clearance_page(request):
+    if getattr(request.user, 'role', None) != 'CORPER':
+        raise PermissionDenied('Only corpers can access')
+    cm = getattr(request.user, 'corper_profile', None)
+    if not cm:
+        return HttpResponseNotFound('Corper profile not found')
+    start, end = _prev_month_bounds()
+    ctx = {
+        'reference_number': f"NYSC-{cm.state_code}-{start.strftime('%Y%m')}",
+        'date': timezone.localdate().strftime('%Y-%m-%d'),
+        'month': start.strftime('%B'),
+        'year': start.strftime('%Y'),
+        'name': cm.full_name,
+        'state_code': cm.state_code,
+        'signatory_name': getattr(cm.user, 'name', 'Authorized Signatory'),
+        'pronoun': 'his/her',
+    }
+    return render(request, 'performance_clearance.html', ctx)
+
     def _attendance_stats(self, att_qs):
         """Return counts for today, this month, and last 7 days timeline."""
         today = timezone.localdate()

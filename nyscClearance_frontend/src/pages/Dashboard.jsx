@@ -21,6 +21,7 @@ export default function Dashboard(){
   const [notifications, setNotifications] = useState([])
   const [status, setStatus] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
+  const [perf, setPerf] = useState(null)
   // Local helpers for enroll form filtering
   const [enrollBranch, setEnrollBranch] = useState('')
   const [enrollDept, setEnrollDept] = useState('')
@@ -82,6 +83,9 @@ export default function Dashboard(){
       setHolidays(h.data)
       setLeaves(l.data)
       setNotifications(n.data)
+      if(m.data?.role === 'CORPER'){
+        try{ const r = await api.get('/api/auth/performance/summary/'); setPerf(r.data) }catch(e){}
+      }
     }catch(e){ setStatus('error:failed to load') }
   }
 
@@ -1023,7 +1027,16 @@ export default function Dashboard(){
           {activeTab==='performance' && me?.role==='CORPER' && (
             <>
               <h2 className="mb-3 text-olive">Performance Clearance</h2>
-              <div className="alert alert-info">Performance metrics and clearance status (coming soon).</div>
+              <div className="row g-3">
+                <div className="col-6 col-md-3"><div className="card text-center shadow-sm"><div className="card-body"><div className="text-muted small">Period</div><div className="h5 mb-0">{perf?.month || '—'}</div></div></div></div>
+                <div className="col-6 col-md-3"><div className="card text-center shadow-sm"><div className="card-body"><div className="text-muted small">Working Days</div><div className="h5 mb-0">{perf?.working_days ?? 0}</div></div></div></div>
+                <div className="col-6 col-md-2"><div className="card text-center shadow-sm"><div className="card-body"><div className="text-muted small">Present</div><div className="h5 mb-0">{perf?.present ?? 0}</div></div></div></div>
+                <div className="col-6 col-md-2"><div className="card text-center shadow-sm"><div className="card-body"><div className="text-muted small">Absent</div><div className="h5 mb-0">{perf?.absent ?? 0}</div></div></div></div>
+                <div className="col-6 col-md-2"><div className="card text-center shadow-sm"><div className="card-body"><div className="text-muted small">Late</div><div className="h5 mb-0">{perf?.late ?? 0}</div></div></div></div>
+              </div>
+              <div className="mt-3">
+                <a className="btn btn-olive" href="/api/auth/performance/clearance/" target="_blank" rel="noreferrer">View Clearance Letter</a>
+              </div>
             </>
           )}
 
