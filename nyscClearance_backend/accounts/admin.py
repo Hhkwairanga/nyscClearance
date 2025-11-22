@@ -8,6 +8,9 @@ from .models import (
     Unit,
     CorpMember,
     AttendanceLog,
+    PublicHoliday,
+    LeaveRequest,
+    Notification,
 )
 
 
@@ -38,8 +41,8 @@ class OrganizationProfileAdmin(admin.ModelAdmin):
 
 @admin.register(BranchOffice)
 class BranchOfficeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'user', 'address')
-    search_fields = ('name', 'user__email')
+    list_display = ('name', 'user', 'admin', 'address')
+    search_fields = ('name', 'user__email', 'admin__email')
 
 
 @admin.register(Department)
@@ -65,3 +68,24 @@ class AttendanceLogAdmin(admin.ModelAdmin):
     list_display = ('name', 'code', 'date', 'time_in', 'time_out', 'org', 'account')
     list_filter = ('date', 'org')
     search_fields = ('name', 'code', 'account__email', 'org__email')
+
+
+@admin.register(PublicHoliday)
+class PublicHolidayAdmin(admin.ModelAdmin):
+    list_display = ('title', 'user', 'start_date', 'end_date', 'created_at')
+    list_filter = ('user', 'start_date', 'end_date')
+    search_fields = ('title', 'user__email')
+
+
+@admin.register(LeaveRequest)
+class LeaveRequestAdmin(admin.ModelAdmin):
+    list_display = ('corper', 'branch', 'start_date', 'end_date', 'status', 'decided_by', 'created_at')
+    list_filter = ('status', 'branch', 'start_date', 'end_date')
+    search_fields = ('corper__full_name', 'corper__state_code', 'branch__name', 'decided_by__email')
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ('title', 'user', 'branch', 'created_by', 'created_at')
+    list_filter = ('user', 'branch')
+    search_fields = ('title', 'user__email', 'branch__name', 'created_by__email')
