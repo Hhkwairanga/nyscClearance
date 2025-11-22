@@ -137,19 +137,16 @@
   </script>
 </head>
 <body>
-  <!-- Keep button placement above the page, as requested -->
-  <div class="container my-3 buttons ignore-pdf">
-    <div class="d-flex w-100 justify-content-between">
+  <div class="a4-page">
+    <div class="buttons ignore-pdf">
       <button onclick="window.print()" class="btn btn-primary">Print</button>
       <button onclick="downloadPDF()" class="btn btn-secondary">Download as PDF</button>
       <button onclick="window.history.back()" class="btn btn-secondary">Back</button>
     </div>
-  </div>
-  <div class="a4-page">
     <div class="row">
       <div class="col-12">
         <div class="d-flex justify-content-between align-items-center">
-          <img src="{% static 'images/logo_.png' %}" alt="Logo" style="height: 70px; margin-bottom: 35px;">
+          <img src="{{ logo_url }}" alt="Logo" style="height: 70px; margin-bottom: 35px;">
           <p class="text-end" style="font-size: 14px;"><strong>Ref: {{ reference_number }}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Date: {{ date }}</strong></p>
         </div>
         <p class="no-space"><strong>The State Coordinator,</strong></p>
@@ -161,7 +158,7 @@
         <p>&nbsp;&nbsp;&nbsp;&nbsp;We write to inform you that the above named Youth Corps Member who is currently carrying out {{ pronoun }} primary assignment with the corporation has been performing {{ pronoun }} duties diligently and satisfactorily.</p>
         <br>
         <p>Yours faithfully,</p>
-        <img src="{% static 'uploads/' %}{{ signature }}" alt="Signature" style="height: 50px; width: 200px;">
+        <img src="{{ signature_url }}" alt="Signature" style="height: 50px; width: 200px;">
         <p class="no-space"><strong>{{ signatory_name }}</strong></p>
         <p>Director, Human Resource Department</p>
         <br>

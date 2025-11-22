@@ -1044,6 +1044,12 @@ def performance_clearance_page(request):
     if not cm:
         return HttpResponseNotFound('Corper profile not found')
     start, end = _prev_month_bounds()
+    # Organization logo
+    prof = OrganizationProfile.objects.filter(user=cm.user).first()
+    logo_url = getattr(prof.logo, 'url', '') if prof and getattr(prof, 'logo', None) else ''
+    # Optional signature (if you later store it, pass real URL); keep blank for now
+    signature_url = ''
+
     ctx = {
         'reference_number': f"NYSC-{cm.state_code}-{start.strftime('%Y%m')}",
         'date': timezone.localdate().strftime('%Y-%m-%d'),
@@ -1053,6 +1059,8 @@ def performance_clearance_page(request):
         'state_code': cm.state_code,
         'signatory_name': getattr(cm.user, 'name', 'Authorized Signatory'),
         'pronoun': 'his/her',
+        'logo_url': logo_url,
+        'signature_url': signature_url,
     }
     return render(request, 'performance_clearance.html', ctx)
 
