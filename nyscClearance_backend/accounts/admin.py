@@ -17,10 +17,10 @@ from .models import (
 @admin.register(OrganizationUser)
 class OrganizationUserAdmin(BaseUserAdmin):
     ordering = ('email',)
-    list_display = ('email', 'name', 'number_of_corpers', 'is_active', 'is_email_verified')
+    list_display = ('email', 'name', 'phone_number', 'is_active', 'is_email_verified')
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        ('Personal info', {'fields': ('name', 'address', 'number_of_corpers')}),
+        ('Personal info', {'fields': ('name', 'address', 'phone_number', 'number_of_corpers')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'is_email_verified', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login',)}),
     )

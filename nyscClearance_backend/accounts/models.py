@@ -38,6 +38,7 @@ class OrganizationUser(AbstractBaseUser, PermissionsMixin):
     name = models.CharField(max_length=255)
     address = models.TextField(blank=True)
     number_of_corpers = models.PositiveIntegerField(default=0)
+    phone_number = models.CharField(max_length=32, blank=True)
 
     is_active = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)

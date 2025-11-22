@@ -5,7 +5,7 @@ import axios from 'axios'
 
 export default function Signup(){
   const [form, setForm] = useState({
-    email: '', name: '', address: '', number_of_corpers: '', password: '', password_confirm: '',
+    email: '', name: '', address: '', phone_number: '', password: '', password_confirm: '',
     location_lat: '', location_lng: ''
   })
   const [status, setStatus] = useState(null)
@@ -22,10 +22,7 @@ export default function Signup(){
     setStatus('pending')
     try {
       await ensureCsrf()
-      await api.post('/api/auth/register/', {
-        ...form,
-        number_of_corpers: parseInt(form.number_of_corpers || '0', 10)
-      })
+      await api.post('/api/auth/register/', form)
       setStatus('success')
     } catch(err){
       const msg = err?.response?.data?.detail
@@ -72,8 +69,8 @@ export default function Signup(){
                 </div>
               </div>
               <div className="mb-3">
-                <label className="form-label">Number of Corpers</label>
-                <input name="number_of_corpers" type="number" min="0" className="form-control" value={form.number_of_corpers} onChange={onChange} />
+                <label className="form-label">Phone Number</label>
+                <input name="phone_number" type="tel" className="form-control" value={form.phone_number} onChange={onChange} placeholder="e.g., +2348012345678" />
               </div>
               <div className="mb-3">
                 <label className="form-label">Password</label>

@@ -20,7 +20,7 @@ class OrganizationRegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            'email', 'name', 'address', 'number_of_corpers',
+            'email', 'name', 'address', 'phone_number',
             'password', 'password_confirm', 'location_lat', 'location_lng'
         )
 
