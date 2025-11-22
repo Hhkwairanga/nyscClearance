@@ -1024,14 +1024,14 @@ def performance_summary(request):
     on_time = max(0, present - late)
 
     data = {
-        'month': start.strftime('%B %Y'),
+        'month': start.strftime('%B %Y').upper(),
         'range': {'start': start.isoformat(), 'end': end.isoformat()},
         'working_days': len(work_days),
         'present': present,
         'absent': absent,
         'late': late,
         'on_time': on_time,
-        'name': cm.full_name,
+        'name': cm.full_name.upper(),
         'state_code': cm.state_code,
     }
     return JsonResponse(data)
@@ -1050,15 +1050,24 @@ def performance_clearance_page(request):
     # Optional signature (if you later store it, pass real URL); keep blank for now
     signature_url = ''
 
+    # Pronoun based on gender (possessive)
+    gender = (cm.gender or '').upper()
+    if gender == 'M':
+        pronoun = 'his'
+    elif gender == 'F':
+        pronoun = 'her'
+    else:
+        pronoun = 'their'
+
     ctx = {
         'reference_number': f"NYSC-{cm.state_code}-{start.strftime('%Y%m')}",
         'date': timezone.localdate().strftime('%Y-%m-%d'),
-        'month': start.strftime('%B'),
+        'month': start.strftime('%B').upper(),
         'year': start.strftime('%Y'),
-        'name': cm.full_name,
+        'name': cm.full_name.upper(),
         'state_code': cm.state_code,
         'signatory_name': getattr(cm.user, 'name', 'Authorized Signatory'),
-        'pronoun': 'his/her',
+        'pronoun': pronoun,
         'logo_url': logo_url,
         'signature_url': signature_url,
     }
