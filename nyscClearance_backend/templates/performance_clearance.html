@@ -140,7 +140,7 @@
         var el = document.getElementById('verification-qr');
         var url = '{{ verification_url }}';
         if(el && url){
-          new QRCode(el, { text: url, width: 64, height: 64, correctLevel: QRCode.CorrectLevel.M });
+          new QRCode(el, { text: url, width: 96, height: 96, correctLevel: QRCode.CorrectLevel.M });
         }
       }catch(e){}
     });
