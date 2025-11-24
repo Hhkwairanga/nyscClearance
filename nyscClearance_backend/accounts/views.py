@@ -435,13 +435,15 @@ def attendance_finalize(request):
             'code': cm.state_code or '',
         }
     )
-    # If created, set time_in; else, fill missing time_in or time_out accordingly
+    # Set time_in if missing, and always refresh time_out to now (not earlier than time_in)
     if created or not log.time_in:
         log.time_in = now.time()
-    elif not log.time_out:
-        # set time_out only if logically after time_in
-        if not log.time_in or now.time() >= log.time_in:
-            log.time_out = now.time()
+    # Always update time_out on check-in to reflect last seen time
+    if not log.time_in or now.time() >= log.time_in:
+        log.time_out = now.time()
+    else:
+        # Safety: never set time_out earlier than time_in
+        log.time_out = log.time_in
     log.save()
 
     _reset_attendance_state(cm.id)
