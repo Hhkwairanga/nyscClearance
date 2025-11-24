@@ -1,0 +1,10 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools %}
+  <div style="margin-bottom: 10px;">
+    <strong>Total Credit:</strong> ₦{{ total_credit }} &nbsp;&nbsp;
+    <strong>Total Debit:</strong> ₦{{ total_debit }}
+  </div>
+  {{ block.super }}
+{% endblock %}
+

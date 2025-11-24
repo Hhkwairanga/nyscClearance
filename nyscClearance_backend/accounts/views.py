@@ -1153,6 +1153,31 @@ def performance_clearance_page(request):
     ref_number = f"NYSC-{cm.state_code}-{start.strftime('%Y%m')}"
     verification_url = request.build_absolute_uri(f'/verify/?ref={ref_number}')
 
+    # Ensure wallet and charge once per corper per month on first view
+    try:
+        _ensure_wallet_with_welcome(cm.user)
+        def _charge_clearance_if_needed(org_user, reference):
+            acct = WalletAccount.objects.get(user=org_user)
+            exists = WalletTransaction.objects.filter(account=acct, reference=reference, type='DEBIT').exists()
+            if not exists:
+                amount = CLEARANCE_FEE
+                vat = (amount * VAT_RATE).quantize(Decimal('0.01'))
+                total = amount + vat
+                WalletTransaction.objects.create(
+                    account=acct,
+                    type='DEBIT',
+                    amount=amount,
+                    vat_amount=vat,
+                    total_amount=total,
+                    description='Clearance view charge',
+                    reference=reference[:64]
+                )
+                acct.balance = acct.balance - total
+                acct.save(update_fields=['balance'])
+        _charge_clearance_if_needed(cm.user, ref_number)
+    except Exception:
+        pass
+
     ctx = {
         'reference_number': ref_number,
         'date': timezone.localdate().strftime('%Y-%m-%d'),

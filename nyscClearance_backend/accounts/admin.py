@@ -11,6 +11,8 @@ from .models import (
     PublicHoliday,
     LeaveRequest,
     Notification,
+    WalletAccount,
+    WalletTransaction,
 )
 
 
@@ -89,3 +91,30 @@ class NotificationAdmin(admin.ModelAdmin):
     list_display = ('title', 'user', 'branch', 'created_by', 'created_at')
     list_filter = ('user', 'branch')
     search_fields = ('title', 'user__email', 'branch__name', 'created_by__email')
+
+
+@admin.register(WalletAccount)
+class WalletAccountAdmin(admin.ModelAdmin):
+    list_display = ('user', 'balance', 'created_at')
+    search_fields = ('user__email',)
+
+
+@admin.register(WalletTransaction)
+class WalletTransactionAdmin(admin.ModelAdmin):
+    list_display = ('created_at', 'account', 'type', 'description', 'reference', 'amount', 'vat_amount', 'total_amount')
+    list_filter = ('type', 'account')
+    search_fields = ('description', 'reference', 'account__user__email')
+
+    def changelist_view(self, request, extra_context=None):
+        response = super().changelist_view(request, extra_context=extra_context)
+        try:
+            cl = response.context_data['cl']
+            qs = cl.queryset
+        except Exception:
+            return response
+        from django.db.models import Sum
+        total_credit = qs.filter(type='CREDIT').aggregate(s=Sum('total_amount'))['s'] or 0
+        total_debit = qs.filter(type='DEBIT').aggregate(s=Sum('total_amount'))['s'] or 0
+        response.context_data['total_credit'] = total_credit
+        response.context_data['total_debit'] = total_debit
+        return response
