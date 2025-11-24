@@ -1161,6 +1161,16 @@ def performance_clearance_page(request):
             exists = WalletTransaction.objects.filter(account=acct, reference=reference, type='DEBIT').exists()
             if not exists:
                 amount = CLEARANCE_FEE
+                # Apply discount if enabled in SystemSetting
+                try:
+                    from .models import SystemSetting
+                    settings = SystemSetting.current()
+                    if getattr(settings, 'discount_enabled', False):
+                        pct = Decimal(str(settings.discount_percent or '0'))
+                        if pct > 0:
+                            amount = (amount * (Decimal('100') - pct) / Decimal('100')).quantize(Decimal('0.01'))
+                except Exception:
+                    pass
                 vat = (amount * VAT_RATE).quantize(Decimal('0.01'))
                 total = amount + vat
                 WalletTransaction.objects.create(
