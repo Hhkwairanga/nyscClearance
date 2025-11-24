@@ -21,6 +21,7 @@ export default function Dashboard(){
   const [holidays, setHolidays] = useState([])
   const [leaves, setLeaves] = useState([])
   const [notifications, setNotifications] = useState([])
+  const [wallet, setWallet] = useState(null)
   const [status, setStatus] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [perf, setPerf] = useState(null)
@@ -75,7 +76,7 @@ export default function Dashboard(){
 
   async function refreshAll(){
     try{
-      const [m,p,b,d,u,c,s,h,l,n] = await Promise.all([
+      const [m,p,b,d,u,c,s,h,l,n,w] = await Promise.all([
         api.get('/api/auth/me/'),
         api.get('/api/auth/profile/'),
         api.get('/api/auth/branches/'),
@@ -86,6 +87,7 @@ export default function Dashboard(){
         api.get('/api/auth/holidays/'),
         api.get('/api/auth/leaves/'),
         api.get('/api/auth/notifications/'),
+        api.get('/api/auth/wallet/').catch(()=>({data:null})),
       ])
       setMe(m.data)
       setProfile(p.data)
@@ -97,6 +99,7 @@ export default function Dashboard(){
       setHolidays(h.data)
       setLeaves(l.data)
       setNotifications(n.data)
+      setWallet(w.data)
       if(m.data?.role === 'CORPER'){
         try{ const r = await api.get('/api/auth/performance/summary/'); setPerf(r.data) }catch(e){}
       }
@@ -194,6 +197,56 @@ export default function Dashboard(){
 
   const logoUrl = profile?.logo || ''
 
+  function OrgWallet(){
+    const bal = wallet?.balance || '0.00'
+    const txs = wallet?.transactions || []
+    return (
+      <div className="row g-3">
+        <div className="col-12 col-lg-4">
+          <div className="card shadow-sm"><div className="card-body">
+            <div className="text-muted small">Current Balance</div>
+            <div className="display-6">₦{Number(bal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+            <button className="btn btn-olive mt-3" onClick={()=>alert('Funding coming soon')}>Fund Wallet</button>
+          </div></div>
+        </div>
+        <div className="col-12 col-lg-8">
+          <div className="card shadow-sm"><div className="card-body">
+            <h6 className="card-title">Transactions</h6>
+            <div className="table-responsive">
+              <table className="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Type</th>
+                    <th className="text-end">Amount</th>
+                    <th className="text-end">VAT</th>
+                    <th className="text-end">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {txs.map(t => (
+                    <tr key={t.id}>
+                      <td>{new Date(t.created_at).toLocaleString()}</td>
+                      <td>{t.description}{t.reference?` (${t.reference})`:''}</td>
+                      <td>{t.type}</td>
+                      <td className="text-end">₦{Number(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      <td className="text-end">₦{Number(t.vat_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      <td className="text-end">₦{Number(t.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  ))}
+                  {txs.length===0 && (
+                    <tr><td colSpan="6" className="text-muted">No transactions yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div></div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="container-fluid p-0">
       <nav className="navbar navbar-light bg-white border-bottom px-3 sticky-top d-flex justify-content-between topnav">
@@ -218,6 +271,9 @@ export default function Dashboard(){
             )}
             {(me?.role==='ORG' || me?.role==='BRANCH') && (
               <button className={`btn btn-sm ${activeTab==='corpers'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('corpers')}>Corpers Management</button>
+            )}
+            {(me?.role==='ORG') && (
+              <button className={`btn btn-sm ${activeTab==='wallet'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('wallet')}>Wallet</button>
             )}
             {(me?.role==='BRANCH') && (
               <>
@@ -633,6 +689,13 @@ export default function Dashboard(){
                 </div>
               </div>
               </div>
+            </>
+          )}
+
+          {activeTab==='wallet' && me?.role==='ORG' && (
+            <>
+              <h2 className="mb-3 text-olive">Wallet</h2>
+              <OrgWallet />
             </>
           )}
 

@@ -4,7 +4,7 @@ from rest_framework import serializers
 from django.conf import settings
 
 from .tokens import generate_email_token
-from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification
+from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, WalletAccount, WalletTransaction
 from django.core.validators import RegexValidator
 
 
@@ -379,3 +379,17 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ('id', 'title', 'message', 'branch', 'created_at')
+
+
+class WalletTransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WalletTransaction
+        fields = ('id', 'type', 'amount', 'vat_amount', 'total_amount', 'description', 'reference', 'created_at')
+
+
+class WalletAccountSerializer(serializers.ModelSerializer):
+    transactions = WalletTransactionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = WalletAccount
+        fields = ('balance', 'transactions')

@@ -133,6 +133,14 @@
 
         // Show buttons again after capturing
         document.querySelector('.buttons').style.display = 'flex';
+        // Log charge for download
+        try{
+          fetch('/api/auth/wallet/charge_clearance/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reference: '{{ reference_number }}' })
+          });
+        }catch(e){}
       });
     }
     document.addEventListener('DOMContentLoaded', function(){

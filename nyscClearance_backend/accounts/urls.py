@@ -28,6 +28,9 @@ from .views import (
     attendance_authorize,
     performance_summary,
     performance_clearance_page,
+    WalletView,
+    WalletFundView,
+    wallet_charge_clearance,
 )
 
 router = DefaultRouter()
@@ -63,5 +66,9 @@ urlpatterns = [
     # Performance clearance (corper)
     path('performance/summary/', performance_summary, name='performance-summary'),
     path('performance/clearance/', performance_clearance_page, name='performance-clearance'),
+    # Wallet
+    path('wallet/', WalletView.as_view(), name='wallet'),
+    path('wallet/fund/', WalletFundView.as_view(), name='wallet-fund'),
+    path('wallet/charge_clearance/', wallet_charge_clearance, name='wallet-charge-clearance'),
     path('', include(router.urls)),
 ]

@@ -33,7 +33,7 @@ from .serializers import (
     NotificationSerializer,
 )
 from .tokens import validate_email_token, generate_email_token
-from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog
+from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog, WalletAccount, WalletTransaction
 from django.db.models import Count
 from django.db import models
 
@@ -1222,3 +1222,98 @@ class NotificationViewSet(viewsets.ModelViewSet):
             serializer.save(user=b.user, branch=b, created_by=user)
             return
         raise PermissionDenied('Not allowed')
+
+
+from decimal import Decimal
+
+VAT_RATE = Decimal('0.075')  # 7.5%
+WELCOME_BONUS = Decimal('10000.00')
+CLEARANCE_FEE = Decimal('300.00')
+
+
+def _ensure_wallet_with_welcome(user):
+    acct, created = WalletAccount.objects.get_or_create(user=user)
+    if created or not acct.transactions.exists():
+        vat = Decimal('0.00')
+        total = WELCOME_BONUS
+        WalletTransaction.objects.create(
+            account=acct,
+            type='CREDIT',
+            amount=WELCOME_BONUS,
+            vat_amount=vat,
+            total_amount=total,
+            description='Welcome bonus',
+            reference='WELCOME'
+        )
+        acct.balance = (acct.balance or Decimal('0.00')) + total
+        acct.save(update_fields=['balance'])
+    return acct
+
+
+class WalletView(APIView):
+    def get(self, request):
+        user = request.user
+        # Only organization, or branch admin viewing their org's wallet
+        if getattr(user, 'role', None) == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=user).first()
+            user = b.user if b else user
+        if getattr(user, 'role', None) != 'ORG':
+            raise PermissionDenied('Only organization can view wallet')
+        acct = _ensure_wallet_with_welcome(user)
+        from .serializers import WalletAccountSerializer
+        data = WalletAccountSerializer(acct).data
+        return Response(data)
+
+
+@csrf_exempt
+def wallet_charge_clearance(request):
+    """Charge organization when a corper downloads clearance letter.
+
+    Expects POST with JSON: { "reference": "NYSC-..." }
+    """
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    user = request.user
+    if getattr(user, 'role', None) != 'CORPER':
+        return JsonResponse({'detail': 'Only corper can trigger charge'}, status=403)
+    try:
+        cm = user.corper_profile
+    except Exception:
+        return JsonResponse({'detail': 'Corper profile not found'}, status=404)
+    import json
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except Exception:
+        payload = {}
+    ref = payload.get('reference', '')
+
+    # Ensure wallet exists and has welcome credit
+    acct = _ensure_wallet_with_welcome(cm.user)
+    amount = CLEARANCE_FEE
+    vat = (amount * VAT_RATE).quantize(Decimal('0.01'))
+    total = amount + vat
+    WalletTransaction.objects.create(
+        account=acct,
+        type='DEBIT',
+        amount=amount,
+        vat_amount=vat,
+        total_amount=total,
+        description='Clearance download charge',
+        reference=ref[:64]
+    )
+    acct.balance = acct.balance - total
+    acct.save(update_fields=['balance'])
+    return JsonResponse({'status': 'charged', 'balance': str(acct.balance)})
+
+
+class WalletFundView(APIView):
+    def post(self, request):
+        user = request.user
+        # Allow only org, or branch admin acting for their org
+        if getattr(user, 'role', None) == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=user).first()
+            user = b.user if b else user
+        if getattr(user, 'role', None) != 'ORG':
+            raise PermissionDenied('Only organization can fund wallet')
+        # Placeholder: not implemented yet
+        return Response({'detail': 'Funding not implemented yet'}, status=202)

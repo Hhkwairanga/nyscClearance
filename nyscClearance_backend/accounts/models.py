@@ -2,6 +2,7 @@ from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.conf import settings
+from decimal import Decimal
 
 
 class OrganizationUserManager(BaseUserManager):
@@ -201,3 +202,34 @@ class AttendanceLog(models.Model):
 
     def __str__(self):
         return f"{self.name} {self.date} in:{self.time_in} out:{self.time_out}"
+
+
+class WalletAccount(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='wallet')
+    balance = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Wallet({self.user.email}) balance={self.balance}"
+
+
+class WalletTransaction(models.Model):
+    TYPE_CHOICES = (
+        ('CREDIT', 'Credit'),
+        ('DEBIT', 'Debit'),
+    )
+    account = models.ForeignKey(WalletAccount, on_delete=models.CASCADE, related_name='transactions')
+    type = models.CharField(max_length=6, choices=TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    vat_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    description = models.CharField(max_length=255, blank=True)
+    reference = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at', '-id')
+
+    def __str__(self):
+        return f"{self.type} {self.total_amount} ({self.description})"
