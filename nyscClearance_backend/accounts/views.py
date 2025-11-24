@@ -1290,23 +1290,25 @@ CLEARANCE_FEE = Decimal('300.00')
 
 def _ensure_wallet_with_welcome(user):
     acct, created = WalletAccount.objects.get_or_create(user=user)
-    if created or not acct.transactions.exists():
+    # Apply welcome bonus only for organization users
+    if getattr(user, 'role', None) == 'ORG' and (created or not acct.transactions.exists()):
         from .models import SystemSetting
         settings = SystemSetting.current()
         welcome = settings.welcome_bonus or Decimal('0.00')
-        vat = Decimal('0.00')
-        total = welcome
-        WalletTransaction.objects.create(
-            account=acct,
-            type='CREDIT',
-            amount=welcome,
-            vat_amount=vat,
-            total_amount=total,
-            description='Welcome bonus',
-            reference='WELCOME'
-        )
-        acct.balance = (acct.balance or Decimal('0.00')) + total
-        acct.save(update_fields=['balance'])
+        if welcome > 0:
+            vat = Decimal('0.00')
+            total = welcome
+            WalletTransaction.objects.create(
+                account=acct,
+                type='CREDIT',
+                amount=welcome,
+                vat_amount=vat,
+                total_amount=total,
+                description='Welcome bonus',
+                reference='WELCOME'
+            )
+            acct.balance = (acct.balance or Decimal('0.00')) + total
+            acct.save(update_fields=['balance'])
     return acct
 
 
