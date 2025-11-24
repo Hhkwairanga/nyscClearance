@@ -1175,29 +1175,38 @@ def performance_clearance_page(request):
     verification_url = request.build_absolute_uri(f'/verify/?ref={ref_number}')
 
     # Eligibility check: previous month lateness/absence vs org thresholds
-    work_days = _working_days(cm.user, start, end)
-    work_set = set(work_days)
-    logs = AttendanceLog.objects.filter(account=request.user, date__gte=start, date__lte=end)
-    present_dates = set(logs.values_list('date', flat=True))
-    present = len(present_dates & work_set)
-    late_time = getattr(prof, 'late_time', None)
-    late = 0
-    if late_time:
-        for log in logs:
-            if log.date in work_set and log.time_in and log.time_in > late_time:
-                late += 1
-    absent = max(0, len(work_days) - present)
-    exceeded_absent = (getattr(prof, 'max_days_absent', None) is not None and getattr(prof, 'max_days_absent') is not None and absent > (prof.max_days_absent or 0))
-    exceeded_late = (getattr(prof, 'max_days_late', None) is not None and getattr(prof, 'max_days_late') is not None and late > (prof.max_days_late or 0))
-    if exceeded_absent or exceeded_late:
-        return render(request, 'clearance_restriction.html', {
-            'month': start.strftime('%B %Y'),
-            'absent': absent,
-            'late': late,
-            'max_absent': getattr(prof, 'max_days_absent', None),
-            'max_late': getattr(prof, 'max_days_late', None),
-            'contact_url': '/dashboard',
-        }, status=403)
+    # Skip this check if it's the corper's first clearance (no prior clearance debits found)
+    is_first_clearance = not WalletTransaction.objects.filter(
+        type='DEBIT', reference__startswith=f"NYSC-{cm.state_code}-"
+    ).exists()
+    if not is_first_clearance:
+        work_days = _working_days(cm.user, start, end)
+        work_set = set(work_days)
+        logs = AttendanceLog.objects.filter(account=request.user, date__gte=start, date__lte=end)
+        present_dates = set(logs.values_list('date', flat=True))
+        present = len(present_dates & work_set)
+        late_time = getattr(prof, 'late_time', None)
+        late = 0
+        if late_time:
+            for log in logs:
+                if log.date in work_set and log.time_in and log.time_in > late_time:
+                    late += 1
+        absent = max(0, len(work_days) - present)
+        exceeded_absent = (
+            getattr(prof, 'max_days_absent', None) is not None and absent > (prof.max_days_absent or 0)
+        )
+        exceeded_late = (
+            getattr(prof, 'max_days_late', None) is not None and late > (prof.max_days_late or 0)
+        )
+        if exceeded_absent or exceeded_late:
+            return render(request, 'clearance_restriction.html', {
+                'month': start.strftime('%B %Y'),
+                'absent': absent,
+                'late': late,
+                'max_absent': getattr(prof, 'max_days_absent', None),
+                'max_late': getattr(prof, 'max_days_late', None),
+                'contact_url': '/dashboard',
+            }, status=403)
 
     # Ensure wallet and charge once per corper per month on first view
     charged = False
