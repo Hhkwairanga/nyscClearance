@@ -37,7 +37,7 @@ export default function Dashboard(){
     })()
   }, [])
 
-  // Show success after capture finalize
+  // Show success after capture finalize and handle Paystack return
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
     if(sp.get('capture') === 'success'){
@@ -59,6 +59,27 @@ export default function Dashboard(){
         audio.volume = 1.0
         audio.play().catch(()=>{})
       }catch(e){}
+    }
+    // Paystack callback handling
+    const paystack = sp.get('paystack')
+    const reference = sp.get('reference')
+    if(paystack && reference){
+      (async()=>{
+        try{
+          const vr = await api.post('/api/auth/wallet/paystack/verify/', { reference })
+          if(vr.data?.status === 'success'){
+            setStatus('saved:wallet-fund')
+            await refreshAll()
+            setActiveTab('wallet')
+          }else{
+            setStatus('error:wallet-fund')
+          }
+        }catch(err){ setStatus('error:wallet-fund') }
+        // Clean params
+        const url = new URL(window.location.href)
+        url.searchParams.delete('paystack'); url.searchParams.delete('reference')
+        window.history.replaceState({}, '', url)
+      })()
     }
   }, [])
 
@@ -200,6 +221,20 @@ export default function Dashboard(){
 
   const logoUrl = profile?.logo || ''
 
+  async function fundWallet(){
+    try{
+      const input = window.prompt('Enter amount to fund (NGN):', '1000')
+      if(!input) return
+      const amount = Number(input)
+      if(!Number.isFinite(amount) || amount <= 0){ alert('Invalid amount'); return }
+      const callback = `${window.location.origin}/dashboard?paystack=1`
+      const res = await api.post('/api/auth/wallet/paystack/initialize/', { email: me?.email, amount, callback_url: callback })
+      const { authorization_url } = res.data || {}
+      if(!authorization_url){ alert('Failed to initialize payment'); return }
+      window.location.href = authorization_url
+    }catch(e){ alert('Failed to start payment') }
+  }
+
   function OrgWallet(){
     const bal = wallet?.balance || '0.00'
     const txs = wallet?.transactions || []
@@ -215,7 +250,7 @@ export default function Dashboard(){
           <div className="card shadow-sm"><div className="card-body">
             <div className="text-muted small">Current Balance</div>
             <div className="display-6">₦{Number(bal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-            <button className="btn btn-olive mt-3" onClick={()=>alert('Funding coming soon')}>Fund Wallet</button>
+            <button className="btn btn-olive mt-3" onClick={fundWallet}>Fund Wallet</button>
           </div></div>
         </div>
         <div className="col-12 col-lg-8">

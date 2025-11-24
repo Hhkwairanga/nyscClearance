@@ -1421,6 +1421,9 @@ class PaystackInitializeView(APIView):
             'email': email,
             'amount': amt_kobo,
         }
+        cb = data.get('callback_url')
+        if cb:
+            payload['callback_url'] = cb
         headers = {
             'Authorization': f"Bearer {keys['secret_key']}",
             'Content-Type': 'application/json'
