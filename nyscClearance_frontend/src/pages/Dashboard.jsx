@@ -941,7 +941,7 @@ export default function Dashboard(){
                     <Bar data={{
                       labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
                       datasets: [{ label: 'Hours', data: (stats?.attendance?.last7||[]).map(r=> r.hours ?? 0), backgroundColor: '#556B2F' }]
-                    }} options={{ responsive:true, maintainAspectRatio:false, indexAxis:'y', scales:{x:{title:{display:true, text:'Hours'}}}, plugins:{legend:{display:false}} }} />
+                    }} options={{ responsive:true, maintainAspectRatio:false, scales:{ y:{ title:{ display:true, text:'Hours' } } }, plugins:{legend:{display:false}} }} />
                   </div></div>
                 </div>
                 <div className="col-12 col-lg-6">
