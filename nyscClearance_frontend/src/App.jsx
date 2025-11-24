@@ -19,11 +19,12 @@ export default function App(){
   }, [location.pathname])
   const logout = async () => { try{ await api.post('/api/auth/logout/'); setMe({authenticated:false}); navigate('/login') }catch(e){} }
   const isAuthed = !!me?.authenticated
+  const dashPath = !isAuthed ? '/' : (me?.role==='ORG' ? '/dashboard/org' : me?.role==='BRANCH' ? '/dashboard/branch' : '/dashboard/corper')
   return (
     <>
       <nav className="navbar navbar-expand-lg navbar-dark bg-olive">
         <div className="container">
-          <Link to={isAuthed ? "/dashboard" : "/"} className="navbar-brand d-flex align-items-center">
+          <Link to={dashPath} className="navbar-brand d-flex align-items-center">
             <img src="/nyscclearance_logo.png" alt="NYSC Clearance" height="32" className="me-2"/>
             <span>NYSC Clearance</span>
           </Link>

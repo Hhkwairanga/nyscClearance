@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
 import MapPicker from '../components/MapPicker'
 import { Bar, Doughnut } from 'react-chartjs-2'
@@ -10,6 +10,7 @@ ChartJS.register(CategoryScale, LinearScale, ArcElement, BarElement, Tooltip, Le
 
 export default function Dashboard(){
   const navigate = useNavigate()
+  const location = useLocation()
   const [profile, setProfile] = useState(null)
   const [me, setMe] = useState(null)
   const [branches, setBranches] = useState([])
@@ -63,7 +64,14 @@ export default function Dashboard(){
     if(me && me.authenticated === false){
       navigate('/login')
     }
-  }, [me, navigate])
+    // Ensure role-specific dashboard path to avoid conflicts
+    if(me?.authenticated){
+      const target = me.role==='ORG' ? '/dashboard/org' : me.role==='BRANCH' ? '/dashboard/branch' : '/dashboard/corper'
+      if(location.pathname === '/dashboard' || (location.pathname.startsWith('/dashboard') && location.pathname !== target)){
+        navigate(target, { replace: true })
+      }
+    }
+  }, [me, navigate, location.pathname])
 
   async function refreshAll(){
     try{

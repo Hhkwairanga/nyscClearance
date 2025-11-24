@@ -28,6 +28,9 @@ createRoot(document.getElementById('root')).render(
           <Route path="login/corper" element={<CorperLogin />} />
           <Route path="verify-success" element={<VerifySuccess />} />
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="dashboard/org" element={<Dashboard />} />
+          <Route path="dashboard/branch" element={<Dashboard />} />
+          <Route path="dashboard/corper" element={<Dashboard />} />
           <Route path="forgot-password" element={<ForgotPassword />} />
           <Route path="reset-password" element={<ResetPassword />} />
         </Route>
