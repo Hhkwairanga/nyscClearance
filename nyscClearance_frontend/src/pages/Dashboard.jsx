@@ -4,7 +4,6 @@ import api, { ensureCsrf } from '../api/axios'
 import MapPicker from '../components/MapPicker'
 import { Bar, Doughnut } from 'react-chartjs-2'
 import AutoFadeAlert from '../components/AutoFadeAlert'
-import thankYouAudio from '../assets/thank_you_message.mp3'
 import { Chart as ChartJS, CategoryScale, LinearScale, ArcElement, BarElement, Tooltip, Legend } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, ArcElement, BarElement, Tooltip, Legend)
 
@@ -51,11 +50,6 @@ export default function Dashboard(){
       const url = new URL(window.location.href)
       url.searchParams.delete('attendance')
       window.history.replaceState({}, '', url)
-      try{
-        const audio = new Audio(thankYouAudio)
-        audio.volume = 1.0
-        audio.play().catch(()=>{})
-      }catch(e){}
     }
   }, [])
 
@@ -310,7 +304,7 @@ export default function Dashboard(){
               {me?.role!=='CORPER' && (
               <div className="row g-3 mt-1">
                 <div className="col-12 col-lg-6">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300, overflow:'hidden'}}>
+                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
                     <h6 className="card-title">Corpers by Branch</h6>
                     <Bar data={{
                       labels: (stats?.corpers_by_branch||[]).map(r=>r.branch),
@@ -323,12 +317,12 @@ export default function Dashboard(){
                   </div></div>
                 </div>
                 <div className="col-12 col-lg-6">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300, overflow:'hidden'}}>
+                  <div className="card shadow-sm"><div className="card-body" style={{height:360}}>
                     <h6 className="card-title">Attendance</h6>
                     <Doughnut data={{
                       labels:['Today','This Month'],
                       datasets:[{ data:[stats?.attendance?.today||0, stats?.attendance?.this_month||0], backgroundColor:['#BDB76B','#556B2F'] }]
-                    }} options={{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }} />
+                    }} options={{ responsive:true, maintainAspectRatio:false }} />
                   </div></div>
                 </div>
               </div>
@@ -336,7 +330,7 @@ export default function Dashboard(){
               {me?.role!=='CORPER' && (
               <div className="row g-3 mt-1">
                 <div className="col-12">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300, overflow:'hidden'}}>
+                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
                     <h6 className="card-title">Attendance - Last 7 Days</h6>
                     <Bar data={{
                       labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
@@ -951,12 +945,12 @@ export default function Dashboard(){
                   </div></div>
                 </div>
                 <div className="col-12 col-lg-6">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300, overflow:'hidden'}}>
+                  <div className="card shadow-sm"><div className="card-body" style={{height:360}}>
                     <h6 className="card-title">Today vs Month</h6>
                     <Doughnut data={{
                       labels:['Today','This Month'],
                       datasets:[{ data:[stats?.attendance?.today||0, stats?.attendance?.this_month||0], backgroundColor:['#BDB76B','#556B2F'] }]
-                    }} options={{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }} />
+                    }} options={{ responsive:true, maintainAspectRatio:false }} />
                   </div></div>
                 </div>
               </div>
