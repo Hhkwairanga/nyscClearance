@@ -310,7 +310,7 @@ export default function Dashboard(){
               {me?.role!=='CORPER' && (
               <div className="row g-3 mt-1">
                 <div className="col-12 col-lg-6">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
+                  <div className="card shadow-sm"><div className="card-body" style={{height:300, overflow:'hidden'}}>
                     <h6 className="card-title">Corpers by Branch</h6>
                     <Bar data={{
                       labels: (stats?.corpers_by_branch||[]).map(r=>r.branch),
@@ -323,12 +323,12 @@ export default function Dashboard(){
                   </div></div>
                 </div>
                 <div className="col-12 col-lg-6">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
+                  <div className="card shadow-sm"><div className="card-body" style={{height:300, overflow:'hidden'}}>
                     <h6 className="card-title">Attendance</h6>
                     <Doughnut data={{
                       labels:['Today','This Month'],
                       datasets:[{ data:[stats?.attendance?.today||0, stats?.attendance?.this_month||0], backgroundColor:['#BDB76B','#556B2F'] }]
-                    }} options={{ responsive:true, maintainAspectRatio:false }} />
+                    }} options={{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }} />
                   </div></div>
                 </div>
               </div>
@@ -336,7 +336,7 @@ export default function Dashboard(){
               {me?.role!=='CORPER' && (
               <div className="row g-3 mt-1">
                 <div className="col-12">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
+                  <div className="card shadow-sm"><div className="card-body" style={{height:300, overflow:'hidden'}}>
                     <h6 className="card-title">Attendance - Last 7 Days</h6>
                     <Bar data={{
                       labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
@@ -951,12 +951,12 @@ export default function Dashboard(){
                   </div></div>
                 </div>
                 <div className="col-12 col-lg-6">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
+                  <div className="card shadow-sm"><div className="card-body" style={{height:300, overflow:'hidden'}}>
                     <h6 className="card-title">Today vs Month</h6>
                     <Doughnut data={{
                       labels:['Today','This Month'],
                       datasets:[{ data:[stats?.attendance?.today||0, stats?.attendance?.this_month||0], backgroundColor:['#BDB76B','#556B2F'] }]
-                    }} options={{ responsive:true, maintainAspectRatio:false }} />
+                    }} options={{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }} />
                   </div></div>
                 </div>
               </div>
