@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clearance Restricted</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex align-items-center" style="min-height:100vh;">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-md-8 col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-body p-4">
+            <h5 class="card-title">Clearance Not Available</h5>
+            <p class="mb-2">Your attendance for {{ month }} exceeded the organization's policy.</p>
+            <ul class="mb-3">
+              <li>Days Absent: <strong>{{ absent }}</strong> {% if max_absent %}(limit: {{ max_absent }}){% endif %}</li>
+              <li>Days Late: <strong>{{ late }}</strong> {% if max_late %}(limit: {{ max_late }}){% endif %}</li>
+            </ul>
+            <p class="text-muted">Please contact your Branch Admin for assistance.</p>
+            <a class="btn btn-olive" href="{{ contact_url }}">Go to Dashboard</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+
