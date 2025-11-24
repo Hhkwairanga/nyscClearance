@@ -233,3 +233,33 @@ class WalletTransaction(models.Model):
 
     def __str__(self):
         return f"{self.type} {self.total_amount} ({self.description})"
+
+
+class SystemSetting(models.Model):
+    """Global system settings editable from Django admin only.
+
+    - welcome_bonus: amount credited when an organization wallet is created
+    - discount_enabled/percent: apply percentage discount to charges when enabled
+    - notify_*: optional scheduled announcement for organization dashboard
+    """
+    welcome_bonus = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('10000.00'))
+    discount_enabled = models.BooleanField(default=False)
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))  # 0-100
+    notify_enabled = models.BooleanField(default=False)
+    notify_title = models.CharField(max_length=200, blank=True)
+    notify_message = models.TextField(blank=True)
+    notify_start = models.DateTimeField(null=True, blank=True)
+    notify_end = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'System Setting'
+        verbose_name_plural = 'System Settings'
+
+    def __str__(self):
+        return 'System Settings'
+
+    @classmethod
+    def current(cls):
+        obj, _ = cls.objects.get_or_create(id=1, defaults={})
+        return obj

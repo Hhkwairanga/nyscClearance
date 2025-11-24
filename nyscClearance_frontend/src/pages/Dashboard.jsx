@@ -22,6 +22,7 @@ export default function Dashboard(){
   const [leaves, setLeaves] = useState([])
   const [notifications, setNotifications] = useState([])
   const [wallet, setWallet] = useState(null)
+  const [announcement, setAnnouncement] = useState(null)
   const [status, setStatus] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [perf, setPerf] = useState(null)
@@ -76,7 +77,7 @@ export default function Dashboard(){
 
   async function refreshAll(){
     try{
-      const [m,p,b,d,u,c,s,h,l,n,w] = await Promise.all([
+      const [m,p,b,d,u,c,s,h,l,n,w,a] = await Promise.all([
         api.get('/api/auth/me/'),
         api.get('/api/auth/profile/'),
         api.get('/api/auth/branches/'),
@@ -88,6 +89,7 @@ export default function Dashboard(){
         api.get('/api/auth/leaves/'),
         api.get('/api/auth/notifications/'),
         api.get('/api/auth/wallet/').catch(()=>({data:null})),
+        api.get('/api/auth/announcement/').catch(()=>({data:null, status:204})),
       ])
       setMe(m.data)
       setProfile(p.data)
@@ -100,6 +102,7 @@ export default function Dashboard(){
       setLeaves(l.data)
       setNotifications(n.data)
       setWallet(w.data)
+      setAnnouncement(a.data)
       if(m.data?.role === 'CORPER'){
         try{ const r = await api.get('/api/auth/performance/summary/'); setPerf(r.data) }catch(e){}
       }
@@ -265,6 +268,19 @@ export default function Dashboard(){
 
   return (
     <div className="container-fluid p-0">
+      {me?.role==='ORG' && announcement && (
+        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.35)', zIndex:1050}} onClick={()=>setAnnouncement(null)}>
+          <div className="card shadow" style={{position:'absolute', top:'15%', left:'50%', transform:'translateX(-50%)', width:'min(520px, 95%)'}} onClick={e=>e.stopPropagation()}>
+            <div className="card-header d-flex justify-content-between align-items-center">
+              <strong>{announcement.title || 'Notice'}</strong>
+              <button className="btn btn-sm btn-outline-secondary" onClick={()=>setAnnouncement(null)}>Close</button>
+            </div>
+            <div className="card-body">
+              <div style={{whiteSpace:'pre-wrap'}}>{announcement.message}</div>
+            </div>
+          </div>
+        </div>
+      )}
       <nav className="navbar navbar-light bg-white border-bottom px-3 sticky-top d-flex justify-content-between topnav">
         <div className="d-flex align-items-center">
           {logoUrl ? (

@@ -13,6 +13,7 @@ from .models import (
     Notification,
     WalletAccount,
     WalletTransaction,
+    SystemSetting,
 )
 
 
@@ -127,3 +128,30 @@ class WalletTransactionAdmin(admin.ModelAdmin):
         response.context_data['total_credit'] = total_credit
         response.context_data['total_debit'] = total_debit
         return response
+
+
+@admin.register(SystemSetting)
+class SystemSettingAdmin(admin.ModelAdmin):
+    list_display = ('welcome_bonus', 'discount_enabled', 'discount_percent', 'notify_enabled', 'updated_at')
+    fieldsets = (
+        ('Wallet', {
+            'fields': ('welcome_bonus',)
+        }),
+        ('Discounts', {
+            'fields': ('discount_enabled', 'discount_percent')
+        }),
+        ('Announcement', {
+            'fields': ('notify_enabled', 'notify_title', 'notify_message', 'notify_start', 'notify_end')
+        }),
+    )
+
+    def has_add_permission(self, request):
+        # Allow only a single settings row
+        from .models import SystemSetting
+        if SystemSetting.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        # Prevent deletion to keep singleton semantics
+        return False

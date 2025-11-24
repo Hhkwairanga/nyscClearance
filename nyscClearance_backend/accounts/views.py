@@ -1252,19 +1252,21 @@ class NotificationViewSet(viewsets.ModelViewSet):
 from decimal import Decimal
 
 VAT_RATE = Decimal('0.075')  # 7.5%
-WELCOME_BONUS = Decimal('10000.00')
 CLEARANCE_FEE = Decimal('300.00')
 
 
 def _ensure_wallet_with_welcome(user):
     acct, created = WalletAccount.objects.get_or_create(user=user)
     if created or not acct.transactions.exists():
+        from .models import SystemSetting
+        settings = SystemSetting.current()
+        welcome = settings.welcome_bonus or Decimal('0.00')
         vat = Decimal('0.00')
-        total = WELCOME_BONUS
+        total = welcome
         WalletTransaction.objects.create(
             account=acct,
             type='CREDIT',
-            amount=WELCOME_BONUS,
+            amount=welcome,
             vat_amount=vat,
             total_amount=total,
             description='Welcome bonus',
@@ -1315,6 +1317,16 @@ def wallet_charge_clearance(request):
     # Ensure wallet exists and has welcome credit
     acct = _ensure_wallet_with_welcome(cm.user)
     amount = CLEARANCE_FEE
+    # Apply discount if enabled
+    from .models import SystemSetting
+    settings = SystemSetting.current()
+    if getattr(settings, 'discount_enabled', False):
+        try:
+            pct = Decimal(str(settings.discount_percent or '0'))
+        except Exception:
+            pct = Decimal('0')
+        if pct > 0:
+            amount = (amount * (Decimal('100') - pct) / Decimal('100')).quantize(Decimal('0.01'))
     vat = (amount * VAT_RATE).quantize(Decimal('0.01'))
     total = amount + vat
     WalletTransaction.objects.create(
@@ -1329,6 +1341,29 @@ def wallet_charge_clearance(request):
     acct.balance = acct.balance - total
     acct.save(update_fields=['balance'])
     return JsonResponse({'status': 'charged', 'balance': str(acct.balance)})
+
+
+class AnnouncementView(APIView):
+    def get(self, request):
+        user = request.user
+        # Only organization dashboard shows this floating announcement
+        if getattr(user, 'role', None) != 'ORG':
+            return Response(status=204)
+        from .models import SystemSetting
+        from django.utils import timezone
+        s = SystemSetting.current()
+        if not getattr(s, 'notify_enabled', False):
+            return Response(status=204)
+        now = timezone.now()
+        if s.notify_start and now < s.notify_start:
+            return Response(status=204)
+        if s.notify_end and now > s.notify_end:
+            return Response(status=204)
+        data = {
+            'title': s.notify_title or 'Notice',
+            'message': s.notify_message or '',
+        }
+        return Response(data)
 
 
 class WalletFundView(APIView):

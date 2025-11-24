@@ -31,6 +31,7 @@ from .views import (
     WalletView,
     WalletFundView,
     wallet_charge_clearance,
+    AnnouncementView,
 )
 
 router = DefaultRouter()
@@ -70,5 +71,7 @@ urlpatterns = [
     path('wallet/', WalletView.as_view(), name='wallet'),
     path('wallet/fund/', WalletFundView.as_view(), name='wallet-fund'),
     path('wallet/charge_clearance/', wallet_charge_clearance, name='wallet-charge-clearance'),
+    # System announcement for org dashboard
+    path('announcement/', AnnouncementView.as_view(), name='announcement'),
     path('', include(router.urls)),
 ]
