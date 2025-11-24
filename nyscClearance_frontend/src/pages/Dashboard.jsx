@@ -937,11 +937,11 @@ export default function Dashboard(){
               <div className="row g-3">
                 <div className="col-12 col-lg-6">
                   <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
-                    <h6 className="card-title">My Attendance</h6>
+                    <h6 className="card-title">My Attendance (Hours)</h6>
                     <Bar data={{
                       labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
-                      datasets: [{ label: 'Present', data: (stats?.attendance?.last7||[]).map(r=> r.count), backgroundColor: '#556B2F' }]
-                    }} options={{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }} />
+                      datasets: [{ label: 'Hours', data: (stats?.attendance?.last7||[]).map(r=> r.hours ?? 0), backgroundColor: '#556B2F' }]
+                    }} options={{ responsive:true, maintainAspectRatio:false, indexAxis:'y', scales:{x:{title:{display:true, text:'Hours'}}}, plugins:{legend:{display:false}} }} />
                   </div></div>
                 </div>
                 <div className="col-12 col-lg-6">

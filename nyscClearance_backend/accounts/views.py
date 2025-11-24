@@ -959,16 +959,36 @@ class StatsView(APIView):
         return Response(data)
 
 def _attendance_stats(att_qs):
-    """Return counts for today, this month, and last 7 days timeline."""
+    """Return counts for today, this month, and last 7 days timeline.
+
+    Also includes per-day hours (float) computed where both time_in and time_out are present.
+    For org/branch scopes (multiple accounts), hours are summed per date.
+    """
     today = timezone.localdate()
     start_month = today.replace(day=1)
-    today_count = att_qs.filter(date=today).count()
-    month_count = att_qs.filter(date__gte=start_month, date__lte=today).count()
+    today_qs = att_qs.filter(date=today)
+    today_count = today_qs.count()
+    month_qs = att_qs.filter(date__gte=start_month, date__lte=today)
+    month_count = month_qs.count()
     last7 = []
     for i in range(6, -1, -1):
         d = today - timezone.timedelta(days=i)
-        c = att_qs.filter(date=d).count()
-        last7.append({'date': d.isoformat(), 'count': c})
+        day_qs = att_qs.filter(date=d)
+        c = day_qs.count()
+        # Sum hours across logs for the date
+        hours = 0.0
+        for log in day_qs:
+            if log.time_in and log.time_out:
+                from datetime import datetime
+                try:
+                    start_dt = datetime.combine(d, log.time_in)
+                    end_dt = datetime.combine(d, log.time_out)
+                    delta = end_dt - start_dt
+                    if delta.total_seconds() > 0:
+                        hours += round(delta.total_seconds() / 3600.0, 2)
+                except Exception:
+                    pass
+        last7.append({'date': d.isoformat(), 'count': c, 'hours': round(hours, 2)})
     return {
         'today': today_count,
         'this_month': month_count,
