@@ -23,6 +23,8 @@ export default function Dashboard(){
   const [notifications, setNotifications] = useState([])
   const [wallet, setWallet] = useState(null)
   const [announcement, setAnnouncement] = useState(null)
+  const [showFund, setShowFund] = useState(false)
+  const [fundAmount, setFundAmount] = useState('')
   const [status, setStatus] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [perf, setPerf] = useState(null)
@@ -221,16 +223,18 @@ export default function Dashboard(){
 
   const logoUrl = profile?.logo || ''
 
-  async function fundWallet(){
+  function fundWallet(){ setShowFund(true); setFundAmount('') }
+
+  async function submitFund(){
+    const raw = String(fundAmount || '').replace(/,/g, '')
+    const amount = Number(raw)
+    if(!Number.isFinite(amount) || amount <= 0){ alert('Enter a valid amount'); return }
     try{
-      const input = window.prompt('Enter amount to fund (NGN):', '1000')
-      if(!input) return
-      const amount = Number(input)
-      if(!Number.isFinite(amount) || amount <= 0){ alert('Invalid amount'); return }
       const callback = `${window.location.origin}/dashboard?paystack=1`
       const res = await api.post('/api/auth/wallet/paystack/initialize/', { email: me?.email, amount, callback_url: callback })
       const { authorization_url } = res.data || {}
       if(!authorization_url){ alert('Failed to initialize payment'); return }
+      setShowFund(false)
       window.location.href = authorization_url
     }catch(e){ alert('Failed to start payment') }
   }
@@ -303,6 +307,24 @@ export default function Dashboard(){
 
   return (
     <div className="container-fluid p-0">
+      {showFund && (
+        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:1050}} onClick={()=>setShowFund(false)}>
+          <div className="card shadow" style={{position:'absolute', top:'20%', left:'50%', transform:'translateX(-50%)', width:'min(420px, 92%)'}} onClick={e=>e.stopPropagation()}>
+            <div className="card-header d-flex justify-content-between align-items-center">
+              <strong>Fund Wallet</strong>
+              <button className="btn btn-sm btn-outline-secondary" onClick={()=>setShowFund(false)}>Close</button>
+            </div>
+            <div className="card-body">
+              <label className="form-label">Amount (NGN)</label>
+              <input className="form-control" placeholder="e.g. 5,000" value={fundAmount} onChange={(e)=>setFundAmount(e.target.value)} />
+              <div className="d-flex justify-content-end gap-2 mt-3">
+                <button className="btn btn-outline-secondary" onClick={()=>setShowFund(false)}>Cancel</button>
+                <button className="btn btn-olive" onClick={submitFund}>Continue</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {me?.role==='ORG' && announcement && (
         <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.35)', zIndex:1050}} onClick={()=>setAnnouncement(null)}>
           <div className="card shadow" style={{position:'absolute', top:'15%', left:'50%', transform:'translateX(-50%)', width:'min(520px, 95%)'}} onClick={e=>e.stopPropagation()}>
@@ -344,6 +366,7 @@ export default function Dashboard(){
             )}
             {(me?.role==='BRANCH') && (
               <>
+                <button className={`btn btn-sm ${activeTab==='wallet'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('wallet')}>Wallet</button>
                 <button className={`btn btn-sm ${activeTab==='leave'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('leave')}>Leave Management {leaves.filter(l=>l.status==='PENDING').length ? <span className="badge bg-danger ms-1">{leaves.filter(l=>l.status==='PENDING').length}</span> : null}</button>
                 <button className={`btn btn-sm ${activeTab==='query'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('query')}>Query Management</button>
                 <button className={`btn btn-sm ${activeTab==='report'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('report')}>Report</button>
@@ -355,6 +378,7 @@ export default function Dashboard(){
                 <button className={`btn btn-sm ${activeTab==='attendance'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('attendance')}>Attendance</button>
                 <button className={`btn btn-sm ${activeTab==='leave'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('leave')}>Leave Management</button>
                 <button className={`btn btn-sm ${activeTab==='performance'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('performance')}>Performance Clearance</button>
+                <button className={`btn btn-sm ${activeTab==='wallet'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('wallet')}>Wallet</button>
               </>
             )}
           </div>
@@ -366,6 +390,12 @@ export default function Dashboard(){
         )}
         {status==='saved:attendance' && (
           <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Attendance marked successfully.</AutoFadeAlert>
+        )}
+        {status==='saved:wallet-fund' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Wallet funded successfully.</AutoFadeAlert>
+        )}
+        {status==='error:wallet-fund' && (
+          <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Payment verification failed.</AutoFadeAlert>
         )}
           {activeTab==='overview' && (
             <>
@@ -759,7 +789,7 @@ export default function Dashboard(){
             </>
           )}
 
-          {activeTab==='wallet' && me?.role==='ORG' && (
+          {activeTab==='wallet' && (me?.role==='ORG' || me?.role==='BRANCH' || me?.role==='CORPER') && (
             <>
               <h2 className="mb-3 text-olive">Wallet</h2>
               <OrgWallet />

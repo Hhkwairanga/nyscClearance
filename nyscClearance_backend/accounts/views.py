@@ -1158,8 +1158,8 @@ def performance_clearance_page(request):
     try:
         _ensure_wallet_with_welcome(cm.user)
         def _charge_clearance_if_needed(org_user, reference):
-            acct = WalletAccount.objects.get(user=org_user)
-            exists = WalletTransaction.objects.filter(account=acct, reference=reference, type='DEBIT').exists()
+            # Avoid double-charging: check any of the wallets already charged with this reference
+            exists = WalletTransaction.objects.filter(reference=reference[:64], type='DEBIT').exists()
             if not exists:
                 # Base amount from System Settings (fallback to constant)
                 try:
@@ -1178,17 +1178,35 @@ def performance_clearance_page(request):
                     pass
                 vat = (amount * VAT_RATE).quantize(Decimal('0.01'))
                 total = amount + vat
-                WalletTransaction.objects.create(
-                    account=acct,
-                    type='DEBIT',
-                    amount=amount,
-                    vat_amount=vat,
-                    total_amount=total,
-                    description='Clearance view charge',
-                    reference=reference[:64]
-                )
-                acct.balance = acct.balance - total
-                acct.save(update_fields=['balance'])
+                # Attempt in order: org -> branch -> corper
+                branch_user = getattr(cm.branch, 'admin', None)
+                corper_user = request.user
+
+                def try_debit(user, desc):
+                    if not user:
+                        return False
+                    acct = _ensure_wallet_with_welcome(user)
+                    if (acct.balance or Decimal('0.00')) >= total:
+                        WalletTransaction.objects.create(
+                            account=acct,
+                            type='DEBIT',
+                            amount=amount,
+                            vat_amount=vat,
+                            total_amount=total,
+                            description=desc,
+                            reference=reference[:64]
+                        )
+                        acct.balance = acct.balance - total
+                        acct.save(update_fields=['balance'])
+                        return True
+                    return False
+
+                charged = try_debit(org_user, 'Clearance view charge (org)') or \
+                          try_debit(branch_user, 'Clearance view charge (branch)') or \
+                          try_debit(corper_user, 'Clearance view charge (corper)')
+                if not charged:
+                    # Not enough funds; we leave the page to render, frontend can prompt
+                    pass
         _charge_clearance_if_needed(cm.user, ref_number)
     except Exception:
         pass
@@ -1295,12 +1313,9 @@ def _ensure_wallet_with_welcome(user):
 class WalletView(APIView):
     def get(self, request):
         user = request.user
-        # Only organization, or branch admin viewing their org's wallet
-        if getattr(user, 'role', None) == 'BRANCH':
-            b = BranchOffice.objects.filter(admin=user).first()
-            user = b.user if b else user
-        if getattr(user, 'role', None) != 'ORG':
-            raise PermissionDenied('Only organization can view wallet')
+        # Allow ORG, BRANCH, CORPER to view their own wallet
+        if getattr(user, 'role', None) not in ('ORG', 'BRANCH', 'CORPER'):
+            raise PermissionDenied('Not allowed')
         acct = _ensure_wallet_with_welcome(user)
         from .serializers import WalletAccountSerializer
         data = WalletAccountSerializer(acct).data
@@ -1329,37 +1344,52 @@ def wallet_charge_clearance(request):
         payload = {}
     ref = payload.get('reference', '')
 
-    # Ensure wallet exists and has welcome credit
-    acct = _ensure_wallet_with_welcome(cm.user)
-    # Base amount from System Settings (fallback to constant)
+    # Compute charge amount
     from .models import SystemSetting
     settings = SystemSetting.current()
     try:
         amount = settings.clearance_fee or CLEARANCE_FEE
     except Exception:
         amount = CLEARANCE_FEE
-    # Apply discount if enabled
     if getattr(settings, 'discount_enabled', False):
         try:
             pct = Decimal(str(settings.discount_percent or '0'))
+            if pct > 0:
+                amount = (amount * (Decimal('100') - pct) / Decimal('100')).quantize(Decimal('0.01'))
         except Exception:
-            pct = Decimal('0')
-        if pct > 0:
-            amount = (amount * (Decimal('100') - pct) / Decimal('100')).quantize(Decimal('0.01'))
+            pass
     vat = (amount * VAT_RATE).quantize(Decimal('0.01'))
     total = amount + vat
-    WalletTransaction.objects.create(
-        account=acct,
-        type='DEBIT',
-        amount=amount,
-        vat_amount=vat,
-        total_amount=total,
-        description='Clearance download charge',
-        reference=ref[:64]
-    )
-    acct.balance = acct.balance - total
-    acct.save(update_fields=['balance'])
-    return JsonResponse({'status': 'charged', 'balance': str(acct.balance)})
+
+    # Try charge from ORG -> BRANCH -> CORPER wallet
+    org_user = cm.user
+    branch_user = getattr(cm.branch, 'admin', None)
+    corper_user = request.user
+
+    def try_debit(user, description):
+        if not user:
+            return False
+        acct = _ensure_wallet_with_welcome(user)
+        if (acct.balance or Decimal('0.00')) >= total:
+            WalletTransaction.objects.create(
+                account=acct,
+                type='DEBIT',
+                amount=amount,
+                vat_amount=vat,
+                total_amount=total,
+                description=description,
+                reference=ref[:64]
+            )
+            acct.balance = acct.balance - total
+            acct.save(update_fields=['balance'])
+            return True
+        return False
+
+    if try_debit(org_user, 'Clearance download charge (org)') or \
+       try_debit(branch_user, 'Clearance download charge (branch)') or \
+       try_debit(corper_user, 'Clearance download charge (corper)'):
+        return JsonResponse({'status': 'charged'})
+    return JsonResponse({'status': 'insufficient', 'detail': 'Insufficient funds. Please fund your wallet or contact branch admin.'}, status=402)
 
 
 class AnnouncementView(APIView):
@@ -1477,17 +1507,12 @@ class PaystackVerifyView(APIView):
             paid = Decimal('0.00')
         if not email or paid <= 0:
             return Response({'detail': 'Missing payment data'}, status=400)
-        # Resolve organization user
-        org_user = request.user
-        if getattr(org_user, 'role', None) == 'BRANCH':
-            b = BranchOffice.objects.filter(admin=org_user).first()
-            org_user = b.user if b else org_user
-        if getattr(org_user, 'role', None) != 'ORG':
-            # fallback by email
+        # Credit the requestor's wallet (ORG/BRANCH/CORPER). Fallback to email match if needed.
+        target_user = request.user
+        if getattr(target_user, 'role', None) not in ('ORG', 'BRANCH', 'CORPER'):
             from .models import OrganizationUser
-            org_user = OrganizationUser.objects.filter(email=email).first() or org_user
-        # Ensure wallet
-        acct = _ensure_wallet_with_welcome(org_user)
+            target_user = OrganizationUser.objects.filter(email=email).first() or target_user
+        acct = _ensure_wallet_with_welcome(target_user)
         WalletTransaction.objects.create(
             account=acct,
             type='CREDIT',
