@@ -113,8 +113,17 @@ class WalletTransactionAdmin(admin.ModelAdmin):
         except Exception:
             return response
         from django.db.models import Sum
+        # Compute totals for the entire transactions table (ignoring pagination and filters)
+        all_qs = WalletTransaction.objects.all()
+        total_credit_all = all_qs.filter(type='CREDIT').aggregate(s=Sum('total_amount'))['s'] or 0
+        total_debit_all = all_qs.filter(type='DEBIT').aggregate(s=Sum('total_amount'))['s'] or 0
+
+        # Keep page/filtered totals as well (using cl.queryset which may be limited)
         total_credit = qs.filter(type='CREDIT').aggregate(s=Sum('total_amount'))['s'] or 0
         total_debit = qs.filter(type='DEBIT').aggregate(s=Sum('total_amount'))['s'] or 0
+
+        response.context_data['total_credit_all'] = total_credit_all
+        response.context_data['total_debit_all'] = total_debit_all
         response.context_data['total_credit'] = total_credit
         response.context_data['total_debit'] = total_debit
         return response
