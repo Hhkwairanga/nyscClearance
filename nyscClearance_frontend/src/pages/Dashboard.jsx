@@ -200,6 +200,12 @@ export default function Dashboard(){
   function OrgWallet(){
     const bal = wallet?.balance || '0.00'
     const txs = wallet?.transactions || []
+    const totals = txs.reduce((acc, t) => {
+      const amt = Number(t.total_amount || 0)
+      if (t.type === 'CREDIT') acc.credit += amt
+      if (t.type === 'DEBIT') acc.debit += amt
+      return acc
+    }, { credit: 0, debit: 0 })
     return (
       <div className="row g-3">
         <div className="col-12 col-lg-4">
@@ -239,6 +245,16 @@ export default function Dashboard(){
                     <tr><td colSpan="6" className="text-muted">No transactions yet.</td></tr>
                   )}
                 </tbody>
+                {txs.length>0 && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan="6" className="text-end fw-semibold">
+                        <span className="me-3">Total Credit: ₦{totals.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        <span>Total Debit: ₦{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div></div>
