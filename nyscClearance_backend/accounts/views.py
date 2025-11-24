@@ -1,3 +1,21 @@
+"""
+Accounts app views
+
+Key areas:
+- Authentication and profile management (register, login, profile, stats)
+- Organization structure (branches, departments, units, corpers)
+- Attendance capture with geofence and simple face detection
+- Performance clearance generation and verification
+- Wallets and transactions (ORG/BRANCH/CORPER) with deduction order:
+  ORG -> BRANCH -> CORPER; welcome bonus applies to ORG only
+- System settings, announcements for org dashboards
+- Paystack funding: initialize and verify using keys stored in DB
+
+Notes:
+- Uses timezone-aware `timezone.localtime()` for logging and `Africa/Lagos` by default
+- Avoids double charges by checking reference across wallets
+"""
+
 from django.contrib.auth import get_user_model, authenticate, login, logout
 from django.conf import settings
 from django.shortcuts import redirect

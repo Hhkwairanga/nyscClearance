@@ -1,3 +1,21 @@
+"""
+Accounts app models
+
+Core entities:
+- OrganizationUser: single user model (roles: ORG, BRANCH, CORPER)
+- OrganizationProfile: org metadata (logo, signatory, times)
+- BranchOffice, Department, Unit: organization structure
+- CorpMember: enrolled corp members and their placement
+- AttendanceLog: per-account daily attendance (time_in, time_out)
+- WalletAccount / WalletTransaction: simple wallet and transaction log
+- SystemSetting: singleton for welcome bonus, clearance fee, discounts, announcements
+- PaystackConfig: active Paystack API keys storage (admin-managed)
+
+Conventions:
+- Wallet exists for every user; welcome bonus applies only to ORG on first wallet creation
+- WalletTransaction.total_amount includes VAT for debits; credits use 0 VAT
+"""
+
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models

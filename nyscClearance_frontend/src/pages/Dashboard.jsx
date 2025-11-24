@@ -1,3 +1,7 @@
+// Dashboard: app shell for ORG / BRANCH / CORPER
+// - Loads profile, structure, stats, notifications
+// - Wallet: funding via Paystack init/verify; modal accepts comma-separated amounts
+// - Handles callback params: ?paystack=1&reference=..., ?fund=1
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
@@ -32,6 +36,7 @@ export default function Dashboard(){
   const [enrollBranch, setEnrollBranch] = useState('')
   const [enrollDept, setEnrollDept] = useState('')
 
+  // First load: ensure CSRF and fetch all data
   useEffect(() => {
     (async () => {
       await ensureCsrf()
@@ -39,7 +44,7 @@ export default function Dashboard(){
     })()
   }, [])
 
-  // Show success after capture finalize and handle Paystack return
+  // Handle result banners and Paystack return
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
     // Open wallet fund modal if asked
@@ -70,7 +75,7 @@ export default function Dashboard(){
         audio.play().catch(()=>{})
       }catch(e){}
     }
-    // Paystack callback handling
+    // Paystack callback handling after redirect
     const paystack = sp.get('paystack')
     const reference = sp.get('reference')
     if(paystack && reference){
@@ -247,6 +252,7 @@ export default function Dashboard(){
     }catch(e){ alert('Failed to start payment') }
   }
 
+  // Wallet card + transactions; shared across roles
   function OrgWallet(){
     const bal = wallet?.balance || '0.00'
     const txs = wallet?.transactions || []
