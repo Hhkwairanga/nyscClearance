@@ -4,6 +4,7 @@ import api, { ensureCsrf } from '../api/axios'
 import MapPicker from '../components/MapPicker'
 import { Bar, Doughnut } from 'react-chartjs-2'
 import AutoFadeAlert from '../components/AutoFadeAlert'
+import thankYouAudio from '../assets/thank_you_message.mp3'
 import { Chart as ChartJS, CategoryScale, LinearScale, ArcElement, BarElement, Tooltip, Legend } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, ArcElement, BarElement, Tooltip, Legend)
 
@@ -50,6 +51,11 @@ export default function Dashboard(){
       const url = new URL(window.location.href)
       url.searchParams.delete('attendance')
       window.history.replaceState({}, '', url)
+      try{
+        const audio = new Audio(thankYouAudio)
+        audio.volume = 1.0
+        audio.play().catch(()=>{})
+      }catch(e){}
     }
   }, [])
 
