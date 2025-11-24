@@ -14,6 +14,7 @@ from .models import (
     WalletAccount,
     WalletTransaction,
     SystemSetting,
+    PaystackConfig,
 )
 
 
@@ -155,3 +156,9 @@ class SystemSettingAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         # Prevent deletion to keep singleton semantics
         return False
+
+
+@admin.register(PaystackConfig)
+class PaystackConfigAdmin(admin.ModelAdmin):
+    list_display = ("public_key", "is_active", "updated_at")
+    search_fields = ("public_key",)

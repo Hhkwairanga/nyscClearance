@@ -12,6 +12,7 @@ from django.shortcuts import render
 from django.http import JsonResponse, HttpResponseNotAllowed, HttpResponseNotFound
 from django.utils import timezone
 from django.utils.decorators import method_decorator
+import requests
 import base64
 import math
 import numpy as np
@@ -1393,5 +1394,106 @@ class WalletFundView(APIView):
             user = b.user if b else user
         if getattr(user, 'role', None) != 'ORG':
             raise PermissionDenied('Only organization can fund wallet')
-        # Placeholder: not implemented yet
-        return Response({'detail': 'Funding not implemented yet'}, status=202)
+        # Placeholder legacy endpoint
+        return Response({'detail': 'Use /api/auth/wallet/paystack/initialize and verify'}, status=202)
+
+
+class PaystackInitializeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            from .utils import get_paystack_keys
+            keys = get_paystack_keys()
+        except Exception as e:
+            return Response({'detail': str(e)}, status=400)
+
+        data = request.data or {}
+        email = data.get('email') or getattr(request.user, 'email', '')
+        amount = data.get('amount')
+        if not email or not amount:
+            return Response({'detail': 'email and amount are required'}, status=400)
+        try:
+            amt_kobo = int(Decimal(str(amount)) * 100)
+        except Exception:
+            return Response({'detail': 'invalid amount'}, status=400)
+        payload = {
+            'email': email,
+            'amount': amt_kobo,
+        }
+        headers = {
+            'Authorization': f"Bearer {keys['secret_key']}",
+            'Content-Type': 'application/json'
+        }
+        try:
+            r = requests.post('https://api.paystack.co/transaction/initialize', json=payload, headers=headers, timeout=20)
+            jr = r.json()
+        except Exception:
+            return Response({'detail': 'Failed to reach Paystack'}, status=502)
+        if r.status_code != 200 or not jr.get('status'):
+            return Response({'detail': jr.get('message', 'Initialization failed')}, status=400)
+        pdata = jr.get('data') or {}
+        return Response({'authorization_url': pdata.get('authorization_url'), 'reference': pdata.get('reference')})
+
+
+class PaystackVerifyView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        ref = (request.data or {}).get('reference')
+        if not ref:
+            return Response({'detail': 'reference is required'}, status=400)
+        try:
+            from .utils import get_paystack_keys
+            keys = get_paystack_keys()
+        except Exception as e:
+            return Response({'detail': str(e)}, status=400)
+
+        headers = {
+            'Authorization': f"Bearer {keys['secret_key']}",
+            'Content-Type': 'application/json'
+        }
+        try:
+            r = requests.get(f'https://api.paystack.co/transaction/verify/{ref}', headers=headers, timeout=20)
+            jr = r.json()
+        except Exception:
+            return Response({'detail': 'Failed to reach Paystack'}, status=502)
+        if r.status_code != 200 or not jr.get('status'):
+            return Response({'detail': jr.get('message', 'Verification failed')}, status=400)
+        data = jr.get('data') or {}
+        status_val = data.get('status')
+        if status_val != 'success':
+            return Response({'status': 'failed'}, status=200)
+        # Credit wallet on success using customer email and paid amount
+        cust = (data.get('customer') or {})
+        email = cust.get('email') or getattr(request.user, 'email', None)
+        paid_kobo = data.get('amount') or 0
+        try:
+            paid = (Decimal(paid_kobo) / Decimal('100')).quantize(Decimal('0.01'))
+        except Exception:
+            paid = Decimal('0.00')
+        if not email or paid <= 0:
+            return Response({'detail': 'Missing payment data'}, status=400)
+        # Resolve organization user
+        org_user = request.user
+        if getattr(org_user, 'role', None) == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=org_user).first()
+            org_user = b.user if b else org_user
+        if getattr(org_user, 'role', None) != 'ORG':
+            # fallback by email
+            from .models import OrganizationUser
+            org_user = OrganizationUser.objects.filter(email=email).first() or org_user
+        # Ensure wallet
+        acct = _ensure_wallet_with_welcome(org_user)
+        WalletTransaction.objects.create(
+            account=acct,
+            type='CREDIT',
+            amount=paid,
+            vat_amount=Decimal('0.00'),
+            total_amount=paid,
+            description='Wallet funding via Paystack',
+            reference=str(ref)[:64]
+        )
+        acct.balance = (acct.balance or Decimal('0.00')) + paid
+        acct.save(update_fields=['balance'])
+        return Response({'status': 'success', 'balance': str(acct.balance)})

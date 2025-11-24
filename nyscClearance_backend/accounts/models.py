@@ -3,6 +3,7 @@ from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.conf import settings
 from decimal import Decimal
+from django.utils import timezone
 
 
 class OrganizationUserManager(BaseUserManager):
@@ -264,3 +265,19 @@ class SystemSetting(models.Model):
     def current(cls):
         obj, _ = cls.objects.get_or_create(id=1, defaults={})
         return obj
+
+
+class PaystackConfig(models.Model):
+    public_key = models.CharField(max_length=200)
+    secret_key = models.CharField(max_length=200)
+    webhook_secret = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Paystack Config'
+        verbose_name_plural = 'Paystack Config'
+
+    def __str__(self):
+        return f"Paystack ({'active' if self.is_active else 'inactive'})"
