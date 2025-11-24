@@ -299,3 +299,20 @@ class PaystackConfig(models.Model):
 
     def __str__(self):
         return f"Paystack ({'active' if self.is_active else 'inactive'})"
+
+
+class ClearanceOverride(models.Model):
+    corper = models.ForeignKey('accounts.CorpMember', on_delete=models.CASCADE, related_name='clearance_overrides')
+    year_month = models.CharField(max_length=6)  # YYYYMM
+    reason = models.CharField(max_length=255, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='granted_clearance_overrides')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('corper', 'year_month')
+        ordering = ('-created_at',)
+        verbose_name = 'Clearance Override'
+        verbose_name_plural = 'Clearance Overrides'
+
+    def __str__(self):
+        return f"Override {self.corper.full_name} {self.year_month}"

@@ -15,6 +15,7 @@ from .models import (
     WalletTransaction,
     SystemSetting,
     PaystackConfig,
+    ClearanceOverride,
 )
 
 
@@ -162,3 +163,9 @@ class SystemSettingAdmin(admin.ModelAdmin):
 class PaystackConfigAdmin(admin.ModelAdmin):
     list_display = ("public_key", "is_active", "updated_at")
     search_fields = ("public_key",)
+
+
+@admin.register(ClearanceOverride)
+class ClearanceOverrideAdmin(admin.ModelAdmin):
+    list_display = ("corper", "year_month", "created_by", "created_at")
+    search_fields = ("corper__full_name", "corper__state_code", "year_month")

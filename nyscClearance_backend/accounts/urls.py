@@ -34,6 +34,8 @@ from .views import (
     AnnouncementView,
     PaystackInitializeView,
     PaystackVerifyView,
+    ClearanceStatusView,
+    ClearanceApproveView,
 )
 
 router = DefaultRouter()
@@ -76,6 +78,9 @@ urlpatterns = [
     # Paystack
     path('wallet/paystack/initialize/', PaystackInitializeView.as_view(), name='paystack-initialize'),
     path('wallet/paystack/verify/', PaystackVerifyView.as_view(), name='paystack-verify'),
+    # Clearance admin
+    path('clearance/status/', ClearanceStatusView.as_view(), name='clearance-status'),
+    path('clearance/approve/', ClearanceApproveView.as_view(), name='clearance-approve'),
     # System announcement for org dashboard
     path('announcement/', AnnouncementView.as_view(), name='announcement'),
     path('', include(router.urls)),

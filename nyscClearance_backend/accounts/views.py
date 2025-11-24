@@ -52,7 +52,7 @@ from .serializers import (
     NotificationSerializer,
 )
 from .tokens import validate_email_token, generate_email_token
-from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog, WalletAccount, WalletTransaction
+from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog, WalletAccount, WalletTransaction, ClearanceOverride
 from django.db.models import Count
 from django.db import models
 
@@ -1179,7 +1179,10 @@ def performance_clearance_page(request):
     is_first_clearance = not WalletTransaction.objects.filter(
         type='DEBIT', reference__startswith=f"NYSC-{cm.state_code}-"
     ).exists()
-    if not is_first_clearance:
+    # Allow if override exists for this month
+    yyyymm = start.strftime('%Y%m')
+    has_override = ClearanceOverride.objects.filter(corper=cm, year_month=yyyymm).exists()
+    if not is_first_clearance and not has_override:
         work_days = _working_days(cm.user, start, end)
         work_set = set(work_days)
         logs = AttendanceLog.objects.filter(account=request.user, date__gte=start, date__lte=end)
@@ -1477,6 +1480,103 @@ class AnnouncementView(APIView):
             'message': s.notify_message or '',
         }
         return Response(data)
+
+
+class ClearanceStatusView(APIView):
+    """List corpers with clearance qualification and download status for previous month.
+
+    - ORG: all corpers under organization
+    - BRANCH: corpers under managed branch
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        role = getattr(user, 'role', None)
+        if role not in ('ORG', 'BRANCH'):
+            raise PermissionDenied('Only organization or branch admins can view clearance status')
+        if role == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=user).first()
+            if not b:
+                return Response([], status=200)
+            corpers = CorpMember.objects.filter(branch=b).select_related('user', 'branch')
+            org_user = b.user
+        else:
+            corpers = CorpMember.objects.filter(user=user).select_related('user', 'branch')
+            org_user = user
+        start, end = _prev_month_bounds()
+        yyyymm = start.strftime('%Y%m')
+        prof = OrganizationProfile.objects.filter(user=org_user).first()
+        late_time = getattr(prof, 'late_time', None)
+        max_absent = getattr(prof, 'max_days_absent', None)
+        max_late = getattr(prof, 'max_days_late', None)
+
+        # Preload attendance logs for the window
+        acc_ids = list(corpers.values_list('account_id', flat=True))
+        logs = AttendanceLog.objects.filter(account_id__in=acc_ids, date__gte=start, date__lte=end)
+        logs_by_acc = {}
+        for lg in logs:
+            logs_by_acc.setdefault(lg.account_id, []).append(lg)
+
+        results = []
+        for cm in corpers:
+            work_days = _working_days(cm.user, start, end)
+            work_set = set(work_days)
+            cm_logs = logs_by_acc.get(getattr(cm, 'account_id', None), [])
+            present_dates = set([lg.date for lg in cm_logs]) & work_set
+            present = len(present_dates)
+            late = 0
+            if late_time:
+                for lg in cm_logs:
+                    if lg.date in work_set and lg.time_in and lg.time_in > late_time:
+                        late += 1
+            absent = max(0, len(work_days) - present)
+            is_first = not WalletTransaction.objects.filter(type='DEBIT', reference__startswith=f"NYSC-{cm.state_code}-").exists()
+            override = ClearanceOverride.objects.filter(corper=cm, year_month=yyyymm).exists()
+            exceeded_abs = (max_absent is not None and absent > (max_absent or 0))
+            exceeded_late = (max_late is not None and late > (max_late or 0))
+            qualified = is_first or override or (not exceeded_abs and not exceeded_late)
+            downloaded = WalletTransaction.objects.filter(type='DEBIT', reference=f"NYSC-{cm.state_code}-{yyyymm}").exists()
+            results.append({
+                'id': cm.id,
+                'full_name': cm.full_name,
+                'state_code': cm.state_code,
+                'branch': getattr(cm.branch, 'name', ''),
+                'absent': absent,
+                'late': late,
+                'qualified': qualified,
+                'downloaded': downloaded,
+                'override': override,
+                'reference': f"NYSC-{cm.state_code}-{yyyymm}",
+            })
+        return Response(results)
+
+
+class ClearanceApproveView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        role = getattr(user, 'role', None)
+        if role not in ('ORG', 'BRANCH'):
+            raise PermissionDenied('Only organization or branch admins can approve clearance')
+        cm_id = (request.data or {}).get('corper')
+        if not cm_id:
+            return Response({'detail': 'corper id required'}, status=400)
+        cm = CorpMember.objects.filter(id=cm_id).select_related('branch').first()
+        if not cm:
+            return Response({'detail': 'corper not found'}, status=404)
+        if role == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=user).first()
+            if not b or cm.branch_id != b.id:
+                raise PermissionDenied('Corper does not belong to your branch')
+        elif role == 'ORG':
+            if cm.user_id != user.id:
+                raise PermissionDenied('Corper does not belong to your organization')
+        start, end = _prev_month_bounds()
+        yyyymm = start.strftime('%Y%m')
+        obj, _ = ClearanceOverride.objects.get_or_create(corper=cm, year_month=yyyymm, defaults={'created_by': user})
+        return Response({'status': 'approved', 'corper': cm.id, 'year_month': yyyymm})
 
 
 class WalletFundView(APIView):

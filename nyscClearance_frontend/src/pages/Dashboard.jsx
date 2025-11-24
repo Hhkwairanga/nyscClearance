@@ -22,6 +22,7 @@ export default function Dashboard(){
   const [units, setUnits] = useState([])
   const [corpers, setCorpers] = useState([])
   const [stats, setStats] = useState(null)
+  const [clearance, setClearance] = useState([])
   const [holidays, setHolidays] = useState([])
   const [leaves, setLeaves] = useState([])
   const [notifications, setNotifications] = useState([])
@@ -113,7 +114,7 @@ export default function Dashboard(){
 
   async function refreshAll(){
     try{
-      const [m,p,b,d,u,c,s,h,l,n,w,a] = await Promise.all([
+      const [m,p,b,d,u,c,s,h,l,n,w,a,cl] = await Promise.all([
         api.get('/api/auth/me/'),
         api.get('/api/auth/profile/'),
         api.get('/api/auth/branches/'),
@@ -126,6 +127,7 @@ export default function Dashboard(){
         api.get('/api/auth/notifications/'),
         api.get('/api/auth/wallet/').catch(()=>({data:null})),
         api.get('/api/auth/announcement/').catch(()=>({data:null, status:204})),
+        api.get('/api/auth/clearance/status/').catch(()=>({data:[]})),
       ])
       setMe(m.data)
       setProfile(p.data)
@@ -139,6 +141,7 @@ export default function Dashboard(){
       setNotifications(n.data)
       setWallet(w.data)
       setAnnouncement(a.data)
+      setClearance(Array.isArray(cl.data)? cl.data : [])
       if(m.data?.role === 'CORPER'){
         try{ const r = await api.get('/api/auth/performance/summary/'); setPerf(r.data) }catch(e){}
       }
@@ -377,6 +380,9 @@ export default function Dashboard(){
             )}
             {(me?.role==='ORG') && (
               <button className={`btn btn-sm ${activeTab==='wallet'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('wallet')}>Wallet</button>
+            )}
+            {(me?.role==='ORG' || me?.role==='BRANCH') && (
+              <button className={`btn btn-sm ${activeTab==='clearance'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('clearance')}>Performance Clearance</button>
             )}
             {(me?.role==='BRANCH') && (
               <>
@@ -807,6 +813,55 @@ export default function Dashboard(){
             <>
               <h2 className="mb-3 text-olive">Wallet</h2>
               <OrgWallet />
+            </>
+          )}
+
+          {activeTab==='clearance' && (me?.role==='ORG' || me?.role==='BRANCH') && (
+            <>
+              <h2 className="mb-3 text-olive">Performance Clearance (Prev. Month)</h2>
+              <div className="card shadow-sm">
+                <div className="card-body">
+                  <div className="table-responsive">
+                    <table className="table table-sm align-middle">
+                      <thead>
+                        <tr>
+                          <th>Corper</th>
+                          <th>State Code</th>
+                          <th>Branch</th>
+                          <th className="text-end">Absent</th>
+                          <th className="text-end">Late</th>
+                          <th>Qualified</th>
+                          <th>Downloaded</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clearance.map(row => (
+                          <tr key={row.id}>
+                            <td>{row.full_name}</td>
+                            <td>{row.state_code}</td>
+                            <td>{row.branch || '—'}</td>
+                            <td className="text-end">{row.absent}</td>
+                            <td className="text-end">{row.late}</td>
+                            <td>{row.qualified ? <span className="badge bg-success">Yes</span> : <span className="badge bg-danger">No</span>}</td>
+                            <td>{row.downloaded ? <span className="badge bg-primary">Yes</span> : 'No'}</td>
+                            <td className="text-end">
+                              {!row.qualified && !row.override && (
+                                <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{
+                                  try{ await api.post('/api/auth/clearance/approve/', { corper: row.id }); await refreshAll() }catch(e){}
+                                }}>Approve</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {clearance.length===0 && (
+                          <tr><td colSpan="8" className="text-muted">No corpers found.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             </>
           )}
 
