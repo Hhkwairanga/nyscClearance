@@ -846,7 +846,7 @@ export default function Dashboard(){
                             <td>{row.qualified ? <span className="badge bg-success">Yes</span> : <span className="badge bg-danger">No</span>}</td>
                             <td>{row.downloaded ? <span className="badge bg-primary">Yes</span> : 'No'}</td>
                             <td className="text-end">
-                              {!row.qualified && !row.override && (
+                              {!row.qualified && !row.override && !row.downloaded && (
                                 <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{
                                   try{ await api.post('/api/auth/clearance/approve/', { corper: row.id }); await refreshAll() }catch(e){}
                                 }}>Approve</button>
