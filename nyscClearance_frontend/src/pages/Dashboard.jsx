@@ -42,6 +42,14 @@ export default function Dashboard(){
   // Show success after capture finalize and handle Paystack return
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
+    // Open wallet fund modal if asked
+    if(sp.get('fund') === '1'){
+      setActiveTab('wallet')
+      setShowFund(true)
+      const url = new URL(window.location.href)
+      url.searchParams.delete('fund')
+      window.history.replaceState({}, '', url)
+    }
     if(sp.get('capture') === 'success'){
       setStatus('saved:face-capture')
       setActiveTab('corpers')

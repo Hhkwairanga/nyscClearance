@@ -1157,6 +1157,7 @@ def performance_clearance_page(request):
     verification_url = request.build_absolute_uri(f'/verify/?ref={ref_number}')
 
     # Ensure wallet and charge once per corper per month on first view
+    charged = False
     try:
         _ensure_wallet_with_welcome(cm.user)
         def _charge_clearance_if_needed(org_user, reference):
@@ -1203,15 +1204,22 @@ def performance_clearance_page(request):
                         return True
                     return False
 
-                charged = try_debit(org_user, 'Clearance view charge (org)') or \
-                          try_debit(branch_user, 'Clearance view charge (branch)') or \
-                          try_debit(corper_user, 'Clearance view charge (corper)')
-                if not charged:
-                    # Not enough funds; we leave the page to render, frontend can prompt
-                    pass
-        _charge_clearance_if_needed(cm.user, ref_number)
+                return (
+                    try_debit(org_user, 'Clearance view charge (org)') or
+                    try_debit(branch_user, 'Clearance view charge (branch)') or
+                    try_debit(corper_user, 'Clearance view charge (corper)')
+                )
+            return True
+        charged = _charge_clearance_if_needed(cm.user, ref_number)
     except Exception:
-        pass
+        charged = False
+
+    if not charged:
+        # Deny access nicely with a prompt to fund wallet
+        return render(request, 'clearance_payment_required.html', {
+            'reason': 'Insufficient wallet balance across organization, branch, and personal wallets.',
+            'fund_url': '/dashboard?fund=1'
+        }, status=402)
 
     ctx = {
         'reference_number': ref_number,
