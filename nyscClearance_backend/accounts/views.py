@@ -1160,11 +1160,15 @@ def performance_clearance_page(request):
             acct = WalletAccount.objects.get(user=org_user)
             exists = WalletTransaction.objects.filter(account=acct, reference=reference, type='DEBIT').exists()
             if not exists:
-                amount = CLEARANCE_FEE
-                # Apply discount if enabled in SystemSetting
+                # Base amount from System Settings (fallback to constant)
                 try:
                     from .models import SystemSetting
                     settings = SystemSetting.current()
+                    amount = settings.clearance_fee or CLEARANCE_FEE
+                except Exception:
+                    amount = CLEARANCE_FEE
+                # Apply discount if enabled in SystemSetting
+                try:
                     if getattr(settings, 'discount_enabled', False):
                         pct = Decimal(str(settings.discount_percent or '0'))
                         if pct > 0:
@@ -1326,10 +1330,14 @@ def wallet_charge_clearance(request):
 
     # Ensure wallet exists and has welcome credit
     acct = _ensure_wallet_with_welcome(cm.user)
-    amount = CLEARANCE_FEE
-    # Apply discount if enabled
+    # Base amount from System Settings (fallback to constant)
     from .models import SystemSetting
     settings = SystemSetting.current()
+    try:
+        amount = settings.clearance_fee or CLEARANCE_FEE
+    except Exception:
+        amount = CLEARANCE_FEE
+    # Apply discount if enabled
     if getattr(settings, 'discount_enabled', False):
         try:
             pct = Decimal(str(settings.discount_percent or '0'))

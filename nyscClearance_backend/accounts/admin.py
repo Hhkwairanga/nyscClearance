@@ -132,10 +132,10 @@ class WalletTransactionAdmin(admin.ModelAdmin):
 
 @admin.register(SystemSetting)
 class SystemSettingAdmin(admin.ModelAdmin):
-    list_display = ('welcome_bonus', 'discount_enabled', 'discount_percent', 'notify_enabled', 'updated_at')
+    list_display = ('welcome_bonus', 'clearance_fee', 'discount_enabled', 'discount_percent', 'notify_enabled', 'updated_at')
     fieldsets = (
         ('Wallet', {
-            'fields': ('welcome_bonus',)
+            'fields': ('welcome_bonus', 'clearance_fee')
         }),
         ('Discounts', {
             'fields': ('discount_enabled', 'discount_percent')

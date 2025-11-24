@@ -243,6 +243,7 @@ class SystemSetting(models.Model):
     - notify_*: optional scheduled announcement for organization dashboard
     """
     welcome_bonus = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('10000.00'))
+    clearance_fee = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('300.00'))
     discount_enabled = models.BooleanField(default=False)
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))  # 0-100
     notify_enabled = models.BooleanField(default=False)
