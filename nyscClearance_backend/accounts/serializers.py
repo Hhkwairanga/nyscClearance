@@ -53,8 +53,16 @@ class OrganizationRegisterSerializer(serializers.ModelSerializer):
         return user
 
     def _build_verify_url(self, token: str) -> str:
-        base = self.context.get('request').build_absolute_uri('/api/auth/verify/')
-        return f"{base}?token={token}"
+        # Prefer frontend URL so users click directly into the SPA
+        request = self.context.get('request')
+        try:
+            request_origin = request.headers.get('Origin') if request else None
+            allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
+        except Exception:
+            request_origin = None
+            allowed = set()
+        base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
+        return f"{base}/verify-success?token={token}"
 
     def _send_verification_email(self, email: str, name: str, url: str) -> None:
         subject = 'Verify your NYSC Clearance account'

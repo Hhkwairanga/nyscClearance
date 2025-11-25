@@ -27,6 +27,17 @@ export default function VerifySuccess(){
     }
   }
 
+  useEffect(() => {
+    if(!token) return
+    // Call backend verify endpoint in SPA mode so account is marked verified without redirect
+    (async () => {
+      try{
+        await api.get(`/api/auth/verify/?token=${encodeURIComponent(token)}&front=1${role?`&role=${encodeURIComponent(role)}`:''}`)
+      }catch(e){ /* ignore: the password set flow can still proceed */ }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token])
+
   if(token){
     return (
       <div className="row justify-content-center py-5">

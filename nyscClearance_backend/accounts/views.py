@@ -507,6 +507,11 @@ class VerifyEmailView(APIView):
         user.is_email_verified = True
         user.save(update_fields=['is_active', 'is_email_verified'])
 
+        # If called from SPA (front=1), return JSON instead of redirecting
+        if request.query_params.get('front') == '1':
+            role = getattr(user, 'role', None)
+            return Response({'verified': True, 'role': role})
+
         # Redirect to frontend page. If user has no usable password, include token for password setup
         # Prefer request Origin if it matches configured FRONTEND_ORIGINS for better DX (5173/5174)
         request_origin = request.headers.get('Origin')
