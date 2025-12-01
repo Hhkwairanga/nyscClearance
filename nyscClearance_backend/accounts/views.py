@@ -137,7 +137,7 @@ def capture_page(request, corper_id: int):
         allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
     except Exception:
         allowed = set()
-    frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
+    frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
 
     # Ensure CSRF cookie is set for subsequent POSTs from the page
     try:
@@ -252,7 +252,7 @@ def attendance_page(request):
         allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
     except Exception:
         allowed = set()
-    frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
+    frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
 
     # Ensure CSRF cookie is set for JS POSTs from this page
     try:
@@ -519,7 +519,7 @@ class VerifyEmailView(APIView):
             allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
         except Exception:
             allowed = set()
-        base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
+        base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
         # If the user has no password (invited admin/corper), send to password set page with token
         role = request.query_params.get('role') or getattr(user, 'role', None)
         # For invited roles (branch admin, corper), always allow setting password on first verify
@@ -572,7 +572,7 @@ class PasswordResetRequestView(APIView):
             # Avoid user enumeration
             return Response({'message': 'If the email exists, a reset link has been sent.'})
         token = generate_email_token(user.id)
-        base = getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173').rstrip('/')
+        base = getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')).rstrip('/')
         reset_url = f"{base}/reset-password?token={token}"
         from django.core.mail import send_mail
         send_mail(
@@ -1220,7 +1220,7 @@ def performance_clearance_page(request):
                 allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
             except Exception:
                 allowed = set()
-            frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
+            frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
 
             return render(request, 'clearance_restriction.html', {
                 'month': start.strftime('%B %Y'),
@@ -1297,7 +1297,7 @@ def performance_clearance_page(request):
             allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
         except Exception:
             allowed = set()
-        frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
+        frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
 
         return render(request, 'clearance_payment_required.html', {
             'reason': 'Insufficient wallet balance across organization, branch, and personal wallets.',

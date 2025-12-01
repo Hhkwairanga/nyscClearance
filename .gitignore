@@ -8,6 +8,8 @@ __pycache__/
 media/
 staticfiles/
 .env
+.env.local
+.env.prod
 venv/
 
 # Node/React

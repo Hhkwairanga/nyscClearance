@@ -1,15 +1,66 @@
 import os
 from pathlib import Path
 from corsheaders.defaults import default_headers
+from urllib.parse import urlparse
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Load .env file early, without external dependencies
+def _load_env_file():
+    def parse_and_set(path: Path):
+        try:
+            with path.open('r') as f:
+                for raw in f:
+                    line = raw.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    if '=' not in line:
+                        continue
+                    key, val = line.split('=', 1)
+                    key = key.strip()
+                    val = val.strip()
+                    # Strip optional surrounding quotes
+                    if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                        val = val[1:-1]
+                    # Do not overwrite existing environment variables
+                    if key not in os.environ:
+                        os.environ[key] = val
+        except FileNotFoundError:
+            pass
+
+    env_choice = os.getenv('DJANGO_ENV', '').lower()
+    # Determine candidate filenames based on environment choice
+    filenames = []
+    if env_choice in ('production', 'prod'):
+        filenames = ['.env', '.env.prod']
+    elif env_choice in ('development', 'dev'):
+        filenames = ['.env', '.env.local']
+    else:
+        # Default to dev-style
+        filenames = ['.env', '.env.local']
+
+    # Try both backend folder and project root (parent of BASE_DIR)
+    search_dirs = [BASE_DIR, BASE_DIR.parent]
+    for name in filenames:
+        for d in search_dirs:
+            parse_and_set(d / name)
+
+_load_env_file()
+
+def _csv_env(name, default_list=None):
+    val = os.getenv(name)
+    if val is None or not str(val).strip():
+        return list(default_list or [])
+    return [v.strip() for v in str(val).split(',') if v.strip()]
+
+# Core envs
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret-key-change-me')
-
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
-
-ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', '*').split(',')
+ALLOWED_HOSTS = _csv_env('DJANGO_ALLOWED_HOSTS', ['*'] if DEBUG else [])
+# If still empty in development (e.g., empty env var), use standard dev hosts
+if DEBUG and not ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -60,8 +111,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.getenv('POSTGRES_DB', 'nyscClearance_db'),
-        'USER': os.getenv('POSTGRES_USER', 'Sahab'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'Sahab@2025'),
+        # Do not hardcode credentials; use env with safe defaults
+        'USER': os.getenv('POSTGRES_USER'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
         'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
         'PORT': os.getenv('POSTGRES_PORT', '5432'),
     }
@@ -97,31 +149,31 @@ EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.hostinger.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'true').lower() == 'true'
 EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'false').lower() == 'true'
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'admin@sahabs.tech')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'Sahab@2025')
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DJANGO_DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
 # In development, prefer console email backend unless explicitly overridden
 if DEBUG and os.getenv('DJANGO_EMAIL_BACKEND') is None:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-# CORS / CSRF for React dev server
-# Allow multiple frontend origins (comma-separated via FRONTEND_ORIGINS)
-def _csv_env(name, default_list):
-    val = os.getenv(name)
-    if val:
-        return [v.strip() for v in val.split(',') if v.strip()]
-    return default_list
+# CORS / CSRF
+# Primary frontend URL and API base, plus optional multiple origins for local DX
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8000').rstrip('/')
 
 FRONTEND_ORIGINS = _csv_env('FRONTEND_ORIGINS', [
-    'http://localhost:5173',
+    FRONTEND_URL,
     'http://localhost:5174',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
 ])
 
 CORS_ALLOWED_ORIGINS = FRONTEND_ORIGINS
-CSRF_TRUSTED_ORIGINS = FRONTEND_ORIGINS
+
+# CSRF trusted origins come from env (comma-separated). If not provided, trust FRONTEND_URL and
+# local dev variants. In production, set DJANGO_CSRF_TRUSTED_ORIGINS explicitly with https:// URLs.
+CSRF_TRUSTED_ORIGINS = _csv_env('DJANGO_CSRF_TRUSTED_ORIGINS', FRONTEND_ORIGINS)
 CORS_ALLOW_HEADERS = list(default_headers) + [
     'x-csrftoken',
 ]
@@ -136,8 +188,23 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Expose frontend origin as a setting for redirects
-FRONTEND_ORIGIN = os.getenv('FRONTEND_ORIGIN', FRONTEND_ORIGINS[0])
+# Expose frontend origin as a setting for redirects (single URL)
+# Prefer explicit FRONTEND_URL; keep legacy FRONTEND_ORIGIN env for compatibility
+FRONTEND_ORIGIN = os.getenv('FRONTEND_ORIGIN', FRONTEND_URL)
+
+# Ensure API host is allowed (helps local dev when env vars conflict)
+try:
+    api_host = urlparse(API_BASE_URL).hostname
+    if api_host and api_host not in ALLOWED_HOSTS and ALLOWED_HOSTS != ['*']:
+        ALLOWED_HOSTS.append(api_host)
+except Exception:
+    pass
+
+# In dev, make sure localhost forms are accepted
+if DEBUG and ALLOWED_HOSTS != ['*']:
+    for h in ('localhost', '127.0.0.1', '[::1]'):
+        if h not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(h)
 
 # Media uploads (e.g., organization logos)
 MEDIA_URL = '/media/'
