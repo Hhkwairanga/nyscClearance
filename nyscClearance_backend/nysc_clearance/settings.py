@@ -54,6 +54,12 @@ def _csv_env(name, default_list=None):
         return list(default_list or [])
     return [v.strip() for v in str(val).split(',') if v.strip()]
 
+def _bool_env(name, default=False):
+    val = os.getenv(name)
+    if val is None:
+        return bool(default)
+    return str(val).strip().lower() in ('1','true','yes','on')
+
 # Core envs
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
@@ -210,15 +216,44 @@ if DEBUG and ALLOWED_HOSTS != ['*']:
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Cookie and session security
-CSRF_COOKIE_NAME = 'csrftoken'
-SESSION_COOKIE_SAMESITE = 'Lax'  # blocks third-party CSRF while keeping normal flows
-CSRF_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_HTTPONLY = True   # protect session from JS access
-CSRF_COOKIE_HTTPONLY = False     # allow frontend to read token for X-CSRFToken header
-# Secure cookies in production
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
+# Cookie and session security (env-driven)
+CSRF_COOKIE_NAME = os.getenv('DJANGO_CSRF_COOKIE_NAME', 'csrftoken')
+SESSION_COOKIE_NAME = os.getenv('DJANGO_SESSION_COOKIE_NAME', 'sessionid')
+SESSION_COOKIE_AGE = int(os.getenv('DJANGO_SESSION_COOKIE_AGE', '1209600'))  # 2 weeks
+SESSION_SAVE_EVERY_REQUEST = _bool_env('DJANGO_SESSION_SAVE_EVERY_REQUEST', False)
+
+# SameSite policy. For cross-site SPA (frontend on different subdomain), use 'None' in production.
+SESSION_COOKIE_SAMESITE = os.getenv('DJANGO_SESSION_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SAMESITE = os.getenv('DJANGO_CSRF_COOKIE_SAMESITE', SESSION_COOKIE_SAMESITE)
+
+# HttpOnly: JS should not access session cookie; CSRF cookie can be read by JS to set header
+SESSION_COOKIE_HTTPONLY = _bool_env('DJANGO_SESSION_COOKIE_HTTPONLY', True)
+CSRF_COOKIE_HTTPONLY = _bool_env('DJANGO_CSRF_COOKIE_HTTPONLY', False)
+
+# Secure cookies: required when SameSite=None (browsers enforce)
+SESSION_COOKIE_SECURE = _bool_env('DJANGO_SESSION_COOKIE_SECURE', not DEBUG)
+CSRF_COOKIE_SECURE = _bool_env('DJANGO_CSRF_COOKIE_SECURE', not DEBUG)
+
+# Optional cookie domains (typically not required). Set if you need a parent domain like .sahabs.tech
+SESSION_COOKIE_DOMAIN = os.getenv('DJANGO_SESSION_COOKIE_DOMAIN') or None
+CSRF_COOKIE_DOMAIN = os.getenv('DJANGO_CSRF_COOKIE_DOMAIN') or None
+
+# Security headers / HTTPS
+SECURE_SSL_REDIRECT = _bool_env('DJANGO_SECURE_SSL_REDIRECT', not DEBUG)
+_proxy_hdr = os.getenv('DJANGO_SECURE_PROXY_SSL_HEADER')
+if _proxy_hdr:
+    try:
+        name, val = [s.strip() for s in _proxy_hdr.split(',', 1)]
+        SECURE_PROXY_SSL_HEADER = (name, val)
+    except Exception:
+        SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+elif not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', '0' if DEBUG else '31536000'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _bool_env('DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', not DEBUG)
+SECURE_HSTS_PRELOAD = _bool_env('DJANGO_SECURE_HSTS_PRELOAD', not DEBUG)
+SECURE_CONTENT_TYPE_NOSNIFF = _bool_env('DJANGO_SECURE_CONTENT_TYPE_NOSNIFF', True)
 
 # Attendance geofence radius (meters); strict default
 ATTENDANCE_GEOFENCE_METERS = int(os.getenv('ATTENDANCE_GEOFENCE_METERS', '100'))
