@@ -40,7 +40,7 @@ export default function App(){
       </main>
       <a
         className="contact-fab"
-        href="https://home.sahab.tech"
+        href="https://home.sahabs.tech"
         target="_blank"
         rel="noreferrer"
         aria-label="Contact Us"

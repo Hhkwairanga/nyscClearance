@@ -42,7 +42,7 @@
         </div>
       </div>
 
-      <div class="d-flex gap-2 mb-3">
+      <div class="d-flex gap-2 mb-3 align-items-center">
         <button id="start-btn" class="btn btn-success">Start Webcam</button>
         <button id="submit-btn" class="btn btn-olive btn-lg shadow-sm" disabled>
           Submit
@@ -58,51 +58,99 @@
     </div>
   </div>
   <script>
-    document.getElementById('start-btn').addEventListener('click', function(){
+    (function(){
       const video = document.getElementById('video');
       const processed = document.getElementById('processed');
-      const csrftoken = getCookie('csrftoken');
-      navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
-        video.srcObject = stream; video.play();
-        // Show processed preview while camera is active
-        processed.style.display = 'block';
-        const FPS = 12; // throttle capture to reduce load
-        const loop = () => {
-          const vw = video.videoWidth || 640;
-          const vh = video.videoHeight || 480;
-          // Downscale frames before sending (reduce to ~360x270 while keeping aspect)
-          const MAX_W = 360;
-          const MAX_H = 270;
-          const scale = Math.min(MAX_W / vw, MAX_H / vh);
-          const cw = Math.max(1, Math.round(vw * scale));
-          const ch = Math.max(1, Math.round(vh * scale));
+      const startBtn = document.getElementById('start-btn');
+      const submitBtn = document.getElementById('submit-btn');
 
-          const canvas = document.createElement('canvas');
-          canvas.width = cw; canvas.height = ch;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(video, 0, 0, cw, ch);
-          // JPEG at moderate quality keeps color (RGB) and shrinks size
-          const frame = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
-          fetch(window.location.pathname + 'process/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrftoken },
-            body: 'frame=' + encodeURIComponent(frame)
-          }).then(r=>r.json()).then(data => {
-            if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
-            if(data.saved >= 100){
-              // Stop when 100 frames saved
-              try{ stream.getTracks().forEach(t=>t.stop()) }catch(e){}
-              document.getElementById('start-btn').disabled = true;
-              document.getElementById('submit-btn').disabled = false;
-              try { alert('Capture complete. Please press Submit to finalize.'); } catch(e){}
-            } else {
-              setTimeout(loop, Math.floor(1000 / FPS));
-            }
-          }).catch(err => { console.warn('process error', err); setTimeout(loop, Math.floor(1000 / FPS)); })
+      const csrftoken = getCookie('csrftoken');
+
+      let currentStream = null;
+      let currentFacing = 'user'; // 'user' (front) | 'environment' (rear)
+      let capturing = false;
+      const FPS = 12; // throttle capture to reduce load
+
+      function stopCurrentStream(){
+        try { if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); } } catch(e){}
+        currentStream = null;
+      }
+
+      async function startCamera(){
+        stopCurrentStream();
+        const constraints = { video: { facingMode: { ideal: currentFacing } } };
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          currentStream = stream;
+          video.srcObject = stream; video.play();
+          processed.style.display = 'block';
+        } catch (err1) {
+          // Fallback without facingMode if not supported
+          console.warn('facingMode not honored, falling back to default camera', err1);
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            currentStream = stream;
+            video.srcObject = stream; video.play();
+            processed.style.display = 'block';
+          } catch(err2){
+            console.error('Camera error', err2);
+            throw err2;
+          }
         }
-        setTimeout(loop, Math.floor(1000 / FPS));
-      }).catch(err => { console.error('Camera error', err) })
-    })
+      }
+
+      function loop(){
+        if(!capturing) return;
+        const vw = video.videoWidth || 640;
+        const vh = video.videoHeight || 480;
+        // Downscale frames before sending (reduce to ~360x270 while keeping aspect)
+        const MAX_W = 360;
+        const MAX_H = 270;
+        const scale = Math.min(MAX_W / vw, MAX_H / vh);
+        const cw = Math.max(1, Math.round(vw * scale));
+        const ch = Math.max(1, Math.round(vh * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = cw; canvas.height = ch;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, cw, ch);
+        const frame = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+        fetch(window.location.pathname + 'process/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrftoken },
+          body: 'frame=' + encodeURIComponent(frame)
+        }).then(r=>r.json()).then(data => {
+          if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
+          if(data.saved >= 100){
+            // Stop when 100 frames saved
+            capturing = false;
+            stopCurrentStream();
+            startBtn.disabled = true;
+            submitBtn.disabled = false;
+            try { alert('Capture complete. Please press Submit to finalize.'); } catch(e){}
+          } else {
+            setTimeout(loop, Math.floor(1000 / FPS));
+          }
+        }).catch(err => {
+          console.warn('process error', err);
+          setTimeout(loop, Math.floor(1000 / FPS));
+        });
+      }
+
+      startBtn.addEventListener('click', async function(){
+        try{
+          // Prompt the user to choose camera facing
+          const useFront = window.confirm('Use front camera? Press Cancel for rear camera.');
+          currentFacing = useFront ? 'user' : 'environment';
+          await startCamera();
+          capturing = true;
+          startBtn.disabled = true;
+          setTimeout(loop, Math.floor(1000 / FPS));
+        }catch(e){ /* handled in startCamera */ }
+      });
+    })();
+    
+    // Submit to finalize (compute and save face data)
     // Submit to finalize (compute and save face data)
     document.getElementById('submit-btn').addEventListener('click', function(){
       const csrftoken = getCookie('csrftoken');
