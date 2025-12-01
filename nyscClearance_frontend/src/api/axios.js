@@ -1,9 +1,10 @@
 import axios from 'axios'
+import { apiUrl, API_BASE } from './urls'
 
 // Configure base URL from env, default to Django dev server
 const api = axios.create({
-  // Prefer same-origin + Vite proxy by default; override with VITE_API_BASE if needed
-  baseURL: (import.meta.env.VITE_API_BASE || ''),
+  // Base URL centralized via urls.js (uses VITE_API_BASE in prod, empty in dev for proxy)
+  baseURL: API_BASE || '',
   withCredentials: true,
   xsrfCookieName: 'csrftoken',
   xsrfHeaderName: 'X-CSRFToken',
@@ -12,7 +13,7 @@ const api = axios.create({
 // Ensure CSRF cookie using fetch to avoid axios interceptor loops
 export async function ensureCsrf(){
   try{
-    const url = (api.defaults.baseURL || '').replace(/\/$/, '') + '/api/auth/csrf/'
+    const url = apiUrl('/api/auth/csrf/')
     await fetch(url, { credentials: 'include' })
   }catch(e){ /* ignore */ }
 }

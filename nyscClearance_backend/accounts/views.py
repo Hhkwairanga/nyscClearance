@@ -618,6 +618,43 @@ class CSRFView(APIView):
         return Response({'csrfToken': token})
 
 
+class ConfigView(APIView):
+    """Expose non-sensitive runtime config for the frontend.
+
+    Helps centralize CSRF/cookie names, base URLs, and origins across environments.
+    """
+    permission_classes = []
+    authentication_classes = []
+
+    def get(self, request):
+        try:
+            cors = list(getattr(settings, 'CORS_ALLOWED_ORIGINS', []) or [])
+        except Exception:
+            cors = []
+        try:
+            csrf_origins = list(getattr(settings, 'CSRF_TRUSTED_ORIGINS', []) or [])
+        except Exception:
+            csrf_origins = []
+        data = {
+            'api_base': getattr(settings, 'API_BASE_URL', ''),
+            'frontend_base': getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', '')),
+            'csrf_cookie_name': getattr(settings, 'CSRF_COOKIE_NAME', 'csrftoken'),
+            'session_cookie_name': getattr(settings, 'SESSION_COOKIE_NAME', 'sessionid'),
+            'cors_allowed_origins': cors,
+            'csrf_trusted_origins': csrf_origins,
+            'cookie_same_site': {
+                'session': getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
+                'csrf': getattr(settings, 'CSRF_COOKIE_SAMESITE', 'Lax'),
+            },
+            'cookie_secure': {
+                'session': bool(getattr(settings, 'SESSION_COOKIE_SECURE', False)),
+                'csrf': bool(getattr(settings, 'CSRF_COOKIE_SECURE', False)),
+            },
+            'debug': bool(getattr(settings, 'DEBUG', False)),
+        }
+        return Response(data)
+
+
 class LoginView(APIView):
     permission_classes = []
 
