@@ -23,6 +23,7 @@ export default function Dashboard(){
   const [corpers, setCorpers] = useState([])
   const [stats, setStats] = useState(null)
   const [clearance, setClearance] = useState([])
+  const [clQuery, setClQuery] = useState('')
   const [holidays, setHolidays] = useState([])
   const [leaves, setLeaves] = useState([])
   const [notifications, setNotifications] = useState([])
@@ -37,6 +38,7 @@ export default function Dashboard(){
   // Local helpers for enroll form filtering
   const [enrollBranch, setEnrollBranch] = useState('')
   const [enrollDept, setEnrollDept] = useState('')
+  const [corperQuery, setCorperQuery] = useState('')
 
   // First load: ensure CSRF and fetch all data
   useEffect(() => {
@@ -267,10 +269,17 @@ export default function Dashboard(){
       return acc
     }, { credit: 0, debit: 0 })
     const [txPage, setTxPage] = useState(1)
+    const [txQuery, setTxQuery] = useState('')
+    const filteredTxs = txs.filter(t => {
+      const q = txQuery.trim().toLowerCase()
+      if(!q) return true
+      const hay = [t.description||'', t.reference||'', t.type||'', new Date(t.created_at).toLocaleString()].join(' ').toLowerCase()
+      return hay.includes(q)
+    })
     const txPageSize = 10
-    const txTotalPages = Math.max(1, Math.ceil(txs.length / txPageSize))
+    const txTotalPages = Math.max(1, Math.ceil(filteredTxs.length / txPageSize))
     const txStart = (txPage - 1) * txPageSize
-    const pageTxs = txs.slice(txStart, txStart + txPageSize)
+    const pageTxs = filteredTxs.slice(txStart, txStart + txPageSize)
     return (
       <div className="row g-3">
         <div className="col-12 col-lg-4">
@@ -287,6 +296,9 @@ export default function Dashboard(){
         <div className="col-12 col-lg-8">
           <div className="card shadow-sm"><div className="card-body">
             <h6 className="card-title">Transactions</h6>
+            <div className="mb-2">
+              <input className="form-control form-control-sm" placeholder="Search transactions..." value={txQuery} onChange={(e)=>{ setTxQuery(e.target.value); setTxPage(1) }} />
+            </div>
             <div className="table-responsive">
               <table className="table table-sm align-middle">
                 <thead>
@@ -312,15 +324,15 @@ export default function Dashboard(){
                       <td className="text-end">₦{Number(t.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     </tr>
                   ))}
-                  {txs.length===0 && (
+                  {filteredTxs.length===0 && (
                     <tr><td colSpan="7" className="text-muted">No transactions yet.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-            {txs.length>10 && (
+            {filteredTxs.length>10 && (
               <div className="d-flex justify-content-between align-items-center mt-2">
-                <div className="small text-muted">Page {txPage} of {txTotalPages}</div>
+                <div className="small text-muted">Page {txPage} of {txTotalPages} · {filteredTxs.length} result(s)</div>
                 <div className="btn-group">
                   <button className="btn btn-sm btn-outline-secondary" disabled={txPage===1} onClick={()=>setTxPage(p=>Math.max(1,p-1))}>Prev</button>
                   <button className="btn btn-sm btn-outline-secondary" disabled={txPage===txTotalPages} onClick={()=>setTxPage(p=>Math.min(txTotalPages,p+1))}>Next</button>
@@ -832,6 +844,11 @@ export default function Dashboard(){
               <h2 className="mb-3 text-olive">Performance Clearance (Prev. Month)</h2>
               <div className="card shadow-sm">
                 <div className="card-body">
+                  <div className="row g-2 mb-2">
+                    <div className="col-md-4">
+                      <input className="form-control form-control-sm" placeholder="Search corpers... (name, code, branch)" value={clQuery} onChange={(e)=>{ setClQuery(e.target.value); setClPage(1) }} />
+                    </div>
+                  </div>
                   <div className="table-responsive">
                     <table className="table table-sm align-middle">
                       <thead>
@@ -850,11 +867,13 @@ export default function Dashboard(){
                       <tbody>
                         {(() => {
                           const pageSize = 10
-                          const totalPages = Math.max(1, Math.ceil(clearance.length / pageSize))
+                          const q = clQuery.trim().toLowerCase()
+                          const filtered = q ? clearance.filter(r => `${r.full_name} ${r.state_code} ${r.branch}`.toLowerCase().includes(q)) : clearance
+                          const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
                           const current = Math.min(clPage, totalPages)
                           if(current !== clPage) setClPage(current)
                           const start = (current - 1) * pageSize
-                          const rows = clearance.slice(start, start + pageSize)
+                          const rows = filtered.slice(start, start + pageSize)
                           return <>
                             {rows.map((row, idx) => (
                               <tr key={row.id}>
@@ -875,7 +894,7 @@ export default function Dashboard(){
                                 </td>
                               </tr>
                             ))}
-                            {clearance.length===0 && (
+                            {filtered.length===0 && (
                               <tr><td colSpan="9" className="text-muted">No corpers found.</td></tr>
                             )}
                           </>
@@ -885,12 +904,14 @@ export default function Dashboard(){
                   </div>
                   {(() => {
                     const pageSize = 10
-                    const totalPages = Math.max(1, Math.ceil(clearance.length / pageSize))
+                    const q = clQuery.trim().toLowerCase()
+                    const filtered = q ? clearance.filter(r => `${r.full_name} ${r.state_code} ${r.branch}`.toLowerCase().includes(q)) : clearance
+                    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
                     const current = Math.min(clPage, totalPages)
                     if(totalPages <= 1) return null
                     return (
                       <div className="d-flex justify-content-between align-items-center mt-2">
-                        <div className="small text-muted">Page {current} of {totalPages}</div>
+                        <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
                         <div className="btn-group">
                           <button className="btn btn-sm btn-outline-secondary" disabled={current===1} onClick={()=>setClPage(p=>Math.max(1,p-1))}>Prev</button>
                           <button className="btn btn-sm btn-outline-secondary" disabled={current===totalPages} onClick={()=>setClPage(p=>Math.min(totalPages,p+1))}>Next</button>
@@ -1115,6 +1136,12 @@ export default function Dashboard(){
             <div className="card shadow-sm mt-3">
               <div className="card-body">
                 <h5 className="card-title">Registered Corpers</h5>
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <div className="small text-muted">Manage and update placements</div>
+                  <div style={{minWidth: 260}}>
+                    <input className="form-control form-control-sm" placeholder="Search corpers..." value={corperQuery} onChange={(e)=>setCorperQuery(e.target.value)} />
+                  </div>
+                </div>
                 <div className="table-responsive">
                   <table className="table table-sm align-middle">
                     <thead>
@@ -1130,7 +1157,12 @@ export default function Dashboard(){
                       </tr>
                     </thead>
                     <tbody>
-                      {corpers.map((c, idx) => (
+                      {(corpers.filter(c=>{
+                        const q = corperQuery.trim().toLowerCase(); if(!q) return true;
+                        const branchName = branches.find(b=>b.id===c.branch)?.name || ''
+                        const hay = `${c.full_name} ${c.email||''} ${c.state_code} ${branchName}`.toLowerCase()
+                        return hay.includes(q)
+                      })).map((c, idx) => (
                         <tr key={c.id}>
                           <td>{idx+1}</td>
                           <td>{c.full_name}</td>
@@ -1256,11 +1288,14 @@ export default function Dashboard(){
             </div></div>
             <div className="card shadow-sm"><div className="card-body">
               <h5 className="card-title">My Leave Requests</h5>
+              <div className="mb-2" style={{maxWidth:260}}>
+                <input className="form-control form-control-sm" placeholder="Search my leaves..." onChange={(e)=>{ const v=e.target.value.toLowerCase(); const el=document.getElementById('my-leaves-body'); if(!el) return; for(const tr of el.querySelectorAll('tr[data-row]')){ const text=tr.getAttribute('data-hay')||''; tr.style.display = text.includes(v)?'':'none' } }} />
+              </div>
               <div className="table-responsive">
                 <table className="table table-sm">
                   <thead><tr><th>#</th><th>Start</th><th>End</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {leaves.map((r,idx)=>(<tr key={r.id}><td>{idx+1}</td><td>{r.start_date}</td><td>{r.end_date}</td><td>{r.status}</td></tr>))}
+                  <tbody id="my-leaves-body">
+                    {leaves.map((r,idx)=>(<tr key={r.id} data-row data-hay={`${r.start_date} ${r.end_date} ${r.status}`.toLowerCase()}><td>{idx+1}</td><td>{r.start_date}</td><td>{r.end_date}</td><td>{r.status}</td></tr>))}
                     {leaves.length===0 && <tr><td colSpan="4" className="text-muted">No leave requests yet.</td></tr>}
                   </tbody>
                 </table>
@@ -1274,12 +1309,15 @@ export default function Dashboard(){
             <h2 className="mb-3 text-olive">Leave Management</h2>
             <div className="card shadow-sm"><div className="card-body">
               <h5 className="card-title">Pending Approvals</h5>
+              <div className="mb-2" style={{maxWidth:260}}>
+                <input className="form-control form-control-sm" placeholder="Search pending leaves..." onChange={(e)=>{ const v=e.target.value.toLowerCase(); const el=document.getElementById('branch-leaves-body'); if(!el) return; for(const tr of el.querySelectorAll('tr[data-row]')){ const text=tr.getAttribute('data-hay')||''; tr.style.display = text.includes(v)?'':'none' } }} />
+              </div>
               <div className="table-responsive">
                 <table className="table table-sm">
                   <thead><tr><th>#</th><th>Corper</th><th>Start</th><th>End</th><th>Reason</th><th>Actions</th></tr></thead>
-                  <tbody>
+                  <tbody id="branch-leaves-body">
                     {leaves.filter(l=>l.status==='PENDING').map((r,idx)=>(
-                      <tr key={r.id}>
+                      <tr key={r.id} data-row data-hay={`${r.corper_name} ${r.start_date} ${r.end_date} ${r.reason}`.toLowerCase()}>
                         <td>{idx+1}</td>
                         <td>{r.corper_name}</td>
                         <td>{r.start_date}</td>
