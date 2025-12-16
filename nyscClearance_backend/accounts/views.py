@@ -1209,13 +1209,21 @@ def performance_clearance_page(request):
             getattr(prof, 'max_days_late', None) is not None and late > (prof.max_days_late or 0)
         )
         if exceeded_absent or exceeded_late:
+            # Compute frontend base for links
+            request_origin = request.headers.get('Origin')
+            try:
+                allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
+            except Exception:
+                allowed = set()
+            frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
+
             return render(request, 'clearance_restriction.html', {
                 'month': start.strftime('%B %Y'),
                 'absent': absent,
                 'late': late,
                 'max_absent': getattr(prof, 'max_days_absent', None),
                 'max_late': getattr(prof, 'max_days_late', None),
-                'contact_url': '/dashboard',
+                'contact_url': f'{frontend_base}/dashboard',
             }, status=403)
 
     # Ensure wallet and charge once per corper per month on first view
@@ -1278,9 +1286,18 @@ def performance_clearance_page(request):
 
     if not charged:
         # Deny access nicely with a prompt to fund wallet
+        # Compute frontend base for links
+        request_origin = request.headers.get('Origin')
+        try:
+            allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
+        except Exception:
+            allowed = set()
+        frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
+
         return render(request, 'clearance_payment_required.html', {
             'reason': 'Insufficient wallet balance across organization, branch, and personal wallets.',
-            'fund_url': '/dashboard?fund=1'
+            'fund_url': f'{frontend_base}/dashboard?fund=1',
+            'dashboard_url': f'{frontend_base}/dashboard',
         }, status=402)
 
     ctx = {
