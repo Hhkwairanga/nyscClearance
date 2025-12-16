@@ -30,6 +30,7 @@ export default function Dashboard(){
   const [announcement, setAnnouncement] = useState(null)
   const [showFund, setShowFund] = useState(false)
   const [fundAmount, setFundAmount] = useState('')
+  const [clPage, setClPage] = useState(1)
   const [status, setStatus] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [perf, setPerf] = useState(null)
@@ -265,12 +266,21 @@ export default function Dashboard(){
       if (t.type === 'DEBIT') acc.debit += amt
       return acc
     }, { credit: 0, debit: 0 })
+    const [txPage, setTxPage] = useState(1)
+    const txPageSize = 10
+    const txTotalPages = Math.max(1, Math.ceil(txs.length / txPageSize))
+    const txStart = (txPage - 1) * txPageSize
+    const pageTxs = txs.slice(txStart, txStart + txPageSize)
     return (
       <div className="row g-3">
         <div className="col-12 col-lg-4">
           <div className="card shadow-sm"><div className="card-body">
             <div className="text-muted small">Current Balance</div>
             <div className="display-6">₦{Number(bal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+            <div className="mt-2 small">
+              <div><span className="text-muted">Total Credit:</span> ₦{totals.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div><span className="text-muted">Total Debit:</span> ₦{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+            </div>
             <button className="btn btn-olive mt-3" onClick={fundWallet}>Fund Wallet</button>
           </div></div>
         </div>
@@ -281,6 +291,7 @@ export default function Dashboard(){
               <table className="table table-sm align-middle">
                 <thead>
                   <tr>
+                    <th>S/N</th>
                     <th>Date</th>
                     <th>Description</th>
                     <th>Type</th>
@@ -290,8 +301,9 @@ export default function Dashboard(){
                   </tr>
                 </thead>
                 <tbody>
-                  {txs.map(t => (
+                  {pageTxs.map((t, i) => (
                     <tr key={t.id}>
+                      <td>{txStart + i + 1}</td>
                       <td>{new Date(t.created_at).toLocaleString()}</td>
                       <td>{t.description}{t.reference?` (${t.reference})`:''}</td>
                       <td>{t.type}</td>
@@ -301,21 +313,20 @@ export default function Dashboard(){
                     </tr>
                   ))}
                   {txs.length===0 && (
-                    <tr><td colSpan="6" className="text-muted">No transactions yet.</td></tr>
+                    <tr><td colSpan="7" className="text-muted">No transactions yet.</td></tr>
                   )}
                 </tbody>
-                {txs.length>0 && (
-                  <tfoot>
-                    <tr>
-                      <td colSpan="6" className="text-end fw-semibold">
-                        <span className="me-3">Total Credit: ₦{totals.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                        <span>Total Debit: ₦{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                      </td>
-                    </tr>
-                  </tfoot>
-                )}
               </table>
             </div>
+            {txs.length>10 && (
+              <div className="d-flex justify-content-between align-items-center mt-2">
+                <div className="small text-muted">Page {txPage} of {txTotalPages}</div>
+                <div className="btn-group">
+                  <button className="btn btn-sm btn-outline-secondary" disabled={txPage===1} onClick={()=>setTxPage(p=>Math.max(1,p-1))}>Prev</button>
+                  <button className="btn btn-sm btn-outline-secondary" disabled={txPage===txTotalPages} onClick={()=>setTxPage(p=>Math.min(txTotalPages,p+1))}>Next</button>
+                </div>
+              </div>
+            )}
           </div></div>
         </div>
       </div>
@@ -825,6 +836,7 @@ export default function Dashboard(){
                     <table className="table table-sm align-middle">
                       <thead>
                         <tr>
+                          <th>S/N</th>
                           <th>Corper</th>
                           <th>State Code</th>
                           <th>Branch</th>
@@ -836,30 +848,56 @@ export default function Dashboard(){
                         </tr>
                       </thead>
                       <tbody>
-                        {clearance.map(row => (
-                          <tr key={row.id}>
-                            <td>{row.full_name}</td>
-                            <td>{row.state_code}</td>
-                            <td>{row.branch || '—'}</td>
-                            <td className="text-end">{row.absent}</td>
-                            <td className="text-end">{row.late}</td>
-                            <td>{row.qualified ? <span className="badge bg-success">Yes</span> : <span className="badge bg-danger">No</span>}</td>
-                            <td>{row.downloaded ? <span className="badge bg-primary">Yes</span> : 'No'}</td>
-                            <td className="text-end">
-                              {!row.qualified && !row.override && !row.downloaded && (
-                                <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{
-                                  try{ await api.post('/api/auth/clearance/approve/', { corper: row.id }); await refreshAll() }catch(e){}
-                                }}>Approve</button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                        {clearance.length===0 && (
-                          <tr><td colSpan="8" className="text-muted">No corpers found.</td></tr>
-                        )}
+                        {(() => {
+                          const pageSize = 10
+                          const totalPages = Math.max(1, Math.ceil(clearance.length / pageSize))
+                          const current = Math.min(clPage, totalPages)
+                          if(current !== clPage) setClPage(current)
+                          const start = (current - 1) * pageSize
+                          const rows = clearance.slice(start, start + pageSize)
+                          return <>
+                            {rows.map((row, idx) => (
+                              <tr key={row.id}>
+                                <td>{start + idx + 1}</td>
+                                <td>{row.full_name}</td>
+                                <td>{row.state_code}</td>
+                                <td>{row.branch || '—'}</td>
+                                <td className="text-end">{row.absent}</td>
+                                <td className="text-end">{row.late}</td>
+                                <td>{row.qualified ? <span className="badge bg-success">Yes</span> : <span className="badge bg-danger">No</span>}</td>
+                                <td>{row.downloaded ? <span className="badge bg-primary">Yes</span> : 'No'}</td>
+                                <td className="text-end">
+                                  {!row.qualified && !row.override && !row.downloaded && (
+                                    <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{
+                                      try{ await api.post('/api/auth/clearance/approve/', { corper: row.id }); await refreshAll() }catch(e){}
+                                    }}>Approve</button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                            {clearance.length===0 && (
+                              <tr><td colSpan="9" className="text-muted">No corpers found.</td></tr>
+                            )}
+                          </>
+                        })()}
                       </tbody>
                     </table>
                   </div>
+                  {(() => {
+                    const pageSize = 10
+                    const totalPages = Math.max(1, Math.ceil(clearance.length / pageSize))
+                    const current = Math.min(clPage, totalPages)
+                    if(totalPages <= 1) return null
+                    return (
+                      <div className="d-flex justify-content-between align-items-center mt-2">
+                        <div className="small text-muted">Page {current} of {totalPages}</div>
+                        <div className="btn-group">
+                          <button className="btn btn-sm btn-outline-secondary" disabled={current===1} onClick={()=>setClPage(p=>Math.max(1,p-1))}>Prev</button>
+                          <button className="btn btn-sm btn-outline-secondary" disabled={current===totalPages} onClick={()=>setClPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             </>
