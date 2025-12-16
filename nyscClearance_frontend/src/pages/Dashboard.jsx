@@ -276,7 +276,7 @@ export default function Dashboard(){
       const hay = [t.description||'', t.reference||'', t.type||'', new Date(t.created_at).toLocaleString()].join(' ').toLowerCase()
       return hay.includes(q)
     })
-    const txPageSize = 10
+    const txPageSize = 50
     const txTotalPages = Math.max(1, Math.ceil(filteredTxs.length / txPageSize))
     const txStart = (txPage - 1) * txPageSize
     const pageTxs = filteredTxs.slice(txStart, txStart + txPageSize)
@@ -330,7 +330,7 @@ export default function Dashboard(){
                 </tbody>
               </table>
             </div>
-            {filteredTxs.length>10 && (
+            {filteredTxs.length>50 && (
               <div className="d-flex justify-content-between align-items-center mt-2">
                 <div className="small text-muted">Page {txPage} of {txTotalPages} · {filteredTxs.length} result(s)</div>
                 <div className="btn-group">
@@ -866,7 +866,7 @@ export default function Dashboard(){
                       </thead>
                       <tbody>
                         {(() => {
-                          const pageSize = 10
+                          const pageSize = 50
                           const q = clQuery.trim().toLowerCase()
                           const filtered = q ? clearance.filter(r => `${r.full_name} ${r.state_code} ${r.branch}`.toLowerCase().includes(q)) : clearance
                           const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -903,7 +903,7 @@ export default function Dashboard(){
                     </table>
                   </div>
                   {(() => {
-                    const pageSize = 10
+                    const pageSize = 50
                     const q = clQuery.trim().toLowerCase()
                     const filtered = q ? clearance.filter(r => `${r.full_name} ${r.state_code} ${r.branch}`.toLowerCase().includes(q)) : clearance
                     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))

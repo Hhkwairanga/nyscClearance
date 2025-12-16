@@ -139,6 +139,12 @@ def capture_page(request, corper_id: int):
         allowed = set()
     frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
 
+    # Ensure CSRF cookie is set for subsequent POSTs from the page
+    try:
+        get_token(request)
+    except Exception:
+        pass
+
     ctx = {
         'corper_id': corper.id,
         'full_name': corper.full_name,
@@ -148,7 +154,6 @@ def capture_page(request, corper_id: int):
     return render(request, 'capture.html', ctx)
 
 
-@csrf_exempt
 def capture_process_frame(request, corper_id: int):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
@@ -164,7 +169,6 @@ def capture_process_frame(request, corper_id: int):
     return JsonResponse({'frame': processed, 'saved': count})
 
 
-@csrf_exempt
 def capture_finalize(request, corper_id: int):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
@@ -250,6 +254,12 @@ def attendance_page(request):
         allowed = set()
     frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
 
+    # Ensure CSRF cookie is set for JS POSTs from this page
+    try:
+        get_token(request)
+    except Exception:
+        pass
+
     ctx = {
         'corper_id': cm.id,
         'full_name': cm.full_name,
@@ -289,7 +299,6 @@ def _haversine_m(lat1, lon1, lat2, lon2):
     return R*c
 
 
-@csrf_exempt
 def attendance_authorize(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
@@ -319,7 +328,6 @@ def attendance_authorize(request):
     return JsonResponse({'allowed': allowed, 'distance_m': round(dist, 1), 'threshold_m': threshold, 'source': src or 'unknown'})
 
 
-@csrf_exempt
 def attendance_process_frame(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
@@ -403,7 +411,6 @@ def attendance_process_frame(request):
     return JsonResponse({'frame': processed_frame, 'recognized': recognized})
 
 
-@csrf_exempt
 def attendance_finalize(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
@@ -1389,7 +1396,6 @@ class WalletView(APIView):
         return Response(data)
 
 
-@csrf_exempt
 def wallet_charge_clearance(request):
     """Charge organization when a corper downloads clearance letter.
 

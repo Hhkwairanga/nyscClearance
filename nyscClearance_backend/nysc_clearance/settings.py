@@ -137,14 +137,15 @@ FRONTEND_ORIGIN = os.getenv('FRONTEND_ORIGIN', FRONTEND_ORIGINS[0])
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# CSRF cookie config (dev-friendly)
+# Cookie and session security
 CSRF_COOKIE_NAME = 'csrftoken'
-SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'  # blocks third-party CSRF while keeping normal flows
 CSRF_COOKIE_SAMESITE = 'Lax'
-if DEBUG:
-    # Dev-friendly cookie settings for http://localhost
-    CSRF_COOKIE_SECURE = False
-    SESSION_COOKIE_SECURE = False
+SESSION_COOKIE_HTTPONLY = True   # protect session from JS access
+CSRF_COOKIE_HTTPONLY = False     # allow frontend to read token for X-CSRFToken header
+# Secure cookies in production
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 # Attendance geofence radius (meters); strict default
 ATTENDANCE_GEOFENCE_METERS = int(os.getenv('ATTENDANCE_GEOFENCE_METERS', '100'))

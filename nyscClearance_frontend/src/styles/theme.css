@@ -37,6 +37,24 @@ body{ background-color:#f7f9f6; }
 
 .app-footer{ position: fixed; right: 1rem; bottom: .75rem; color: rgba(0,0,0,.6); font-size: .9rem; }
 
+/* Floating contact button above footer */
+.contact-fab{
+  position: fixed;
+  right: 1rem;
+  bottom: 3rem; /* sit above footer */
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  border-radius: 999px;
+  background-color: var(--olive);
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  z-index: 1040;
+}
+.contact-fab:hover{ background-color:#465826; color:#fff; text-decoration:none; }
+
 /* Top navbar hover effects */
 .topnav .btn.btn-outline-secondary{ border-color: #d0d6cb; color:#495057; background:#fff; }
 .topnav .btn.btn-outline-secondary:hover{ background:#eef2ea; border-color:#c5ccb9; color:#222; transition: all .15s ease-in-out; }

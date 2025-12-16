@@ -38,6 +38,17 @@ export default function App(){
       <main className="container py-4">
         <Outlet />
       </main>
+      <a
+        className="contact-fab"
+        href="https://home.sahab.tech"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Contact Us"
+        title="Contact Us"
+      >
+        <span role="img" aria-hidden="true">📞</span>
+        <span className="d-none d-sm-inline">Contact Us</span>
+      </a>
       <div className="app-footer">&copy; Sahab Technology 2025</div>
     </>
   )
