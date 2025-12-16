@@ -52,6 +52,19 @@ Setup
 
 - Configure allowed origins via env: `FRONTEND_ORIGINS` in backend settings.
 
+Configuration (URLs)
+--------------------
+
+- Frontend → Backend API base:
+  - Set `VITE_API_BASE` (e.g., `https://api.example.com`) for production.
+  - Leave it empty in local dev to use the Vite proxy.
+  - All API calls and anchor links use helpers in `src/api/urls.js` to resolve against this base.
+
+- Backend → Frontend origins:
+  - `FRONTEND_ORIGINS` (comma-separated) for CORS/CSRF allowlist.
+  - `FRONTEND_ORIGIN` for server-generated links back to the SPA (e.g., email links).
+  - Change these two to repoint the backend to your deployed frontend domain(s).
+
 Admin Configuration
 -------------------
 
@@ -133,4 +146,3 @@ Deployment
 - Create System Settings and Paystack Config in admin.
 - Configure CORS/CSRF to allow your frontend domain(s).
 - HTTPS recommended for production.
-

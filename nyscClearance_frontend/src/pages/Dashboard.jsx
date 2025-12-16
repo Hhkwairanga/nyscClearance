@@ -5,6 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
+import { apiHref } from '../api/urls'
 import MapPicker from '../components/MapPicker'
 import { Bar, Doughnut } from 'react-chartjs-2'
 import AutoFadeAlert from '../components/AutoFadeAlert'
@@ -1220,7 +1221,7 @@ export default function Dashboard(){
                                     await refreshAll()
                                   }catch(e){ setStatus('error:corper-update') }
                                 }}>Save</button>
-                                <a className="btn btn-sm btn-outline-secondary" href={`/api/auth/capture/${c.id}/`} target="_blank" rel="noreferrer">Capture Face</a>
+                <a className="btn btn-sm btn-outline-secondary" href={apiHref(`/api/auth/capture/${c.id}/`)} target="_blank" rel="noreferrer">Capture Face</a>
                               </td>
                             </>
                           )}
@@ -1244,7 +1245,7 @@ export default function Dashboard(){
               <h2 className="mb-3 text-olive">Attendance</h2>
               {me?.role==='CORPER' && (
                 <div className="mb-3">
-                  <a className="btn btn-olive" href="/api/auth/attendance/" target="_blank" rel="noreferrer">Mark Attendance</a>
+                <a className="btn btn-olive" href={apiHref('/api/auth/attendance/')} target="_blank" rel="noreferrer">Mark Attendance</a>
                 </div>
               )}
               <div className="row g-3">
@@ -1362,7 +1363,7 @@ export default function Dashboard(){
                 <div className="col-6 col-md-2"><div className="card text-center shadow-sm"><div className="card-body"><div className="text-muted small">Late</div><div className="h5 mb-0">{perf?.late ?? 0}</div></div></div></div>
               </div>
               <div className="mt-3">
-                <a className="btn btn-olive" href="/api/auth/performance/clearance/" target="_blank" rel="noreferrer">View Clearance Letter</a>
+                <a className="btn btn-olive" href={apiHref('/api/auth/performance/clearance/')} target="_blank" rel="noreferrer">View Clearance Letter</a>
               </div>
             </>
           )}
