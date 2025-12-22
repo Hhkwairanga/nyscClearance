@@ -476,6 +476,10 @@ def attendance_finalize(request):
 
 
 class RegisterView(APIView):
+    # AllowAny and disable SessionAuthentication/CSRF for this endpoint
+    authentication_classes = []
+    permission_classes = []
+
     def post(self, request):
         serializer = OrganizationRegisterSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
@@ -656,6 +660,8 @@ class ConfigView(APIView):
 
 
 class LoginView(APIView):
+    # AllowAny and disable SessionAuthentication/CSRF for this endpoint
+    authentication_classes = []
     permission_classes = []
 
     def post(self, request):
@@ -671,12 +677,31 @@ class LoginView(APIView):
             return Response({'detail': 'Invalid role for this login'}, status=status.HTTP_403_FORBIDDEN)
         if not user.is_active:
             return Response({'detail': 'Account not active'}, status=status.HTTP_403_FORBIDDEN)
-        login(request, user)
+        # Issue stateless token while keeping session login for backward compatibility
+        try:
+            from .auth import make_access_token
+            token = make_access_token(user.id)
+        except Exception:
+            token = None
+        # Optional: session login (kept for compatibility with existing clients)
+        try:
+            login(request, user)
+        except Exception:
+            pass
         OrganizationProfile.objects.get_or_create(user=user)
-        return Response({'message': 'Logged in'})
+        resp = {'message': 'Logged in'}
+        if token:
+            resp['token'] = token
+            resp['token_type'] = 'Bearer'
+            resp['expires_in'] = 60 * 60 * 24
+        return Response(resp)
 
 
 class LogoutView(APIView):
+    # Accept both session and token-based clients; no CSRF enforcement
+    authentication_classes = []
+    permission_classes = []
+
     def post(self, request):
         logout(request)
         return Response({'message': 'Logged out'})
