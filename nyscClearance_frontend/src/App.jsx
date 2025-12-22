@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
-import api, { ensureCsrf } from './api/axios'
+import api, { ensureCsrf, clearToken } from './api/axios'
 
 export default function App(){
   const navigate = useNavigate()
@@ -17,7 +17,11 @@ export default function App(){
       }
     })()
   }, [location.pathname])
-  const logout = async () => { try{ await api.post('/api/auth/logout/'); setMe({authenticated:false}); navigate('/login') }catch(e){} }
+  const logout = async () => {
+    try{ await api.post('/api/auth/logout/') }catch(e){}
+    try{ clearToken() }catch(e){}
+    setMe({authenticated:false}); navigate('/login')
+  }
   const isAuthed = !!me?.authenticated
   const dashPath = !isAuthed ? '/' : (me?.role==='ORG' ? '/dashboard/org' : me?.role==='BRANCH' ? '/dashboard/branch' : '/dashboard/corper')
   return (

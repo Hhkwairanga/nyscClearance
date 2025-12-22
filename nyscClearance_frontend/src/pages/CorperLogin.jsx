@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import api, { ensureCsrf } from '../api/axios'
+import api, { ensureCsrf, setToken } from '../api/axios'
 import { useNavigate } from 'react-router-dom'
 
 export default function CorperLogin(){
@@ -10,7 +10,12 @@ export default function CorperLogin(){
   const onChange = e => setForm(f => ({...f, [e.target.name]: e.target.value}))
   const submit = async (e) => {
     e.preventDefault(); setStatus('pending')
-    try{ await ensureCsrf(); await api.post('/api/auth/login/', { ...form, role:'CORPER' }); navigate('/dashboard/corper') }catch(err){ setStatus('error:'+(err?.response?.data?.detail||'Login failed')) }
+    try{
+      await ensureCsrf();
+      const { data } = await api.post('/api/auth/login/', { ...form, role:'CORPER' });
+      if(data?.token){ setToken(data.token) }
+      navigate('/dashboard/corper')
+    }catch(err){ setStatus('error:'+(err?.response?.data?.detail||'Login failed')) }
   }
   return (
     <div className="row justify-content-center">

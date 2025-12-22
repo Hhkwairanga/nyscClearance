@@ -10,6 +10,15 @@ const api = axios.create({
   xsrfHeaderName: 'X-CSRFToken',
 })
 
+// Simple token storage
+const TOKEN_KEY = 'nysc.token'
+export function getToken(){ try{ return localStorage.getItem(TOKEN_KEY) || '' }catch{ return '' } }
+export function setToken(t){ try{ if(t){ localStorage.setItem(TOKEN_KEY, t); api.defaults.headers.common['Authorization'] = `Bearer ${t}` } }catch{} }
+export function clearToken(){ try{ localStorage.removeItem(TOKEN_KEY); delete api.defaults.headers.common['Authorization'] }catch{} }
+
+// Initialize Authorization header from any existing token
+{ const t = getToken(); if(t){ api.defaults.headers.common['Authorization'] = `Bearer ${t}` } }
+
 // Ensure CSRF cookie using fetch to avoid axios interceptor loops
 export async function ensureCsrf(){
   try{
@@ -21,7 +30,8 @@ export async function ensureCsrf(){
 // Interceptor: guarantee CSRF on unsafe methods and set header explicitly
 api.interceptors.request.use(async (config) => {
   const method = (config.method || 'get').toLowerCase()
-  if(['post','put','patch','delete'].includes(method)){
+  const hasBearer = !!getToken()
+  if(['post','put','patch','delete'].includes(method) && !hasBearer){
     await ensureCsrf()
     try{
       const m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/)
