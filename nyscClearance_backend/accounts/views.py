@@ -1342,6 +1342,52 @@ def performance_clearance_page(request):
             'dashboard_url': f'{frontend_base}/dashboard',
         }, status=402)
 
+    # Map NYSC two-letter state code to state/capital for template placeholders
+    STATE_MAP = {
+        'AB': {'state': 'Abia', 'capital': 'Umuahia'},
+        'AD': {'state': 'Adamawa', 'capital': 'Yola'},
+        'AK': {'state': 'Akwa Ibom', 'capital': 'Uyo'},
+        'AN': {'state': 'Anambra', 'capital': 'Awka'},
+        'BA': {'state': 'Bauchi', 'capital': 'Bauchi'},
+        'BY': {'state': 'Bayelsa', 'capital': 'Yenagoa'},
+        'BN': {'state': 'Benue', 'capital': 'Makurdi'},
+        'BO': {'state': 'Borno', 'capital': 'Maiduguri'},
+        'CR': {'state': 'Cross River', 'capital': 'Calabar'},
+        'DT': {'state': 'Delta', 'capital': 'Asaba'},
+        'EB': {'state': 'Ebonyi', 'capital': 'Abakaliki'},
+        'ED': {'state': 'Edo', 'capital': 'Benin City'},
+        'EK': {'state': 'Ekiti', 'capital': 'Ado-Ekiti'},
+        'EN': {'state': 'Enugu', 'capital': 'Enugu'},
+        'FC': {'state': 'FCT', 'capital': 'Abuja'},
+        'GM': {'state': 'Gombe', 'capital': 'Gombe'},
+        'IM': {'state': 'Imo', 'capital': 'Owerri'},
+        'JG': {'state': 'Jigawa', 'capital': 'Dutse'},
+        'KD': {'state': 'Kaduna', 'capital': 'Kaduna'},
+        'KN': {'state': 'Kano', 'capital': 'Kano'},
+        'KT': {'state': 'Katsina', 'capital': 'Katsina'},
+        'KB': {'state': 'Kebbi', 'capital': 'Birnin Kebbi'},
+        'KG': {'state': 'Kogi', 'capital': 'Lokoja'},
+        'KW': {'state': 'Kwara', 'capital': 'Ilorin'},
+        'LA': {'state': 'Lagos', 'capital': 'Ikeja'},
+        'NS': {'state': 'Nasarawa', 'capital': 'Lafia'},
+        'NG': {'state': 'Niger', 'capital': 'Minna'},
+        'OG': {'state': 'Ogun', 'capital': 'Abeokuta'},
+        'OD': {'state': 'Ondo', 'capital': 'Akure'},
+        'OS': {'state': 'Osun', 'capital': 'Osogbo'},
+        'OY': {'state': 'Oyo', 'capital': 'Ibadan'},
+        'PL': {'state': 'Plateau', 'capital': 'Jos'},
+        'RV': {'state': 'Rivers', 'capital': 'Port Harcourt'},
+        'SO': {'state': 'Sokoto', 'capital': 'Sokoto'},
+        'TR': {'state': 'Taraba', 'capital': 'Jalingo'},
+        'YB': {'state': 'Yobe', 'capital': 'Damaturu'},
+        'ZM': {'state': 'Zamfara', 'capital': 'Gusau'},
+    }
+
+    raw_code = (cm.state_code or '').upper()
+    # Extract first two letters as state code (robust to formats like LA/20B/1234)
+    code_letters = ''.join([ch for ch in raw_code if ch.isalpha()])[:2]
+    region = STATE_MAP.get(code_letters, {'state': '', 'capital': ''})
+
     ctx = {
         'reference_number': ref_number,
         'date': timezone.localdate().strftime('%Y-%m-%d'),
@@ -1349,6 +1395,8 @@ def performance_clearance_page(request):
         'year': start.strftime('%Y'),
         'name': cm.full_name.upper(),
         'state_code': cm.state_code,
+        'state': region['state'],
+        'capital': region['capital'],
         'signatory_name': (getattr(prof, 'signatory_name', '') if prof else ''),
         'pronoun': pronoun,
         'logo_url': logo_url,
