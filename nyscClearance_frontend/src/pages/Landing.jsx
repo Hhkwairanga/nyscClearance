@@ -23,7 +23,14 @@ export default function Landing(){
                 <div className="line w-75"></div>
                 <div className="line w-50"></div>
                 <div className="line w-100"></div>
-                <div className="status">Clearance Approved ✓</div>
+                <div className="status">Clearance Approved <span className="blink-check" aria-hidden>✓</span></div>
+                <div className="scroll-window mt-2" aria-hidden>
+                  <img
+                    src="/clearance_letter.png"
+                    alt="Clearance Letter"
+                    className="clearance-letter-img scroll-content"
+                  />
+                </div>
               </div>
             </div>
           </div>

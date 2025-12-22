@@ -25,8 +25,7 @@ export default function App(){
       <nav className="navbar navbar-expand-lg navbar-dark bg-olive">
         <div className="container">
           <Link to={dashPath} className="navbar-brand d-flex align-items-center">
-            <img src="/nyscclearance_logo.png" alt="NYSC Clearance" height="32" className="me-2"/>
-            <span>NYSC Clearance</span>
+            <img src="/nyscclearance_logo.svg" alt="NYSC Clearance" className="brand-logo"/>
           </Link>
           <div className="ms-auto d-flex gap-2">
             {!isAuthed && <Link to="/signup" className="btn btn-khaki">Sign Up</Link>}
