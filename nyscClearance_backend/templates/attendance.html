@@ -79,6 +79,10 @@
             let done = false;
             const FPS = 12;
             const loop = () => {
+              // Only capture when enough data is available
+              if (typeof video.readyState === 'number' && video.readyState < 3) {
+                return setTimeout(loop, Math.floor(1000 / FPS));
+              }
               const vw = video.videoWidth || 640;
               const vh = video.videoHeight || 480;
               const MAX_W = 360, MAX_H = 270;
