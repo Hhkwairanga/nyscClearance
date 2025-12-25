@@ -101,6 +101,42 @@ def _ensure_rgb_uint8(arr):
         traceback.print_exc()
         return arr
 
+def sanitize_rgb(img):
+    """Convert a decoded frame to uint8 3-channel RGB.
+    - Accepts BGR/GRAY/BGRA inputs, drops alpha if present.
+    - Casts dtype to uint8 with clipping/scaling when necessary.
+    """
+    if img is None:
+        return None
+    try:
+        arr = img
+        # Type normalize first
+        if arr.dtype != np.uint8:
+            if np.issubdtype(arr.dtype, np.floating):
+                maxv = float(np.nanmax(arr)) if arr.size else 1.0
+                scale = 255.0 if maxv <= 1.0 else 1.0
+                arr = np.clip(arr * scale, 0, 255).astype(np.uint8)
+            else:
+                arr = np.clip(arr, 0, 255).astype(np.uint8)
+        # Channel handling and BGR->RGB conversion
+        if arr.ndim == 2:
+            rgb = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
+        elif arr.ndim == 3:
+            ch = arr.shape[2]
+            if ch == 4:
+                arr = arr[:, :, :3]
+            if arr.shape[2] >= 3:
+                rgb = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_BGR2RGB)
+            else:
+                rgb = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
+        else:
+            rgb = None
+        return _ensure_rgb_uint8(rgb) if rgb is not None else None
+    except Exception as e:
+        print("[capture] sanitize_rgb error:", e)
+        traceback.print_exc()
+        return None
+
 def _reset_capture_state(corper_id: int):
     _CAPTURE_STATE[corper_id] = {
         'enc_count': 0,   # number of encodings accumulated
@@ -232,8 +268,7 @@ def capture_process_frame(request, corper_id: int):
         img_data = base64.b64decode(frame)
         nparr = np.frombuffer(img_data, np.uint8)
         bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB) if bgr is not None else None
-        rgb = _ensure_rgb_uint8(rgb) if rgb is not None else None
+        rgb = sanitize_rgb(bgr)
         locs = face_recognition.face_locations(rgb) if rgb is not None else []
         encs = face_recognition.face_encodings(rgb, locs) if rgb is not None else []
     except Exception as e:
@@ -427,11 +462,10 @@ def attendance_process_frame(request):
     # Decode incoming frame and detect face(s)
     img_data = base64.b64decode(frame)
     nparr = np.frombuffer(img_data, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    if img is None:
+    bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if bgr is None:
         return JsonResponse({'detail': 'Invalid frame'}, status=400)
-    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    rgb = _ensure_rgb_uint8(rgb)
+    rgb = sanitize_rgb(bgr)
     # Detect faces and compute encodings with locations to draw overlays
     try:
         face_locations = face_recognition.face_locations(rgb)
