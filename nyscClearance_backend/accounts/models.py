@@ -198,6 +198,26 @@ class CorpMember(models.Model):
         return f"{self.full_name} ({self.state_code})"
 
 
+class TempFaceEncoding(models.Model):
+    """Temporary per-frame encodings captured during a session.
+    Keyed by corper and a `session_id` so work can be spread across workers.
+    Deleted after finalization.
+    """
+    corper = models.ForeignKey('accounts.CorpMember', on_delete=models.CASCADE, related_name='temp_face_encodings')
+    session_id = models.CharField(max_length=64, db_index=True)
+    idx = models.PositiveIntegerField(default=0)
+    vector = models.TextField()  # JSON list of floats
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['corper', 'session_id']),
+        ]
+        ordering = ('created_at', 'id')
+
+    def __str__(self):
+        return f"TmpEnc corper={self.corper_id} session={self.session_id} idx={self.idx}"
+
 class AttendanceLog(models.Model):
     # The corper's user account (login identity)
     account = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='attendance_logs')

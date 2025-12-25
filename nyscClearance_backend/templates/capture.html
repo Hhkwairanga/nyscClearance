@@ -65,6 +65,7 @@
       const submitBtn = document.getElementById('submit-btn');
 
       const csrftoken = getCookie('csrftoken');
+      const sessionId = '{{ session_id }}';
 
       let currentStream = null;
       let currentFacing = 'user'; // 'user' (front) | 'environment' (rear)
@@ -118,7 +119,7 @@
         fetch(window.location.pathname + 'process/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrftoken },
-          body: 'frame=' + encodeURIComponent(frame)
+          body: 'frame=' + encodeURIComponent(frame) + '&session=' + encodeURIComponent(sessionId)
         }).then(r=>r.json()).then(data => {
           if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
           if(data.saved >= 30){
@@ -157,7 +158,8 @@
       const btn = this; btn.disabled = true; btn.textContent = 'Submitting…';
       fetch(window.location.pathname.replace(/\/$/, '') + '/finalize/', {
         method: 'POST',
-        headers: { 'X-CSRFToken': csrftoken },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrftoken },
+        body: 'session=' + encodeURIComponent(sessionId),
       }).then(r=>r.json()).then(data => {
         if(data.status === 'ok'){
           // Redirect back to frontend dashboard with success flag

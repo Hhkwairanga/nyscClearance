@@ -37,6 +37,7 @@ import numpy as np
 import cv2
 import os
 import shutil
+import uuid
 import face_recognition
 
 from .serializers import (
@@ -52,7 +53,7 @@ from .serializers import (
     NotificationSerializer,
 )
 from .tokens import validate_email_token, generate_email_token
-from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog, WalletAccount, WalletTransaction, ClearanceOverride
+from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog, WalletAccount, WalletTransaction, ClearanceOverride, TempFaceEncoding
 from django.db.models import Count
 from django.db import models
 
@@ -157,11 +158,15 @@ def capture_page(request, corper_id: int):
     except Exception:
         pass
 
+    # Generate a unique session id for this capture flow
+    session_id = uuid.uuid4().hex
+
     ctx = {
         'corper_id': corper.id,
         'full_name': corper.full_name,
         'state_code': corper.state_code,
         'frontend_base': frontend_base,
+        'session_id': session_id,
     }
     return render(request, 'capture.html', ctx)
 
@@ -170,15 +175,43 @@ def capture_process_frame(request, corper_id: int):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     frame = request.POST.get('frame')
+    session_id = request.POST.get('session')
     if not frame:
         return JsonResponse({'detail': 'Missing frame'}, status=400)
+    if not session_id:
+        return JsonResponse({'detail': 'Missing session'}, status=400)
     # Save dir per corper under media/captures/{id}
     media_root = getattr(settings, 'MEDIA_ROOT', os.path.join(os.getcwd(), 'media'))
     save_dir = os.path.join(media_root, 'captures', str(corper_id))
-    processed, count = _process_capture_frame(corper_id, frame, save_dir)
+    processed, _ = _process_capture_frame(corper_id, frame, save_dir)
     if not processed:
         return JsonResponse({'detail': 'Processing failed'}, status=500)
-    return JsonResponse({'frame': processed, 'saved': count})
+
+    # Compute encoding for persistence (stateless across workers)
+    try:
+        img_data = base64.b64decode(frame)
+        nparr = np.frombuffer(img_data, np.uint8)
+        bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB) if bgr is not None else None
+        locs = face_recognition.face_locations(rgb) if rgb is not None else []
+        encs = face_recognition.face_encodings(rgb, locs) if rgb is not None else []
+    except Exception:
+        encs = []
+
+    MAX_ENCODINGS = 30
+    current_count = TempFaceEncoding.objects.filter(corper_id=corper_id, session_id=session_id).count()
+    if encs and current_count < MAX_ENCODINGS:
+        import json
+        vec = np.asarray(encs[0], dtype=np.float32)
+        TempFaceEncoding.objects.create(
+            corper_id=corper_id,
+            session_id=session_id,
+            idx=current_count,
+            vector=json.dumps(vec.tolist()),
+        )
+        current_count += 1
+
+    return JsonResponse({'frame': processed, 'saved': current_count})
 
 
 def capture_finalize(request, corper_id: int):
@@ -204,24 +237,33 @@ def capture_finalize(request, corper_id: int):
     if not allowed:
         return JsonResponse({'detail': 'Not allowed'}, status=403)
 
-    # Use in-memory accumulated encodings
-    st = _CAPTURE_STATE.get(corper_id)
-    if not st or not st.get('enc_count', 0) or st.get('enc_sum') is None:
-        return JsonResponse({'detail': 'No encodings captured; ensure face is visible'}, status=400)
+    session_id = request.POST.get('session')
+    if not session_id:
+        return JsonResponse({'detail': 'Missing session'}, status=400)
 
-    avg = (st['enc_sum'] / float(st['enc_count'])).astype(np.float32)
+    # Collect encodings from DB for this session
+    import json
+    rows = list(TempFaceEncoding.objects.filter(corper=corper, session_id=session_id).order_by('idx', 'id'))
+    if not rows:
+        return JsonResponse({'detail': 'No encodings found; ensure face is visible'}, status=400)
+    try:
+        arrs = [np.array(json.loads(r.vector), dtype=np.float32) for r in rows]
+        avg = np.mean(np.stack(arrs, axis=0), axis=0)
+    except Exception:
+        return JsonResponse({'detail': 'Failed to build average encoding'}, status=500)
     # Save to model as JSON list of floats
     try:
-        import json
         corper.face_encoding = json.dumps(avg.tolist())
         corper.save(update_fields=['face_encoding'])
     except Exception as e:
         return JsonResponse({'detail': f'Failed to save encoding: {e}'}, status=500)
+    # Delete temp rows for this session
+    TempFaceEncoding.objects.filter(corper=corper, session_id=session_id).delete()
 
     # Reset in-memory state
     _reset_capture_state(corper_id)
 
-    return JsonResponse({'status': 'ok', 'encodings': int(st['enc_count'])})
+    return JsonResponse({'status': 'ok', 'encodings': len(rows)})
 
 
 def attendance_page(request):
