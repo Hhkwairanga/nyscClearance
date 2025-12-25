@@ -65,7 +65,8 @@ _ATTENDANCE_STATE = {}
 
 def _reset_capture_state(corper_id: int):
     _CAPTURE_STATE[corper_id] = {
-        'image_count': 0,
+        'enc_count': 0,   # number of encodings accumulated
+        'enc_sum': None,  # running sum of encoding vectors (numpy array)
     }
 
 def _reset_attendance_state(corper_id: int):
@@ -74,39 +75,50 @@ def _reset_attendance_state(corper_id: int):
     }
 
 def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
-    st = _CAPTURE_STATE.setdefault(corper_id, {'image_count': 0})
+    # save_dir no longer used; kept for signature compatibility
+    st = _CAPTURE_STATE.setdefault(corper_id, {'enc_count': 0, 'enc_sum': None})
     img_data = base64.b64decode(b64_frame)
     nparr = np.frombuffer(img_data, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
-        return None, st['image_count']
-    # Detect on grayscale for speed/robustness
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30,30))
+        return None, st['enc_count']
 
-    # Save whenever a face is detected, up to 100 images
-    if len(faces) > 0 and st['image_count'] < 100:
-        os.makedirs(save_dir, exist_ok=True)
-        # take the first detected face per frame to avoid oversampling
-        (x,y,w,h) = faces[0]
-        # Use color ROI for downstream encoding (RGB pipeline)
-        face_roi_color = img[y:y+h, x:x+w]
-        if face_roi_color.size != 0:
-            # Resize to a modest size to reduce disk + CPU
-            resized_color = cv2.resize(face_roi_color, (160, 160))
-            out_path = os.path.join(save_dir, f"frame_{st['image_count']}.jpg")
-            # Save as color JPEG (BGR order expected by imwrite)
-            cv2.imwrite(out_path, resized_color)
-            st['image_count'] += 1
+    # Convert to RGB for face_recognition
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # Detect faces and compute first encoding
+    try:
+        locations = face_recognition.face_locations(rgb)
+        encs = face_recognition.face_encodings(rgb, locations)
+    except Exception:
+        locations, encs = [], []
 
-    # draw overlays
-    for (x,y,w,h) in faces:
-        cv2.rectangle(img, (x,y), (x+w,y+h), (0,255,0), 2)
-        cv2.putText(img, f'Image {st["image_count"]}', (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2, cv2.LINE_AA)
+    # If we have an encoding and haven't reached 30 yet, update running sum
+    MAX_ENCODINGS = 30
+    if encs and st.get('enc_count', 0) < MAX_ENCODINGS:
+        vec = np.asarray(encs[0], dtype=np.float32)
+        if st.get('enc_sum') is None:
+            st['enc_sum'] = vec.copy()
+        else:
+            st['enc_sum'] = st['enc_sum'] + vec
+        st['enc_count'] = st.get('enc_count', 0) + 1
+
+    # draw overlays (use first face location if present)
+    if locations:
+        top, right, bottom, left = locations[0]
+        cv2.rectangle(img, (left, top), (right, bottom), (0,255,0), 2)
+        cv2.putText(
+            img,
+            f'Enc {st.get("enc_count",0)}/{MAX_ENCODINGS}',
+            (left, max(0, top-10)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0,255,0),
+            2,
+            cv2.LINE_AA
+        )
     _, buffer = cv2.imencode('.jpg', img)
     processed_frame = base64.b64encode(buffer).decode('utf-8')
-    return processed_frame, st['image_count']
+    return processed_frame, st.get('enc_count', 0)
 
 
 def capture_page(request, corper_id: int):
@@ -192,29 +204,12 @@ def capture_finalize(request, corper_id: int):
     if not allowed:
         return JsonResponse({'detail': 'Not allowed'}, status=403)
 
-    media_root = getattr(settings, 'MEDIA_ROOT', os.path.join(os.getcwd(), 'media'))
-    save_dir = os.path.join(media_root, 'captures', str(corper_id))
-    if not os.path.isdir(save_dir):
-        return JsonResponse({'detail': 'No captured images'}, status=400)
+    # Use in-memory accumulated encodings
+    st = _CAPTURE_STATE.get(corper_id)
+    if not st or not st.get('enc_count', 0) or st.get('enc_sum') is None:
+        return JsonResponse({'detail': 'No encodings captured; ensure face is visible'}, status=400)
 
-    # Load up to 100 images and compute encodings
-    files = sorted([f for f in os.listdir(save_dir) if f.lower().endswith('.jpg')])
-    encodings = []
-    for fname in files[:100]:
-        path = os.path.join(save_dir, fname)
-        try:
-            img = face_recognition.load_image_file(path)
-            encs = face_recognition.face_encodings(img)
-            if encs:
-                encodings.append(encs[0])
-        except Exception:
-            continue
-
-    if not encodings:
-        return JsonResponse({'detail': 'No encodings found; ensure face is visible'}, status=400)
-
-    # Average encoding
-    avg = np.mean(np.stack(encodings, axis=0), axis=0)
+    avg = (st['enc_sum'] / float(st['enc_count'])).astype(np.float32)
     # Save to model as JSON list of floats
     try:
         import json
@@ -223,16 +218,10 @@ def capture_finalize(request, corper_id: int):
     except Exception as e:
         return JsonResponse({'detail': f'Failed to save encoding: {e}'}, status=500)
 
-    # Cleanup captured images
-    try:
-        shutil.rmtree(save_dir)
-    except Exception:
-        pass
-
     # Reset in-memory state
     _reset_capture_state(corper_id)
 
-    return JsonResponse({'status': 'ok', 'encodings': len(encodings)})
+    return JsonResponse({'status': 'ok', 'encodings': int(st['enc_count'])})
 
 
 def attendance_page(request):

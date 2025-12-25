@@ -121,8 +121,8 @@
           body: 'frame=' + encodeURIComponent(frame)
         }).then(r=>r.json()).then(data => {
           if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
-          if(data.saved >= 100){
-            // Stop when 100 frames saved
+          if(data.saved >= 30){
+            // Stop when 30 encodings captured
             capturing = false;
             stopCurrentStream();
             startBtn.disabled = true;
