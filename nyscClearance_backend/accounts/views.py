@@ -38,6 +38,7 @@ import cv2
 import os
 import shutil
 import uuid
+import traceback
 import face_recognition
 
 from .serializers import (
@@ -90,7 +91,9 @@ def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
     try:
         locations = face_recognition.face_locations(rgb)
         encs = face_recognition.face_encodings(rgb, locations)
-    except Exception:
+    except Exception as e:
+        print("[capture] Error in face_locations/encodings (_process_capture_frame):", e)
+        traceback.print_exc()
         locations, encs = [], []
 
     # If we have an encoding and haven't reached 30 yet, update running sum
@@ -195,7 +198,9 @@ def capture_process_frame(request, corper_id: int):
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB) if bgr is not None else None
         locs = face_recognition.face_locations(rgb) if rgb is not None else []
         encs = face_recognition.face_encodings(rgb, locs) if rgb is not None else []
-    except Exception:
+    except Exception as e:
+        print("[capture] Error in face_locations/encodings (persist step):", e)
+        traceback.print_exc()
         encs = []
 
     MAX_ENCODINGS = 30
