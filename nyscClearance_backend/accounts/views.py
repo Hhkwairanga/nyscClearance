@@ -173,7 +173,28 @@ def _safe_face_locations(img_rgb_or_gray, tag=""):
             if not gray.flags['C_CONTIGUOUS']:
                 gray = np.ascontiguousarray(gray)
             _debug_img(f'{tag}.gray', gray)
-            return face_recognition.face_locations(gray)
+            try:
+                return face_recognition.face_locations(gray)
+            except RuntimeError as ee2:
+                print(f"[detect] face_locations failed on grayscale {tag}: {ee2}")
+                traceback.print_exc()
+                # Final fallback: Haar cascade via OpenCV
+                try:
+                    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+                    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+                    locs = []
+                    for (x, y, w, h) in faces:
+                        top = int(y)
+                        left = int(x)
+                        bottom = int(y + h)
+                        right = int(x + w)
+                        locs.append((top, right, bottom, left))
+                    print(f"[detect] Haar fallback produced {len(locs)} faces for {tag}")
+                    return locs
+                except Exception as ee3:
+                    print(f"[detect] Haar fallback failed on {tag}: {ee3}")
+                    traceback.print_exc()
+                    return []
         except Exception as ee:
             print(f"[detect] grayscale fallback failed on {tag}: {ee}")
             traceback.print_exc()
