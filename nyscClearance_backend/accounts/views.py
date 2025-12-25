@@ -132,7 +132,15 @@ def sanitize_rgb(img):
         else:
             rgb = None
         rgb = _ensure_rgb_uint8(rgb) if rgb is not None else None
-        return np.ascontiguousarray(rgb) if rgb is not None else None
+        if rgb is None:
+            return None
+        if not rgb.flags['C_CONTIGUOUS']:
+            rgb = np.ascontiguousarray(rgb)
+        if rgb.dtype != np.uint8:
+            rgb = rgb.astype(np.uint8, copy=False)
+        if rgb.ndim != 3 or rgb.shape[2] != 3:
+            return None
+        return rgb
     except Exception as e:
         print("[capture] sanitize_rgb error:", e)
         traceback.print_exc()
@@ -148,6 +156,22 @@ def _reset_attendance_state(corper_id: int):
     _ATTENDANCE_STATE[corper_id] = {
         'hits': 0,
     }
+
+def _debug_img(tag, arr):
+    try:
+        if arr is None:
+            print(f"[debug] {tag}: arr=None")
+            return
+        print(f"[debug] {tag}: dtype={arr.dtype}, shape={getattr(arr, 'shape', None)}, contig={arr.flags['C_CONTIGUOUS']}, strides={arr.strides}")
+        try:
+            amin = float(np.min(arr))
+            amax = float(np.max(arr))
+            print(f"[debug] {tag}: min={amin} max={amax}")
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"[debug] {tag}: error printing info: {e}")
+        traceback.print_exc()
 
 def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
     # save_dir no longer used; kept for signature compatibility
@@ -269,6 +293,7 @@ def capture_process_frame(request, corper_id: int):
         nparr = np.frombuffer(img_data, np.uint8)
         bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         rgb = sanitize_rgb(bgr)
+        _debug_img('capture_process_frame.rgb', rgb)
         locs = face_recognition.face_locations(rgb) if rgb is not None else []
         encs = face_recognition.face_encodings(rgb, locs) if rgb is not None else []
     except Exception as e:
@@ -466,6 +491,7 @@ def attendance_process_frame(request):
     if bgr is None:
         return JsonResponse({'detail': 'Invalid frame'}, status=400)
     rgb = sanitize_rgb(bgr)
+    _debug_img('attendance_process_frame.rgb', rgb)
     # Detect faces and compute encodings with locations to draw overlays
     try:
         face_locations = face_recognition.face_locations(rgb)
