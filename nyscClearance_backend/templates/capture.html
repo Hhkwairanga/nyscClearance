@@ -18,6 +18,8 @@
       const v = document.cookie.match('(^|;)\\s*'+name+'\\s*=\\s*([^;]+)')
       return v ? v.pop() : ''
     }
+    // Expose session id at global scope for all handlers
+    const SESSION_ID = '{{ session_id }}';
   </script>
 </head>
 <body>
@@ -65,7 +67,6 @@
       const submitBtn = document.getElementById('submit-btn');
 
       const csrftoken = getCookie('csrftoken');
-      const sessionId = '{{ session_id }}';
 
       let currentStream = null;
       let currentFacing = 'user'; // 'user' (front) | 'environment' (rear)
@@ -119,7 +120,7 @@
         fetch(window.location.pathname + 'process/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrftoken },
-          body: 'frame=' + encodeURIComponent(frame) + '&session=' + encodeURIComponent(sessionId)
+          body: 'frame=' + encodeURIComponent(frame) + '&session=' + encodeURIComponent(SESSION_ID)
         }).then(r=>r.json()).then(data => {
           if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
           if(data.saved >= 30){
@@ -159,7 +160,7 @@
       fetch(window.location.pathname.replace(/\/$/, '') + '/finalize/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrftoken },
-        body: 'session=' + encodeURIComponent(sessionId),
+        body: 'session=' + encodeURIComponent(SESSION_ID),
       }).then(r=>r.json()).then(data => {
         if(data.status === 'ok'){
           // Redirect back to frontend dashboard with success flag
