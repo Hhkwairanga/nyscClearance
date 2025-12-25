@@ -7,6 +7,7 @@ from .models import (
     Department,
     Unit,
     CorpMember,
+    TempFaceEncoding,
     AttendanceLog,
     PublicHoliday,
     LeaveRequest,
@@ -169,3 +170,11 @@ class PaystackConfigAdmin(admin.ModelAdmin):
 class ClearanceOverrideAdmin(admin.ModelAdmin):
     list_display = ("corper", "year_month", "created_by", "created_at")
     search_fields = ("corper__full_name", "corper__state_code", "year_month")
+
+
+@admin.register(TempFaceEncoding)
+class TempFaceEncodingAdmin(admin.ModelAdmin):
+    list_display = ("corper", "session_id", "idx", "created_at")
+    list_filter = ("session_id", "created_at")
+    search_fields = ("corper__full_name", "corper__state_code", "session_id")
+    readonly_fields = ("created_at",)
