@@ -65,6 +65,42 @@ User = get_user_model()
 _CAPTURE_STATE = {}
 _ATTENDANCE_STATE = {}
 
+def _ensure_rgb_uint8(arr):
+    """Ensure image array is uint8 RGB (H, W, 3).
+    - Cast dtype to uint8 (with clipping).
+    - Drop alpha channel if present.
+    - Expand/convert grayscale to 3 channels.
+    """
+    if arr is None:
+        return None
+    try:
+        # Ensure dtype uint8; scale floats in 0..1 range if needed
+        if arr.dtype != np.uint8:
+            if np.issubdtype(arr.dtype, np.floating):
+                scale = 255.0 if float(np.nanmax(arr) or 0.0) <= 1.0 else 1.0
+                arr = np.clip(arr * scale, 0, 255).astype(np.uint8)
+            else:
+                arr = np.clip(arr, 0, 255).astype(np.uint8)
+        # Ensure 3 channels
+        if arr.ndim == 2:
+            arr = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
+        elif arr.ndim == 3:
+            if arr.shape[2] == 4:
+                arr = arr[:, :, :3]
+            elif arr.shape[2] == 3:
+                pass
+            else:
+                # Unexpected channel count; best effort: take first 3 or tile
+                if arr.shape[2] > 3:
+                    arr = arr[:, :, :3]
+                else:
+                    arr = np.repeat(arr, 3, axis=2)[:, :, :3]
+        return arr
+    except Exception as e:
+        print("[capture] _ensure_rgb_uint8 error:", e)
+        traceback.print_exc()
+        return arr
+
 def _reset_capture_state(corper_id: int):
     _CAPTURE_STATE[corper_id] = {
         'enc_count': 0,   # number of encodings accumulated
@@ -85,8 +121,9 @@ def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
     if img is None:
         return None, st['enc_count']
 
-    # Convert to RGB for face_recognition
+    # Convert to RGB for face_recognition and normalize to uint8 3-ch
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    rgb = _ensure_rgb_uint8(rgb)
     # Detect faces and compute first encoding
     try:
         locations = face_recognition.face_locations(rgb)
@@ -196,6 +233,7 @@ def capture_process_frame(request, corper_id: int):
         nparr = np.frombuffer(img_data, np.uint8)
         bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB) if bgr is not None else None
+        rgb = _ensure_rgb_uint8(rgb) if rgb is not None else None
         locs = face_recognition.face_locations(rgb) if rgb is not None else []
         encs = face_recognition.face_encodings(rgb, locs) if rgb is not None else []
     except Exception as e:
@@ -393,11 +431,14 @@ def attendance_process_frame(request):
     if img is None:
         return JsonResponse({'detail': 'Invalid frame'}, status=400)
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    rgb = _ensure_rgb_uint8(rgb)
     # Detect faces and compute encodings with locations to draw overlays
     try:
         face_locations = face_recognition.face_locations(rgb)
         encs = face_recognition.face_encodings(rgb, face_locations)
-    except Exception:
+    except Exception as e:
+        print("[attendance] Error in face_locations/encodings:", e)
+        traceback.print_exc()
         face_locations, encs = [], []
 
     recognized = False
