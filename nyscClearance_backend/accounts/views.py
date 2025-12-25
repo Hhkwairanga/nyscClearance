@@ -141,6 +141,43 @@ def sanitize_rgb(img):
         if rgb.ndim != 3 or rgb.shape[2] != 3:
             return None
         return rgb
+
+def _safe_face_locations(img_rgb_or_gray, tag=""):
+    """Call face_recognition.face_locations safely on a valid uint8 image.
+    - First try on the provided image (expected RGB from sanitize_rgb).
+    - If dlib complains about image type, fall back to grayscale detection.
+    """
+    try:
+        return face_recognition.face_locations(img_rgb_or_gray)
+    except RuntimeError as e:
+        msg = str(e)
+        print(f"[detect] face_locations failed on {tag}: {msg}")
+        traceback.print_exc()
+        # Fallback to grayscale if possible
+        try:
+            arr = img_rgb_or_gray
+            if arr is None:
+                return []
+            if arr.ndim == 3 and arr.shape[2] == 3:
+                gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+            elif arr.ndim == 2:
+                gray = arr
+            else:
+                return []
+            if gray.dtype != np.uint8:
+                gray = np.clip(gray, 0, 255).astype(np.uint8)
+            if not gray.flags['C_CONTIGUOUS']:
+                gray = np.ascontiguousarray(gray)
+            _debug_img(f'{tag}.gray', gray)
+            return face_recognition.face_locations(gray)
+        except Exception as ee:
+            print(f"[detect] grayscale fallback failed on {tag}: {ee}")
+            traceback.print_exc()
+            return []
+    except Exception as e:
+        print(f"[detect] face_locations unexpected error on {tag}: {e}")
+        traceback.print_exc()
+        return []
     except Exception as e:
         print("[capture] sanitize_rgb error:", e)
         traceback.print_exc()
@@ -186,10 +223,10 @@ def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
     rgb = sanitize_rgb(img)
     # Detect faces and compute first encoding
     try:
-        locations = face_recognition.face_locations(rgb)
+        locations = _safe_face_locations(rgb, tag='capture_inmem')
         encs = face_recognition.face_encodings(rgb, locations)
     except Exception as e:
-        print("[capture] Error in face_locations/encodings (_process_capture_frame):", e)
+        print("[capture] Error in face_encodings (_process_capture_frame):", e)
         traceback.print_exc()
         locations, encs = [], []
 
@@ -294,7 +331,7 @@ def capture_process_frame(request, corper_id: int):
         bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         rgb = sanitize_rgb(bgr)
         _debug_img('capture_process_frame.rgb', rgb)
-        locs = face_recognition.face_locations(rgb) if rgb is not None else []
+        locs = _safe_face_locations(rgb, tag='capture_persist') if rgb is not None else []
         encs = face_recognition.face_encodings(rgb, locs) if rgb is not None else []
     except Exception as e:
         print("[capture] Error in face_locations/encodings (persist step):", e)
@@ -494,10 +531,10 @@ def attendance_process_frame(request):
     _debug_img('attendance_process_frame.rgb', rgb)
     # Detect faces and compute encodings with locations to draw overlays
     try:
-        face_locations = face_recognition.face_locations(rgb)
+        face_locations = _safe_face_locations(rgb, tag='attendance')
         encs = face_recognition.face_encodings(rgb, face_locations)
     except Exception as e:
-        print("[attendance] Error in face_locations/encodings:", e)
+        print("[attendance] Error in face_encodings:", e)
         traceback.print_exc()
         face_locations, encs = [], []
 
