@@ -141,6 +141,10 @@ def sanitize_rgb(img):
         if rgb.ndim != 3 or rgb.shape[2] != 3:
             return None
         return rgb
+    except Exception as e:
+        print("[capture] sanitize_rgb error:", e)
+        traceback.print_exc()
+        return None
 
 def _safe_face_locations(img_rgb_or_gray, tag=""):
     """Call face_recognition.face_locations safely on a valid uint8 image.
@@ -178,10 +182,7 @@ def _safe_face_locations(img_rgb_or_gray, tag=""):
         print(f"[detect] face_locations unexpected error on {tag}: {e}")
         traceback.print_exc()
         return []
-    except Exception as e:
-        print("[capture] sanitize_rgb error:", e)
-        traceback.print_exc()
-        return None
+    
 
 def _reset_capture_state(corper_id: int):
     _CAPTURE_STATE[corper_id] = {
