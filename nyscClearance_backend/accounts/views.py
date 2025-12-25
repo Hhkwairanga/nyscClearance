@@ -181,9 +181,49 @@ def _safe_face_locations(img_rgb_or_gray, tag=""):
         if not locs:
             # Try a higher upsample for small frames
             locs = face_recognition.face_locations(img_rgb_or_gray, number_of_times_to_upsample=2)
-        if not locs:
-            print(f"[detect] No faces with HOG (upsample<=2) for {tag}")
-        return locs
+        if locs:
+            return locs
+        # If empty (no exception), try grayscale HOG as a second strategy
+        arr = img_rgb_or_gray
+        try:
+            if arr is None:
+                return []
+            if arr.ndim == 3 and arr.shape[2] == 3:
+                gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+            elif arr.ndim == 2:
+                gray = arr
+            else:
+                return []
+            if gray.dtype != np.uint8:
+                gray = np.clip(gray, 0, 255).astype(np.uint8)
+            if not gray.flags['C_CONTIGUOUS']:
+                gray = np.ascontiguousarray(gray)
+            _debug_img(f'{tag}.gray_noerr', gray)
+            locs = face_recognition.face_locations(gray)
+            if not locs:
+                locs = face_recognition.face_locations(gray, number_of_times_to_upsample=2)
+            if locs:
+                return locs
+        except Exception as ee_g:
+            print(f"[detect] grayscale no-error path failed on {tag}: {ee_g}")
+            traceback.print_exc()
+        # Final fallback: Haar cascade
+        try:
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+            locs = []
+            for (x, y, w, h) in faces:
+                top = int(y)
+                left = int(x)
+                bottom = int(y + h)
+                right = int(x + w)
+                locs.append((top, right, bottom, left))
+            print(f"[detect] Haar fallback (no-error) produced {len(locs)} faces for {tag}")
+            return locs
+        except Exception as ee3:
+            print(f"[detect] Haar fallback (no-error) failed on {tag}: {ee3}")
+            traceback.print_exc()
+            return []
     except RuntimeError as e:
         msg = str(e)
         print(f"[detect] face_locations failed on {tag}: {msg}")
