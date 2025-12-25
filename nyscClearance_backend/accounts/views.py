@@ -131,7 +131,8 @@ def sanitize_rgb(img):
                 rgb = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
         else:
             rgb = None
-        return _ensure_rgb_uint8(rgb) if rgb is not None else None
+        rgb = _ensure_rgb_uint8(rgb) if rgb is not None else None
+        return np.ascontiguousarray(rgb) if rgb is not None else None
     except Exception as e:
         print("[capture] sanitize_rgb error:", e)
         traceback.print_exc()
@@ -157,9 +158,8 @@ def _process_capture_frame(corper_id: int, b64_frame: str, save_dir: str):
     if img is None:
         return None, st['enc_count']
 
-    # Convert to RGB for face_recognition and normalize to uint8 3-ch
-    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    rgb = _ensure_rgb_uint8(rgb)
+    # Sanitize to contiguous uint8 RGB for face_recognition
+    rgb = sanitize_rgb(img)
     # Detect faces and compute first encoding
     try:
         locations = face_recognition.face_locations(rgb)
