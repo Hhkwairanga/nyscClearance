@@ -177,7 +177,13 @@ def _safe_face_locations(img_rgb_or_gray, tag=""):
     - If dlib complains about image type, fall back to grayscale detection.
     """
     try:
-        return face_recognition.face_locations(img_rgb_or_gray)
+        locs = face_recognition.face_locations(img_rgb_or_gray)
+        if not locs:
+            # Try a higher upsample for small frames
+            locs = face_recognition.face_locations(img_rgb_or_gray, number_of_times_to_upsample=2)
+        if not locs:
+            print(f"[detect] No faces with HOG (upsample<=2) for {tag}")
+        return locs
     except RuntimeError as e:
         msg = str(e)
         print(f"[detect] face_locations failed on {tag}: {msg}")
@@ -199,7 +205,12 @@ def _safe_face_locations(img_rgb_or_gray, tag=""):
                 gray = np.ascontiguousarray(gray)
             _debug_img(f'{tag}.gray', gray)
             try:
-                return face_recognition.face_locations(gray)
+                locs = face_recognition.face_locations(gray)
+                if not locs:
+                    locs = face_recognition.face_locations(gray, number_of_times_to_upsample=2)
+                if not locs:
+                    print(f"[detect] No faces with HOG on gray (upsample<=2) for {tag}")
+                return locs
             except RuntimeError as ee2:
                 print(f"[detect] face_locations failed on grayscale {tag}: {ee2}")
                 traceback.print_exc()
@@ -583,6 +594,7 @@ def attendance_process_frame(request):
     # Detect faces and compute encodings with locations to draw overlays
     try:
         face_locations = _safe_face_locations(rgb, tag='attendance')
+        print(f"[attendance] detected faces: {len(face_locations)}")
         img_for_enc = ensure_dlib_rgb(rgb)
         _debug_img('attendance.enc_img', img_for_enc)
         encs = face_recognition.face_encodings(img_for_enc, face_locations) if img_for_enc is not None else []
