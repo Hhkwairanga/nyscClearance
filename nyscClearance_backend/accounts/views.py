@@ -27,6 +27,7 @@ from rest_framework.decorators import action
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
+from django.contrib import messages
 from django.http import JsonResponse, HttpResponseNotAllowed, HttpResponseNotFound
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -290,6 +291,7 @@ def _reset_capture_state(corper_id: int):
 def _reset_attendance_state(corper_id: int):
     _ATTENDANCE_STATE[corper_id] = {
         'hits': 0,
+        'logged': False,
     }
 
 def _debug_img(tag, arr):
@@ -679,7 +681,7 @@ def attendance_process_frame(request):
             cv2.putText(bgr, f"{cm.state_code}", (right + 40, top + 20), font, 0.6, (0, 255, 0), 1)
 
     # Update recognition state using the best face confidence
-    st = _ATTENDANCE_STATE.setdefault(cm.id, {'hits': 0})
+    st = _ATTENDANCE_STATE.setdefault(cm.id, {'hits': 0, 'logged': False})
     if best_conf >= 65:  # ~0.35 distance equivalence; empirical
         st['hits'] = min(10, st.get('hits', 0) + 1)
         if st['hits'] >= 3:
@@ -687,7 +689,54 @@ def attendance_process_frame(request):
     else:
         st['hits'] = 0
 
-    # Header label
+    # If recognized and not yet logged, log attendance once and redirect
+    if recognized and not st.get('logged'):
+        # Persist attendance log (same logic as finalize, without geofence)
+        from .models import AttendanceLog
+        now = timezone.localtime()
+        today = timezone.localdate()
+        # Derive state from state_code if possible
+        state = ''
+        try:
+            state = (cm.state_code or '').split('/')[0]
+        except Exception:
+            state = ''
+        log, created = AttendanceLog.objects.get_or_create(
+            account=user,
+            date=today,
+            defaults={
+                'org': cm.user,
+                'name': cm.full_name,
+                'state': state,
+                'code': cm.state_code or '',
+            }
+        )
+        if created or not log.time_in:
+            log.time_in = now.time()
+        if not log.time_in or now.time() >= log.time_in:
+            log.time_out = now.time()
+        else:
+            log.time_out = log.time_in
+        log.save()
+        st['logged'] = True
+
+        # Set success message and redirect to frontend dashboard
+        try:
+            messages.success(request, 'Attendance marked successfully')
+        except Exception:
+            pass
+
+        # Compute frontend base similar to attendance_page
+        request_origin = request.headers.get('Origin')
+        try:
+            allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
+        except Exception:
+            allowed = set()
+        frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
+        from django.http import HttpResponseRedirect
+        return HttpResponseRedirect(f'{frontend_base}/dashboard?attendance=success')
+
+    # Otherwise, draw overlays and return 200 JSON (no redirect)
     label = 'RECOGNIZED' if recognized else 'Scanning…'
     head_color = (0, 200, 0) if recognized else (0, 200, 200)
     cv2.putText(bgr, label, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, head_color, 2, cv2.LINE_AA)
