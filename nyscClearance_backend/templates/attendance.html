@@ -103,7 +103,7 @@
                 if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
                 if(data.ok === true && data.redirect){
                   try{ stream.getTracks().forEach(t=>t.stop()) }catch(e){}
-                  const dest = data.redirect.startsWith('http') ? data.redirect : ('{{ frontend_base }}' + data.redirect.replace(/^\//,''));
+                  const dest = data.redirect.startsWith('http') ? data.redirect : ('{{ frontend_base }}' + data.redirect);
                   window.location.href = dest;
                   return;
                 }
