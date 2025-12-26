@@ -27,7 +27,6 @@ from rest_framework.decorators import action
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
-from django.contrib import messages
 from django.core.cache import cache
 from django.http import JsonResponse, HttpResponseNotAllowed, HttpResponseNotFound
 from django.utils import timezone
@@ -733,12 +732,6 @@ def attendance_process_frame(request):
         log.save()
         st['logged'] = True
         cache.set(cd_key, True, timeout=max(1, cooldown_seconds))
-
-        # Set success message
-        try:
-            messages.success(request, 'Attendance marked successfully')
-        except Exception:
-            pass
 
         # Return JSON success with redirect path and message
         return JsonResponse({'ok': True, 'redirect': '/dashboard/', 'message': f'Attendance logged for {cm.full_name}'})

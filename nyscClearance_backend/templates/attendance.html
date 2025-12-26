@@ -76,6 +76,25 @@
           navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
             video.srcObject = stream; video.play();
             processed.style.display = 'block';
+            // Prepare lightweight beep on success
+            let audioCtx = null;
+            try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){}
+            const playBeep = () => {
+              try{
+                if(!audioCtx) return;
+                if(audioCtx.state === 'suspended'){ audioCtx.resume().catch(()=>{}); }
+                const o = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                o.type = 'sine'; o.frequency.value = 880;
+                o.connect(g); g.connect(audioCtx.destination);
+                const t0 = audioCtx.currentTime;
+                g.gain.setValueAtTime(0.0001, t0);
+                g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.02);
+                o.start();
+                g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.2);
+                o.stop(t0 + 0.21);
+              }catch(e){}
+            }
             let done = false;
             const FPS = 12;
             const loop = () => {
@@ -103,7 +122,12 @@
                 if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
                 if(data.ok === true && data.redirect){
                   try{ stream.getTracks().forEach(t=>t.stop()) }catch(e){}
-                  const dest = data.redirect.startsWith('http') ? data.redirect : ('{{ frontend_base }}' + data.redirect);
+                  // Play confirmation beep, then redirect
+                  playBeep();
+                  const msg = encodeURIComponent(data.message || 'Attendance logged');
+                  const destBase = data.redirect.startsWith('http') ? data.redirect : ('{{ frontend_base }}' + data.redirect);
+                  const join = destBase.includes('?') ? '&' : '?';
+                  const dest = destBase + join + 'attendance=success&msg=' + msg;
                   window.location.href = dest;
                   return;
                 }
