@@ -101,24 +101,16 @@
                 body: 'frame=' + encodeURIComponent(frame)
               }).then(r=>r.json()).then(data => {
                 if(data.frame){ processed.src = 'data:image/jpeg;base64,' + data.frame; }
-                if(data.recognized && !done){
-                  done = true;
-                  // Stop stream and auto-finalize attendance with last known location
+                if(data.ok === true && data.redirect){
                   try{ stream.getTracks().forEach(t=>t.stop()) }catch(e){}
-                  fetch(window.location.pathname + 'finalize/', {
-                    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrftoken },
-                    body: `lat=${encodeURIComponent(lastPos.lat)}&lng=${encodeURIComponent(lastPos.lng)}`
-                  }).then(r=>r.json()).then(data => {
-                    if(data.status === 'ok'){
-                      window.location.href = '{{ frontend_base }}/dashboard?attendance=success';
-                    } else {
-                      // If finalize failed, allow retry loop
-                      done = false; setTimeout(loop, Math.floor(1000 / FPS));
-                    }
-                  }).catch(err => { console.error('Finalize error', err); done = false; setTimeout(loop, Math.floor(1000 / FPS)); })
-                } else {
-                  setTimeout(loop, Math.floor(1000 / FPS));
+                  const dest = data.redirect.startsWith('http') ? data.redirect : ('{{ frontend_base }}' + data.redirect.replace(/^\//,''));
+                  window.location.href = dest;
+                  return;
                 }
+                // On repeated errors, reload
+                window.__attn_errs = (window.__attn_errs||0) + (data.ok ? 0 : 1);
+                if(window.__attn_errs > 30){ window.location.reload(); return }
+                setTimeout(loop, Math.floor(1000 / FPS));
               }).catch(err => { console.warn('process error', err); setTimeout(loop, Math.floor(1000 / FPS)); })
             }
             setTimeout(loop, Math.floor(1000 / FPS));

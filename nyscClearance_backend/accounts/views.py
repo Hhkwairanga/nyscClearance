@@ -28,6 +28,7 @@ from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
 from django.contrib import messages
+from django.core.cache import cache
 from django.http import JsonResponse, HttpResponseNotAllowed, HttpResponseNotFound
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -608,13 +609,13 @@ def attendance_process_frame(request):
         return HttpResponseNotAllowed(['POST'])
     user = request.user
     if getattr(user, 'role', None) != 'CORPER':
-        return JsonResponse({'detail': 'Not allowed'}, status=403)
+        return JsonResponse({'ok': False, 'reason': 'not_allowed'})
     cm = getattr(user, 'corper_profile', None)
     if not cm:
-        return JsonResponse({'detail': 'Corper profile not found'}, status=404)
+        return JsonResponse({'ok': False, 'reason': 'no_profile'})
     frame = request.POST.get('frame')
     if not frame:
-        return JsonResponse({'detail': 'Missing frame'}, status=400)
+        return JsonResponse({'ok': False, 'reason': 'missing_frame'})
 
     # Load stored encoding
     import json
@@ -623,22 +624,22 @@ def attendance_process_frame(request):
     except Exception:
         saved = None
     if saved is None:
-        return JsonResponse({'detail': 'No face encoding on file'}, status=400)
+        return JsonResponse({'ok': False, 'reason': 'no_encoding'})
 
     # Decode incoming frame and detect face(s)
     img_data = base64.b64decode(frame)
     nparr = np.frombuffer(img_data, np.uint8)
     bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if bgr is None:
-        return JsonResponse({'detail': 'Invalid frame'}, status=400)
+        return JsonResponse({'ok': False, 'reason': 'invalid_frame'})
     rgb = sanitize_rgb(bgr)
     _debug_img('attendance_process_frame.rgb', rgb)
     # Skip blank/dark frames early
     try:
         if rgb is None or float(np.max(rgb)) <= 5.0:
-            return JsonResponse({'detail': 'Blank frame'}, status=400)
+            return JsonResponse({'ok': False, 'reason': 'blank'})
     except Exception:
-        pass
+        return JsonResponse({'ok': False, 'reason': 'invalid_frame'})
     # Detect faces and compute encodings with locations to draw overlays
     try:
         face_locations = _safe_face_locations(rgb, tag='attendance')
@@ -691,6 +692,18 @@ def attendance_process_frame(request):
 
     # If recognized and not yet logged, log attendance once and redirect
     if recognized and not st.get('logged'):
+        # Cooldown protection using cache
+        cooldown_seconds = int(getattr(settings, 'ATTENDANCE_COOLDOWN_SECONDS', 90))
+        cd_key = f'attendance_cooldown:{user.id}'
+        if cache.get(cd_key):
+            # Still in cooldown; return silent ok:false to keep loop running client-side
+            label = 'COOLDOWN'
+            head_color = (0, 200, 200)
+            cv2.putText(bgr, label, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, head_color, 2, cv2.LINE_AA)
+            _, buffer = cv2.imencode('.jpg', bgr)
+            processed_frame = base64.b64encode(buffer).decode('utf-8')
+            return JsonResponse({'ok': False, 'reason': 'cooldown', 'frame': processed_frame})
+
         # Persist attendance log (same logic as finalize, without geofence)
         from .models import AttendanceLog
         now = timezone.localtime()
@@ -719,22 +732,16 @@ def attendance_process_frame(request):
             log.time_out = log.time_in
         log.save()
         st['logged'] = True
+        cache.set(cd_key, True, timeout=max(1, cooldown_seconds))
 
-        # Set success message and redirect to frontend dashboard
+        # Set success message
         try:
             messages.success(request, 'Attendance marked successfully')
         except Exception:
             pass
 
-        # Compute frontend base similar to attendance_page
-        request_origin = request.headers.get('Origin')
-        try:
-            allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
-        except Exception:
-            allowed = set()
-        frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
-        from django.http import HttpResponseRedirect
-        return HttpResponseRedirect(f'{frontend_base}/dashboard?attendance=success')
+        # Return JSON success with redirect path and message
+        return JsonResponse({'ok': True, 'redirect': '/dashboard/', 'message': f'Attendance logged for {cm.full_name}'})
 
     # Otherwise, draw overlays and return 200 JSON (no redirect)
     label = 'RECOGNIZED' if recognized else 'Scanning…'
@@ -742,7 +749,14 @@ def attendance_process_frame(request):
     cv2.putText(bgr, label, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, head_color, 2, cv2.LINE_AA)
     _, buffer = cv2.imencode('.jpg', bgr)
     processed_frame = base64.b64encode(buffer).decode('utf-8')
-    return JsonResponse({'frame': processed_frame, 'recognized': recognized})
+    # If no faces detected at all, hint for client
+    reason = None
+    if not recognized:
+        if not face_locations:
+            reason = 'no_face'
+        else:
+            reason = 'no_match'
+    return JsonResponse({'ok': False, 'reason': reason or 'scanning', 'frame': processed_frame, 'recognized': recognized})
 
 
 def attendance_finalize(request):
