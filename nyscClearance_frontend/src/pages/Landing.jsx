@@ -382,7 +382,17 @@ export default function Landing() {
                 <h6>{title}</h6>
                 {links.map((l) => (
                   <p className="small opacity-75 mb-2" key={l}>
-                    {l}
+                    {title === 'Legal' && l === 'Privacy Policy' ? (
+                      <Link className="nl-footer-link" to="/privacy">
+                        {l}
+                      </Link>
+                    ) : title === 'Legal' && l === 'Terms of Service' ? (
+                      <Link className="nl-footer-link" to="/terms">
+                        {l}
+                      </Link>
+                    ) : (
+                      l
+                    )}
                   </p>
                 ))}
               </div>

@@ -872,9 +872,10 @@ class VerifyEmailView(APIView):
             return redirect(f"{base}/verify-success?token={token}&role={role}")
         # For org accounts, only show password set if they don't already have one
         if not user.has_usable_password():
-            return redirect(f"{base}/verify-success?token={token}")
+            return redirect(f"{base}/verify-success?token={token}&role={role or 'ORG'}")
         # Otherwise, show success page (no password needed)
-        return redirect(f"{base}/verify-success")
+        suffix = f"?role={role}" if role else ""
+        return redirect(f"{base}/verify-success{suffix}")
 
 
 class PasswordSetView(APIView):
@@ -918,7 +919,8 @@ class PasswordResetRequestView(APIView):
             return Response({'message': 'If the email exists, a reset link has been sent.'})
         token = generate_email_token(user.id)
         base = getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')).rstrip('/')
-        reset_url = f"{base}/reset-password?token={token}"
+        role = getattr(user, 'role', None)
+        reset_url = f"{base}/reset-password?token={token}{f'&role={role}' if role else ''}"
         from django.core.mail import send_mail
         send_mail(
             'Reset your NYSC Clearance password',

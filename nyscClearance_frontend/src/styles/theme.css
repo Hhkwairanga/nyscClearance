@@ -180,12 +180,26 @@ body{ background-color:#f7f9f6; }
 .nl-corper-box{ max-width: 650px; border:1px solid var(--nl-green); }
 .nl-email-box{ max-width:520px; display:flex; align-items:center; gap:10px; padding:14px; font-size:12px; border:1px solid #e6e9df; }
 .nl-footer{ border-top: 1px solid rgba(255,255,255,.08); }
+.nl-footer-link{ color: rgba(255,255,255,.75); text-decoration: none; }
+.nl-footer-link:hover{ color:#fff; text-decoration: underline; }
 
 @media (max-width: 768px){
   .nl-hero-card{ min-height:auto; }
   .nl-circle{ display:none; }
   .nl-pricing-card.featured{ transform:none; }
   .nl-section-title{ line-height: 1.05; }
+}
+
+/* Legal pages */
+.legal-page{
+  background: radial-gradient(1200px 600px at 10% 10%, rgba(189,183,107,0.14), transparent),
+              radial-gradient(900px 450px at 90% 20%, rgba(85,107,47,0.10), transparent);
+}
+.legal-card{
+  background:#fff;
+  border: 1px solid #edf0ea;
+  border-radius: 18px;
+  box-shadow: 0 18px 55px rgba(19,28,47,.08);
 }
 
 /* Organization logo sizing (dashboard header)

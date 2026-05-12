@@ -1,12 +1,15 @@
 import React, { useMemo, useState } from 'react'
 import api, { ensureCsrf } from '../api/axios'
+import { useNavigate } from 'react-router-dom'
 
 export default function ResetPassword(){
   const params = useMemo(()=> new URLSearchParams(window.location.search), [])
   const token = params.get('token')
+  const role = params.get('role')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [status, setStatus] = useState(null)
+  const navigate = useNavigate()
 
   async function submit(e){
     e.preventDefault(); setStatus('pending')
@@ -15,6 +18,9 @@ export default function ResetPassword(){
       await ensureCsrf()
       await api.post('/api/auth/password/reset/confirm/', { token, password })
       setStatus('success')
+      const r = (role || '').toUpperCase()
+      const to = r === 'BRANCH' ? '/login?role=BRANCH' : r === 'CORPER' ? '/login?role=CORPER' : '/login?role=ORG'
+      setTimeout(() => navigate(to), 1200)
     }catch(err){ setStatus('error') }
   }
 
@@ -35,7 +41,7 @@ export default function ResetPassword(){
               <input className="form-control mb-3" type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} required minLength={8} />
               <div className="d-grid"><button className="btn btn-olive" disabled={status==='pending'}>Save New Password</button></div>
             </form>
-            {status==='success' && <div className="alert alert-success mt-3">Password updated. You can now log in.</div>}
+            {status==='success' && <div className="alert alert-success mt-3">Password updated. Redirecting to login…</div>}
             {status==='error:mismatch' && <div className="alert alert-danger mt-3">Passwords do not match.</div>}
             {status==='error' && <div className="alert alert-danger mt-3">Could not reset password. Try requesting a new link.</div>}
           </div>

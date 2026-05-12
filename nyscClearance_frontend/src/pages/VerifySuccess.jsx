@@ -5,10 +5,11 @@ import { useNavigate } from 'react-router-dom'
 export default function VerifySuccess(){
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const token = params.get('token')
-  const role = params.get('role')
+  const roleParam = params.get('role')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [status, setStatus] = useState(null)
+  const [verifiedRole, setVerifiedRole] = useState(roleParam)
   const navigate = useNavigate()
 
   async function setPwd(e){
@@ -19,7 +20,8 @@ export default function VerifySuccess(){
       await ensureCsrf()
       await api.post('/api/auth/password/set/', { token, password })
       setStatus('success')
-      const path = role==='BRANCH' ? '/login/branch' : role==='CORPER' ? '/login/corper' : '/login/org'
+      const r = (verifiedRole || roleParam || '').toUpperCase()
+      const path = r==='BRANCH' ? '/login?role=BRANCH' : r==='CORPER' ? '/login?role=CORPER' : '/login?role=ORG'
       setTimeout(()=> navigate(path), 1200)
     }catch(err){
       const msg = err?.response?.data?.detail || 'Failed to set password'
@@ -32,7 +34,11 @@ export default function VerifySuccess(){
     // Call backend verify endpoint in SPA mode so account is marked verified without redirect
     (async () => {
       try{
-        await api.get(`/api/auth/verify/?token=${encodeURIComponent(token)}&front=1${role?`&role=${encodeURIComponent(role)}`:''}`)
+        const r = await api.get(
+          `/api/auth/verify/?token=${encodeURIComponent(token)}&front=1${roleParam ? `&role=${encodeURIComponent(roleParam)}` : ''}`
+        )
+        const fromApi = r?.data?.role
+        if(fromApi) setVerifiedRole(fromApi)
       }catch(e){ /* ignore: the password set flow can still proceed */ }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,15 +70,17 @@ export default function VerifySuccess(){
   }
 
   useEffect(() => {
-    const id = setTimeout(() => navigate('/login'), 1800)
+    const r = (verifiedRole || roleParam || '').toUpperCase()
+    const to = r==='BRANCH' ? '/login?role=BRANCH' : r==='CORPER' ? '/login?role=CORPER' : '/login?role=ORG'
+    const id = setTimeout(() => navigate(to), 1800)
     return () => clearTimeout(id)
-  }, [navigate])
+  }, [navigate, roleParam, verifiedRole])
 
   return (
     <div className="text-center py-5">
       <h1 className="display-6 text-olive">Email Verified</h1>
       <p className="lead mb-4">Your account is now active.</p>
-      <a href="/login" className="btn btn-olive">Go to Login</a>
+      <a href={((verifiedRole||roleParam||'').toUpperCase()==='BRANCH' ? '/login?role=BRANCH' : (verifiedRole||roleParam||'').toUpperCase()==='CORPER' ? '/login?role=CORPER' : '/login?role=ORG')} className="btn btn-olive">Go to Login</a>
       <div className="small text-muted mt-2">Redirecting to login…</div>
     </div>
   )

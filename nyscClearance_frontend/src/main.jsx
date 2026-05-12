@@ -7,13 +7,12 @@ import App from './App'
 import Landing from './pages/Landing'
 import Signup from './pages/Signup'
 import Login from './pages/Login'
-import OrgLogin from './pages/OrgLogin'
-import BranchLogin from './pages/BranchLogin'
-import CorperLogin from './pages/CorperLogin'
 import VerifySuccess from './pages/VerifySuccess'
 import Dashboard from './pages/Dashboard'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
+import Terms from './pages/Terms'
+import Privacy from './pages/Privacy'
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -23,9 +22,6 @@ createRoot(document.getElementById('root')).render(
           <Route index element={<Landing />} />
           <Route path="signup" element={<Signup />} />
           <Route path="login" element={<Login />} />
-          <Route path="login/org" element={<OrgLogin />} />
-          <Route path="login/branch" element={<BranchLogin />} />
-          <Route path="login/corper" element={<CorperLogin />} />
           <Route path="verify-success" element={<VerifySuccess />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="dashboard/org" element={<Dashboard />} />
@@ -33,6 +29,8 @@ createRoot(document.getElementById('root')).render(
           <Route path="dashboard/corper" element={<Dashboard />} />
           <Route path="forgot-password" element={<ForgotPassword />} />
           <Route path="reset-password" element={<ResetPassword />} />
+          <Route path="terms" element={<Terms />} />
+          <Route path="privacy" element={<Privacy />} />
         </Route>
       </Routes>
     </BrowserRouter>

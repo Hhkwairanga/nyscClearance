@@ -8,6 +8,7 @@ export default function Signup(){
     email: '', name: '', address: '', phone_number: ''
   })
   const [status, setStatus] = useState(null)
+  const [acceptTerms, setAcceptTerms] = useState(false)
 
   const perks = useMemo(
     () => [
@@ -125,8 +126,30 @@ export default function Signup(){
                   </div>
                 </div>
 
+                <div className="form-check mt-4">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="acceptTerms"
+                    checked={acceptTerms}
+                    onChange={(e) => setAcceptTerms(e.target.checked)}
+                    required
+                  />
+                  <label className="form-check-label" htmlFor="acceptTerms">
+                    I agree to the{' '}
+                    <Link to="/terms" className="auth-link">
+                      Terms & Conditions
+                    </Link>{' '}
+                    and{' '}
+                    <Link to="/privacy" className="auth-link">
+                      Privacy Policy
+                    </Link>
+                    .
+                  </label>
+                </div>
+
                 <div className="d-grid mt-4">
-                  <button className="btn btn-olive" disabled={status === 'pending'}>
+                  <button className="btn btn-olive" disabled={status === 'pending' || !acceptTerms}>
                     {status === 'pending' ? 'Creating…' : 'Create account'}
                   </button>
                 </div>
