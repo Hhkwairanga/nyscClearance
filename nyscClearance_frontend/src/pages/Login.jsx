@@ -26,7 +26,7 @@ export default function Login() {
   const roles = useMemo(
     () => [
       { value: 'ORG', label: 'Organisation', Icon: Building2 },
-      { value: 'BRANCH', label: 'Branch Admin', Icon: ShieldCheck },
+      { value: 'BRANCH', label: 'Admin', Icon: ShieldCheck },
       { value: 'CORPER', label: 'Corps Member', Icon: User },
     ],
     []
