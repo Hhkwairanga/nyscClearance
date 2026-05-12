@@ -7,12 +7,12 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
 import { apiHref } from '../api/urls'
 import MapPicker from '../components/MapPicker'
-import { Bar, Doughnut } from 'react-chartjs-2'
+import { Bar, Line } from 'react-chartjs-2'
 import AutoFadeAlert from '../components/AutoFadeAlert'
 import thankYouAudio from '../assets/thank_you_message.mp3'
-import { Building2, Layers3, LayoutGrid, Menu, Users } from 'lucide-react'
-import { Chart as ChartJS, CategoryScale, LinearScale, ArcElement, BarElement, Tooltip, Legend } from 'chart.js'
-ChartJS.register(CategoryScale, LinearScale, ArcElement, BarElement, Tooltip, Legend)
+import { Bell, Building2, Layers3, LayoutGrid, Menu, Pencil, Trash2, Users } from 'lucide-react'
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend } from 'chart.js'
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
 
 export default function Dashboard(){
   const navigate = useNavigate()
@@ -42,11 +42,34 @@ export default function Dashboard(){
   const [enrollDept, setEnrollDept] = useState('')
   const [corperQuery, setCorperQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [structureTab, setStructureTab] = useState('branches')
+
+  const [showAddBranch, setShowAddBranch] = useState(false)
+  const [showAddDepartment, setShowAddDepartment] = useState(false)
+  const [showAddUnit, setShowAddUnit] = useState(false)
+  const [showAddHoliday, setShowAddHoliday] = useState(false)
+  const [showEditProfile, setShowEditProfile] = useState(false)
+  const [showBranchLocation, setShowBranchLocation] = useState(false)
+  const [branchLocationPos, setBranchLocationPos] = useState(null)
+  const [editBranch, setEditBranch] = useState(null)
+  const [editDepartment, setEditDepartment] = useState(null)
+  const [editUnit, setEditUnit] = useState(null)
+  const [structQuery, setStructQuery] = useState('')
+  const [structPage, setStructPage] = useState(1)
+  const structPageSize = 10
+
+  useEffect(() => {
+    if (activeTab === 'structure') {
+      setStructQuery('')
+      setStructPage(1)
+    }
+  }, [activeTab, structureTab])
 
   const chartTheme = useMemo(
     () => ({
       olive: '#556B2F',
       khaki: '#BDB76B',
+      oliveSoft: 'rgba(85,107,47,0.18)',
       grid: 'rgba(0,0,0,0.06)',
       text: 'rgba(0,0,0,0.70)',
     }),
@@ -66,14 +89,18 @@ export default function Dashboard(){
     [chartTheme]
   )
 
-  const doughnutOptions = useMemo(
+  const lineOptions = useMemo(
     () => ({
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
-      cutout: '65%',
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: chartTheme.text } },
+        y: { grid: { color: chartTheme.grid }, ticks: { color: chartTheme.text }, beginAtZero: true },
+      },
     }),
-    []
+    [chartTheme]
   )
 
   // First load: ensure CSRF and fetch all data
@@ -83,6 +110,15 @@ export default function Dashboard(){
       await refreshAll()
     })()
   }, [])
+
+  useEffect(() => {
+    if(activeTab !== 'structure') return
+    if(me?.role === 'ORG'){
+      setStructureTab((t) => (t === 'profile' || t === 'branches' || t === 'departments' || t === 'units' || t === 'holidays' ? t : 'branches'))
+    }else if(me?.role === 'BRANCH'){
+      setStructureTab((t) => (t === 'branch' || t === 'departments' || t === 'units' || t === 'holidays' ? t : 'branch'))
+    }
+  }, [activeTab, me?.role])
 
   // Handle result banners and Paystack return
   useEffect(() => {
@@ -303,8 +339,10 @@ export default function Dashboard(){
       add('performance', 'Clearance', LayoutGrid)
       add('wallet', 'Wallet', Building2)
     }
+
+    add('notifications', 'Notifications', Bell, notifications.length || null)
     return items
-  }, [me?.role, leaves])
+  }, [me?.role, leaves, notifications.length])
 
   const tabTitle = useMemo(() => ({
     overview: 'Overview',
@@ -317,6 +355,7 @@ export default function Dashboard(){
     report: 'Report',
     attendance: 'Attendance',
     performance: 'Performance Clearance',
+    notifications: 'Notifications',
   }), [])
 
   function fundWallet(){ setShowFund(true); setFundAmount('') }
@@ -520,406 +559,960 @@ export default function Dashboard(){
         )}
           {activeTab==='overview' && (
             <>
-              {me?.role==='ORG' && (
-                <div className="card shadow-sm mb-3"><div className="card-body">
-                  <h5 className="card-title">Send Notification (All or Branch)</h5>
-                  <form onSubmit={(e)=>{ e.preventDefault(); const data = Object.fromEntries(new FormData(e.target)); (async()=>{ try{ await api.post('/api/auth/notifications/', data); await refreshAll() }catch(err){} })(); e.target.reset() }}>
-                    <div className="row g-2">
-                      <div className="col-md-4"><input className="form-control" name="title" placeholder="Title" required/></div>
-                      <div className="col-md-4"><select className="form-select" name="branch"><option value="">All branches</option>{branches.map(b=> <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
-                      <div className="col-12"><textarea className="form-control" name="message" rows="2" placeholder="Message" required/></div>
-                      <div className="col-12 col-md-2 d-grid"><button className="btn btn-olive">Send</button></div>
+              <div className="row g-3">
+                <div className="col-12 col-xxl-9">
+                  {me?.role !== 'CORPER' && (
+                    <>
+                      <div className="dash-section-head">
+                        <div>
+                          <div className="dash-section-title">Key metrics</div>
+                          <div className="dash-section-sub text-muted">A quick snapshot of your organisation activity.</div>
+                        </div>
+                      </div>
+
+                      <div className="row g-3">
+                        <div className="col-12 col-sm-6 col-xl-3">
+                          <div className="dash-kpi">
+                            <div className="dash-kpi-icon"><Users size={18} aria-hidden /></div>
+                            <div>
+                              <div className="dash-kpi-label">Corpers</div>
+                              <div className="dash-kpi-value">{stats?.totals?.corpers ?? 0}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="col-12 col-sm-6 col-xl-3">
+                          <div className="dash-kpi">
+                            <div className="dash-kpi-icon"><Building2 size={18} aria-hidden /></div>
+                            <div>
+                              <div className="dash-kpi-label">Branches</div>
+                              <div className="dash-kpi-value">{stats?.totals?.branches ?? 0}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="col-12 col-sm-6 col-xl-3">
+                          <div className="dash-kpi">
+                            <div className="dash-kpi-icon"><Layers3 size={18} aria-hidden /></div>
+                            <div>
+                              <div className="dash-kpi-label">Departments</div>
+                              <div className="dash-kpi-value">{stats?.totals?.departments ?? 0}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="col-12 col-sm-6 col-xl-3">
+                          <div className="dash-kpi">
+                            <div className="dash-kpi-icon"><LayoutGrid size={18} aria-hidden /></div>
+                            <div>
+                              <div className="dash-kpi-label">Units</div>
+                              <div className="dash-kpi-value">{stats?.totals?.units ?? 0}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="dash-section-head mt-4">
+                        <div>
+                          <div className="dash-section-title">Analytics</div>
+                          <div className="dash-section-sub text-muted">Attendance and enrolment breakdown.</div>
+                        </div>
+                      </div>
+
+                      <div className="row g-3 mt-1">
+                        <div className="col-12 col-lg-6">
+                          <div className="card shadow-sm dash-card"><div className="card-body" style={{height:340}}>
+                            <div className="dash-card-title">Corpers by Branch</div>
+                            <Bar data={{
+                              labels: (stats?.corpers_by_branch||[]).map(r=>r.branch),
+                              datasets: [{
+                                label: 'Corpers',
+                                data: (stats?.corpers_by_branch||[]).map(r=>r.count),
+                                backgroundColor: chartTheme.olive,
+                                borderRadius: 10
+                              }]
+                            }} options={barOptions} />
+                          </div></div>
+                        </div>
+                        <div className="col-12 col-lg-6">
+                          <div className="card shadow-sm dash-card"><div className="card-body" style={{height:340}}>
+                            <div className="dash-card-title">Attendance trend (Last 7 Days)</div>
+                            <Line
+                              data={{
+                                labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
+                                datasets: [{
+                                  label: 'Present',
+                                  data: (stats?.attendance?.last7||[]).map(r=> r.count),
+                                  borderColor: chartTheme.olive,
+                                  backgroundColor: chartTheme.oliveSoft,
+                                  tension: 0.35,
+                                  fill: true,
+                                  pointRadius: 3,
+                                  pointHoverRadius: 4,
+                                }]
+                              }}
+                              options={lineOptions}
+                            />
+                          </div></div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {me?.role === 'CORPER' && (
+                    <div className="card shadow-sm dash-card"><div className="card-body">
+                      <div className="dash-card-title">Welcome</div>
+                      <div className="text-muted">Your latest updates and notifications appear on the right.</div>
+                    </div></div>
+                  )}
+                </div>
+
+                <div className="col-12 col-xxl-3">
+                  <div className="dash-right">
+                    {me?.role === 'CORPER' && (
+                      <div className="card shadow-sm dash-card">
+                        <div className="card-body">
+                          <div className="dash-card-title">Notifications</div>
+                          <div className="dash-feed">
+                            {notifications.slice(0, 4).map((n) => (
+                              <div key={n.id} className="dash-feed-item">
+                                <div className="fw-semibold">{n.title}</div>
+                                <div className="small text-muted">{new Date(n.created_at).toLocaleString()}</div>
+                                <div className="small mt-1">{n.message}</div>
+                              </div>
+                            ))}
+                            {notifications.length === 0 && <div className="text-muted">No notifications yet.</div>}
+                          </div>
+                          <button className="btn btn-outline-secondary btn-sm mt-3" type="button" onClick={() => setActiveTab('notifications')}>
+                            View all
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab==='notifications' && (
+            <>
+              {(me?.role === 'ORG' || me?.role === 'BRANCH') && (
+                <div className="card shadow-sm dash-card mb-3">
+                  <div className="card-body">
+                    <div className="dash-card-title">Send notification</div>
+                    <div className="text-muted small mb-2">
+                      {me?.role === 'ORG'
+                        ? 'Send to all branches or a specific branch.'
+                        : 'Send an update to your branch corpers.'}
                     </div>
-                  </form>
-                </div></div>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        const data = Object.fromEntries(new FormData(e.target))
+                        ;(async () => {
+                          try {
+                            await api.post('/api/auth/notifications/', data)
+                            await refreshAll()
+                          } catch (err) {}
+                        })()
+                        e.target.reset()
+                      }}
+                    >
+                      <div className="row g-2">
+                        <div className="col-12">
+                          <input className="form-control" name="title" placeholder="Title" required />
+                        </div>
+                        {me?.role === 'ORG' && (
+                          <div className="col-12">
+                            <select className="form-select" name="branch">
+                              <option value="">All branches</option>
+                              {branches.map((b) => (
+                                <option key={b.id} value={b.id}>
+                                  {b.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        <div className="col-12">
+                          <textarea className="form-control" name="message" rows="3" placeholder="Message" required />
+                        </div>
+                        <div className="col-12 d-grid">
+                          <button className="btn btn-olive">Send</button>
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </div>
               )}
-              {me?.role==='BRANCH' && (
-                <div className="card shadow-sm mb-3"><div className="card-body">
-                  <h5 className="card-title">Notify My Branch Corpers</h5>
-                  <form onSubmit={(e)=>{ e.preventDefault(); const data = Object.fromEntries(new FormData(e.target)); (async()=>{ try{ await api.post('/api/auth/notifications/', data); await refreshAll() }catch(err){} })(); e.target.reset() }}>
-                    <div className="row g-2">
-                      <div className="col-md-4"><input className="form-control" name="title" placeholder="Title" required/></div>
-                      <div className="col-12"><textarea className="form-control" name="message" rows="2" placeholder="Message" required/></div>
-                      <div className="col-12 col-md-2 d-grid"><button className="btn btn-olive">Send</button></div>
-                    </div>
-                  </form>
-                </div></div>
-              )}
-              {me?.role==='CORPER' && (
-                <div className="card shadow-sm mb-3"><div className="card-body">
-                  <h5 className="card-title">Notifications</h5>
-                  <div className="list-group">
-                    {notifications.map(n => (
-                      <div key={n.id} className="list-group-item">
+
+              <div className="card shadow-sm dash-card">
+                <div className="card-body">
+                  <div className="dash-card-title">All notifications</div>
+                  <div className="dash-feed">
+                    {notifications.map((n) => (
+                      <div key={n.id} className="dash-feed-item">
                         <div className="fw-semibold">{n.title}</div>
                         <div className="small text-muted">{new Date(n.created_at).toLocaleString()}</div>
-                        <div className="mt-1">{n.message}</div>
+                        <div className="small mt-1">{n.message}</div>
                       </div>
                     ))}
-                    {notifications.length===0 && <div className="text-muted">No notifications yet.</div>}
-                  </div>
-                </div></div>
-              )}
-              {me?.role!=='CORPER' && (
-              <div className="row g-3">
-                <div className="col-12 col-sm-6 col-lg-3">
-                  <div className="dash-kpi">
-                    <div className="dash-kpi-icon"><Users size={18} aria-hidden /></div>
-                    <div>
-                      <div className="dash-kpi-label">Corpers</div>
-                      <div className="dash-kpi-value">{stats?.totals?.corpers ?? 0}</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="col-12 col-sm-6 col-lg-3">
-                  <div className="dash-kpi">
-                    <div className="dash-kpi-icon"><Building2 size={18} aria-hidden /></div>
-                    <div>
-                      <div className="dash-kpi-label">Branches</div>
-                      <div className="dash-kpi-value">{stats?.totals?.branches ?? 0}</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="col-12 col-sm-6 col-lg-3">
-                  <div className="dash-kpi">
-                    <div className="dash-kpi-icon"><Layers3 size={18} aria-hidden /></div>
-                    <div>
-                      <div className="dash-kpi-label">Departments</div>
-                      <div className="dash-kpi-value">{stats?.totals?.departments ?? 0}</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="col-12 col-sm-6 col-lg-3">
-                  <div className="dash-kpi">
-                    <div className="dash-kpi-icon"><LayoutGrid size={18} aria-hidden /></div>
-                    <div>
-                      <div className="dash-kpi-label">Units</div>
-                      <div className="dash-kpi-value">{stats?.totals?.units ?? 0}</div>
-                    </div>
+                    {notifications.length === 0 && <div className="text-muted">No notifications yet.</div>}
                   </div>
                 </div>
               </div>
-              )}
-              {me?.role!=='CORPER' && (
-              <div className="row g-3 mt-1">
-                <div className="col-12 col-lg-6">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
-                    <h6 className="card-title">Corpers by Branch</h6>
-                    <Bar data={{
-                      labels: (stats?.corpers_by_branch||[]).map(r=>r.branch),
-                      datasets: [{
-                        label: 'Corpers',
-                        data: (stats?.corpers_by_branch||[]).map(r=>r.count),
-                        backgroundColor: chartTheme.olive,
-                        borderRadius: 10
-                      }]
-                    }} options={barOptions} />
-                  </div></div>
-                </div>
-                <div className="col-12 col-lg-6">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
-                    <h6 className="card-title">Attendance</h6>
-                    <Doughnut data={{
-                      labels:['Today','This Month'],
-                      datasets:[{ data:[stats?.attendance?.today||0, stats?.attendance?.this_month||0], backgroundColor:[chartTheme.khaki, chartTheme.olive], borderWidth: 0 }]
-                    }} options={doughnutOptions} />
-                  </div></div>
-                </div>
-              </div>
-              )}
-              {me?.role!=='CORPER' && (
-              <div className="row g-3 mt-1">
-                <div className="col-12">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
-                    <h6 className="card-title">Attendance - Last 7 Days</h6>
-                    <Bar data={{
-                      labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
-                      datasets: [{
-                        label: 'Present',
-                        data: (stats?.attendance?.last7||[]).map(r=> r.count),
-                        backgroundColor: chartTheme.khaki,
-                        borderRadius: 10
-                      }]
-                    }} options={barOptions} />
-                  </div></div>
-                </div>
-              </div>
-              )}
             </>
           )}
 
           {activeTab==='structure' && me?.role==='ORG' && (
             <>
               <h2 className="mb-3 text-olive">Structure</h2>
-              <div className="row g-4">
-                <div className="col-12">
-                  <div className="card shadow-sm"><div className="card-body">
-                    <h5 className="card-title">Organization Profile</h5>
-                    <form onSubmit={saveProfile} encType="multipart/form-data">
-                      <div className="row g-2">
-                        <div className="col-6 col-md-3">
-                          <label className="form-label">Late Time</label>
-                          <input className="form-control" type="time" name="late_time" defaultValue={profile?.late_time || ''} />
+
+              <div className="dash-struct-nav mb-3">
+                <button className={`dash-struct-item ${structureTab==='branches'?'active':''}`} type="button" onClick={()=>setStructureTab('branches')}>Branches</button>
+                <button className={`dash-struct-item ${structureTab==='departments'?'active':''}`} type="button" onClick={()=>setStructureTab('departments')}>Departments</button>
+                <button className={`dash-struct-item ${structureTab==='units'?'active':''}`} type="button" onClick={()=>setStructureTab('units')}>Units</button>
+                <button className={`dash-struct-item ${structureTab==='holidays'?'active':''}`} type="button" onClick={()=>setStructureTab('holidays')}>Holidays</button>
+                <button className={`dash-struct-item ${structureTab==='profile'?'active':''}`} type="button" onClick={()=>setStructureTab('profile')}>Organisation Profile</button>
+              </div>
+
+              <div className="card shadow-sm dash-card">
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-center gap-2">
+                    <div className="dash-card-title mb-0">
+                      {structureTab==='branches' ? 'Branches' : structureTab==='departments' ? 'Departments' : structureTab==='units' ? 'Units' : structureTab==='holidays' ? 'Holidays' : 'Organisation Profile'}
+                    </div>
+                    <div className="d-flex gap-2">
+                      {structureTab==='branches' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddBranch(true)}>Add Branch</button>}
+                      {structureTab==='departments' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddDepartment(true)}>Add Department</button>}
+                      {structureTab==='units' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddUnit(true)}>Add Unit</button>}
+                      {structureTab==='holidays' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddHoliday(true)}>Add Holiday</button>}
+                      {structureTab==='profile' && <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowEditProfile(true)}>Edit</button>}
+                    </div>
+                  </div>
+
+                  <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
+                    <div className="dash-table-search">
+                      <input
+                        className="form-control form-control-sm"
+                        placeholder="Search…"
+                        value={structQuery}
+                        onChange={(e) => {
+                          setStructQuery(e.target.value)
+                          setStructPage(1)
+                        }}
+                      />
+                    </div>
+                    <div className="small text-muted">
+                      Page {structPage}
+                    </div>
+                  </div>
+
+                  <div className="table-responsive mt-2">
+                    {structureTab==='branches' && (
+                      <table className="table table-sm align-middle dash-table">
+                        <thead><tr><th>Name</th><th>Address</th><th>Admin Email</th><th></th></tr></thead>
+                        <tbody>
+                          {(() => {
+                            const q = structQuery.trim().toLowerCase()
+                            const filtered = q
+                              ? branches.filter((b) => `${b.name} ${b.address || ''} ${b.admin_info?.email || ''}`.toLowerCase().includes(q))
+                              : branches
+                            const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
+                            const current = Math.min(structPage, totalPages)
+                            if (current !== structPage) setStructPage(current)
+                            const start = (current - 1) * structPageSize
+                            const rows = filtered.slice(start, start + structPageSize)
+
+                            return (
+                              <>
+                                {rows.map((b) => (
+                            <tr key={b.id}>
+                              <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{b.name}</div></td>
+                              <td><div className="text-truncate dash-td-truncate">{b.address || '—'}</div></td>
+                              <td><div className="text-truncate dash-td-truncate">{b.admin_info?.email || '—'}</div></td>
+                              <td className="text-end">
+                                <div className="btn-group">
+                                  <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditBranch(b)} aria-label="Edit branch">
+                                    <Pencil size={16} />
+                                  </button>
+                                  <button
+                                    className="btn btn-sm btn-outline-danger"
+                                    type="button"
+                                    onClick={async () => {
+                                      if (!confirm(`Delete branch "${b.name}"? This may remove related departments/units.`)) return
+                                      try {
+                                        await api.delete(`/api/auth/branches/${b.id}/`)
+                                        await refreshAll()
+                                      } catch (e) {}
+                                    }}
+                                    aria-label="Delete branch"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                                {filtered.length===0 && <tr><td colSpan="4" className="text-muted">No branches found.</td></tr>}
+                                {filtered.length>0 && (
+                                  <tr>
+                                    <td colSpan="4">
+                                      <div className="d-flex justify-content-between align-items-center">
+                                        <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                        <div className="btn-group">
+                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
+                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
+                            )
+                          })()}
+                        </tbody>
+                      </table>
+                    )}
+
+                    {structureTab==='departments' && (
+                      <table className="table table-sm align-middle dash-table">
+                        <thead><tr><th>Name</th><th>Branch</th><th></th></tr></thead>
+                        <tbody>
+                          {(() => {
+                            const q = structQuery.trim().toLowerCase()
+                            const filtered = q
+                              ? deps.filter((d) => `${d.name} ${branches.find(b=>b.id===d.branch)?.name || ''}`.toLowerCase().includes(q))
+                              : deps
+                            const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
+                            const current = Math.min(structPage, totalPages)
+                            if (current !== structPage) setStructPage(current)
+                            const start = (current - 1) * structPageSize
+                            const rows = filtered.slice(start, start + structPageSize)
+                            return (
+                              <>
+                                {rows.map((d) => (
+                            <tr key={d.id}>
+                              <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{d.name}</div></td>
+                              <td><div className="text-truncate dash-td-truncate">{branches.find(b=>b.id===d.branch)?.name || '—'}</div></td>
+                              <td className="text-end">
+                                <div className="btn-group">
+                                  <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditDepartment(d)} aria-label="Edit department">
+                                    <Pencil size={16} />
+                                  </button>
+                                  <button
+                                    className="btn btn-sm btn-outline-danger"
+                                    type="button"
+                                    onClick={async () => {
+                                      if (!confirm(`Delete department "${d.name}"? This may remove related units.`)) return
+                                      try {
+                                        await api.delete(`/api/auth/departments/${d.id}/`)
+                                        await refreshAll()
+                                      } catch (e) {}
+                                    }}
+                                    aria-label="Delete department"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                                {filtered.length===0 && <tr><td colSpan="3" className="text-muted">No departments found.</td></tr>}
+                                {filtered.length>0 && (
+                                  <tr>
+                                    <td colSpan="3">
+                                      <div className="d-flex justify-content-between align-items-center">
+                                        <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                        <div className="btn-group">
+                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
+                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
+                            )
+                          })()}
+                        </tbody>
+                      </table>
+                    )}
+
+                    {structureTab==='units' && (
+                      <table className="table table-sm align-middle dash-table">
+                        <thead><tr><th>Name</th><th>Department</th><th></th></tr></thead>
+                        <tbody>
+                          {(() => {
+                            const q = structQuery.trim().toLowerCase()
+                            const filtered = q
+                              ? units.filter((u) => `${u.name} ${deps.find(d=>d.id===u.department)?.name || ''}`.toLowerCase().includes(q))
+                              : units
+                            const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
+                            const current = Math.min(structPage, totalPages)
+                            if (current !== structPage) setStructPage(current)
+                            const start = (current - 1) * structPageSize
+                            const rows = filtered.slice(start, start + structPageSize)
+                            return (
+                              <>
+                                {rows.map((u) => (
+                            <tr key={u.id}>
+                              <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{u.name}</div></td>
+                              <td><div className="text-truncate dash-td-truncate">{deps.find(d=>d.id===u.department)?.name || '—'}</div></td>
+                              <td className="text-end">
+                                <div className="btn-group">
+                                  <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditUnit(u)} aria-label="Edit unit">
+                                    <Pencil size={16} />
+                                  </button>
+                                  <button
+                                    className="btn btn-sm btn-outline-danger"
+                                    type="button"
+                                    onClick={async () => {
+                                      if (!confirm(`Delete unit "${u.name}"?`)) return
+                                      try {
+                                        await api.delete(`/api/auth/units/${u.id}/`)
+                                        await refreshAll()
+                                      } catch (e) {}
+                                    }}
+                                    aria-label="Delete unit"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                                {filtered.length===0 && <tr><td colSpan="3" className="text-muted">No units found.</td></tr>}
+                                {filtered.length>0 && (
+                                  <tr>
+                                    <td colSpan="3">
+                                      <div className="d-flex justify-content-between align-items-center">
+                                        <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                        <div className="btn-group">
+                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
+                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
+                            )
+                          })()}
+                        </tbody>
+                      </table>
+                    )}
+
+                    {structureTab==='holidays' && (
+                      <table className="table table-sm align-middle dash-table">
+                        <thead><tr><th>Title</th><th>Start</th><th>End</th><th></th></tr></thead>
+                        <tbody>
+                          {(() => {
+                            const q = structQuery.trim().toLowerCase()
+                            const filtered = q
+                              ? holidays.filter((h) => `${h.title} ${h.start_date} ${h.end_date}`.toLowerCase().includes(q))
+                              : holidays
+                            const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
+                            const current = Math.min(structPage, totalPages)
+                            if (current !== structPage) setStructPage(current)
+                            const start = (current - 1) * structPageSize
+                            const rows = filtered.slice(start, start + structPageSize)
+                            return (
+                              <>
+                                {rows.map((h) => (
+                            <tr key={h.id}>
+                              <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{h.title}</div></td>
+                              <td>{h.start_date}</td>
+                              <td>{h.end_date}</td>
+                              <td className="text-end">
+                                <button className="btn btn-sm btn-outline-danger" type="button" onClick={async()=>{ try{ await api.delete(`/api/auth/holidays/${h.id}/`); await refreshAll() }catch(e){} }}>Delete</button>
+                              </td>
+                            </tr>
+                                ))}
+                                {filtered.length===0 && <tr><td colSpan="4" className="text-muted">No holidays found.</td></tr>}
+                                {filtered.length>0 && (
+                                  <tr>
+                                    <td colSpan="4">
+                                      <div className="d-flex justify-content-between align-items-center">
+                                        <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                        <div className="btn-group">
+                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
+                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
+                            )
+                          })()}
+                        </tbody>
+                      </table>
+                    )}
+
+                    {structureTab==='profile' && (
+                      <div className="dash-profile">
+                        <div className="dash-profile-head">
+                          <div>
+                            <div className="dash-profile-title">Organisation Profile</div>
+                            <div className="dash-profile-sub text-muted">Review your rules, branding, and verification details.</div>
+                          </div>
+                          <div className="dash-profile-actions">
+                            <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowEditProfile(true)}>
+                              Edit profile
+                            </button>
+                          </div>
                         </div>
-                        <div className="col-6 col-md-3">
-                          <label className="form-label">Closing Time</label>
-                          <input className="form-control" type="time" name="closing_time" defaultValue={profile?.closing_time || ''} />
-                        </div>
-                        <div className="col-6 col-md-3">
-                          <label className="form-label">Max Days Late</label>
-                          <input className="form-control" type="number" min="0" step="1" name="max_days_late" defaultValue={profile?.max_days_late ?? ''} placeholder="e.g., 3" />
-                        </div>
-                        <div className="col-6 col-md-3">
-                          <label className="form-label">Max Days Absent</label>
-                          <input className="form-control" type="number" min="0" step="1" name="max_days_absent" defaultValue={profile?.max_days_absent ?? ''} placeholder="e.g., 2" />
-                        </div>
-                        <div className="col-12 col-md-3">
-                          <label className="form-label">Logo</label>
-                          <input className="form-control" type="file" name="logo" accept="image/*" />
-                        {/* no preview under choose file as requested */}
-                        </div>
-                        <div className="col-12 col-md-6">
-                          <label className="form-label">Director HR Name</label>
-                          <input className="form-control" type="text" name="signatory_name" defaultValue={profile?.signatory_name || ''} placeholder="e.g., Jane Doe" />
-                        </div>
-                        <div className="col-12 col-md-3">
-                          <label className="form-label">Director HR Signature</label>
-                          <input className="form-control" type="file" name="signature" accept="image/*" />
-                        </div>
-                        <div className="col-6 col-md-3">
-                          <label className="form-label">Org Latitude</label>
-                          <input className="form-control" name="location_lat" defaultValue={profile?.location_lat ?? ''} placeholder="Latitude" />
-                        </div>
-                        <div className="col-6 col-md-3">
-                          <label className="form-label">Org Longitude</label>
-                          <input className="form-control" name="location_lng" defaultValue={profile?.location_lng ?? ''} placeholder="Longitude" />
-                        </div>
-                        <div className="col-12 col-md-3 align-self-end">
-                          <button className="btn btn-olive w-100">Save</button>
+
+                        <div className="row g-3 mt-1">
+                          <div className="col-12 col-lg-6">
+                            <div className="dash-profile-card">
+                              <div className="dash-profile-card-title">Attendance Rules</div>
+                              <div className="dash-kv-grid">
+                                <div className="dash-kv"><div className="dash-k">Late time</div><div className="dash-v">{profile?.late_time || '—'}</div></div>
+                                <div className="dash-kv"><div className="dash-k">Closing time</div><div className="dash-v">{profile?.closing_time || '—'}</div></div>
+                                <div className="dash-kv"><div className="dash-k">Max days late</div><div className="dash-v">{profile?.max_days_late ?? '—'}</div></div>
+                                <div className="dash-kv"><div className="dash-k">Max days absent</div><div className="dash-v">{profile?.max_days_absent ?? '—'}</div></div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="col-12 col-lg-6">
+                            <div className="dash-profile-card">
+                              <div className="dash-profile-card-title">Branding & Sign-off</div>
+                              <div className="dash-kv-grid">
+                                <div className="dash-kv"><div className="dash-k">Director HR</div><div className="dash-v">{profile?.signatory_name || '—'}</div></div>
+                                <div className="dash-kv"><div className="dash-k">Logo</div><div className="dash-v">{profile?.logo ? 'Uploaded' : 'Not uploaded'}</div></div>
+                                <div className="dash-kv"><div className="dash-k">Signature</div><div className="dash-v">{profile?.signature ? 'Uploaded' : 'Not uploaded'}</div></div>
+                              </div>
+                              <div className="dash-profile-previews">
+                                <div className="dash-preview">
+                                  <div className="dash-preview-label">Logo</div>
+                                  {profile?.logo ? (
+                                    <img className="dash-preview-img" src={profile.logo} alt="Organisation logo" />
+                                  ) : (
+                                    <div className="dash-preview-empty">No logo</div>
+                                  )}
+                                </div>
+                                <div className="dash-preview">
+                                  <div className="dash-preview-label">Signature</div>
+                                  {profile?.signature ? (
+                                    <img className="dash-preview-img" src={profile.signature} alt="Director signature" />
+                                  ) : (
+                                    <div className="dash-preview-empty">No signature</div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="col-12">
+                            <div className="dash-profile-card">
+                              <div className="dash-profile-card-title">Organisation Location</div>
+                              <div className="dash-kv-grid">
+                                <div className="dash-kv"><div className="dash-k">Latitude</div><div className="dash-v">{profile?.location_lat ?? '—'}</div></div>
+                                <div className="dash-kv"><div className="dash-k">Longitude</div><div className="dash-v">{profile?.location_lng ?? '—'}</div></div>
+                              </div>
+                              <div className="dash-profile-hint text-muted">Used for location-aware attendance verification (when enabled).</div>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </form>
-                    {status==='saved:profile' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Profile updated.</AutoFadeAlert>}
-                    {status==='error:profile' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Failed to update profile.</AutoFadeAlert>}
-                  </div></div>
+                    )}
+                  </div>
                 </div>
-                <div className="col-lg-6">
-                  <div className="card shadow-sm">
-                    <div className="card-body">
-                      <h5 className="card-title">Public Holidays</h5>
-                      <form className="mb-3" onSubmit={createHoliday}>
-                        <div className="row g-2">
-                          <div className="col-md-4"><input className="form-control" name="title" placeholder="Holiday title" required/></div>
-                          <div className="col-md-3"><input className="form-control" type="date" name="start_date" required/></div>
-                          <div className="col-md-3"><input className="form-control" type="date" name="end_date" required/></div>
-                          <div className="col-md-2 d-grid"><button className="btn btn-olive">Add</button></div>
-                        </div>
-                      </form>
-                      <ul className="list-group">
-                        {holidays.map(h => (
-                          <li key={h.id} className="list-group-item d-flex justify-content-between align-items-center">
-                            <span>{h.title} — {h.start_date}{h.end_date!==h.start_date?` → ${h.end_date}`:''}</span>
-                            <button className="btn btn-sm btn-outline-danger" onClick={async()=>{ try{ await api.delete(`/api/auth/holidays/${h.id}/`); await refreshAll() }catch(e){} }}>Delete</button>
-                          </li>
-                        ))}
-                        {holidays.length===0 && <li className="list-group-item text-muted">No holidays configured.</li>}
-                      </ul>
-                </div>
-                {status==='saved:face-capture' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Face capture saved successfully.</AutoFadeAlert>}
               </div>
-            </div>
-                <div className="col-lg-6">
-                  <div className="card shadow-sm">
-                    <div className="card-body">
-                      <h5 className="card-title">Create Branch Office</h5>
-                      <form id="branch-form" onSubmit={createBranch}>
-                        <label className="form-label">Branch name</label>
-                        <input className="form-control mb-2" name="name" placeholder="Branch name" required/>
-                        <label className="form-label">Address</label>
-                        <textarea className="form-control mb-2" name="address" placeholder="Address"/>
-                        <div className="row g-2">
-                          <div className="col-md-4">
-                            <label className="form-label">Admin Name</label>
-                            <input className="form-control" name="admin_name" placeholder="Branch admin name" />
-                          </div>
-                          <div className="col-md-5">
-                            <label className="form-label">Admin Email</label>
-                            <input className="form-control" type="email" name="admin_email" placeholder="admin@example.com" />
-                          </div>
-                          <div className="col-md-3">
-                            <label className="form-label">Staff ID</label>
-                            <input className="form-control" name="admin_staff_id" placeholder="ID" />
-                          </div>
-                        </div>
-                        <div className="row g-2 mb-2">
-                          <div className="col-md-6">
-                            <label className="form-label">Latitude</label>
-                            <input className="form-control" name="latitude" placeholder="Latitude" ref={latRef}/>
-                          </div>
-                          <div className="col-md-6">
-                            <label className="form-label">Longitude</label>
-                            <input className="form-control" name="longitude" placeholder="Longitude" ref={lngRef}/>
-                          </div>
-                        </div>
-                        <MapPicker onChange={(pos) => {
-                          if(latRef.current) latRef.current.value = pos.lat.toFixed(6)
-                          if(lngRef.current) lngRef.current.value = pos.lng.toFixed(6)
-                        }}/>
-                        <div className="mt-3 d-grid">
-                          <button className="btn btn-olive">Add Branch</button>
-                        </div>
-                      </form>
-                      {status==='saved:branch' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Branch created. If admin email provided, an invite was sent.</AutoFadeAlert>}
-                      {status==='error:branch' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not create branch.</AutoFadeAlert>}
-                    </div>
-                  </div>
-                </div>
 
-                <div className="col-lg-6">
-                  <div className="card shadow-sm">
-                    <div className="card-body">
-                      <h5 className="card-title">Create Department</h5>
-                      <form onSubmit={createDepartment}>
-                        <select className="form-select mb-2" name="branch" required>
-                          <option value="">Select Branch</option>
-                          {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                        </select>
-                        <input className="form-control mb-3" name="name" placeholder="Department name" required/>
-                        <button className="btn btn-olive">Add Department</button>
-                      </form>
-                      {status==='saved:department' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Department created.</AutoFadeAlert>}
-                      {status==='error:department' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not create department.</AutoFadeAlert>}
+              {showAddBranch && (
+                <div className="dash-modal" onClick={() => setShowAddBranch(false)}>
+                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Add Branch</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddBranch(false)}>Close</button>
                     </div>
-                  </div>
-                </div>
-
-                <div className="col-lg-6">
-                  <div className="card shadow-sm">
-                    <div className="card-body">
-                      <h5 className="card-title">Create Unit (optional)</h5>
-                      <form onSubmit={createUnit}>
-                        <select className="form-select mb-2" name="department" required>
-                          <option value="">Select Department</option>
-                          {deps.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                        </select>
-                        <input className="form-control mb-3" name="name" placeholder="Unit name" required/>
-                        <button className="btn btn-olive">Add Unit</button>
-                      </form>
-                      {status==='saved:unit' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Unit created.</AutoFadeAlert>}
-                      {status==='error:unit' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not create unit.</AutoFadeAlert>}
-                    </div>
-                  </div>
-                </div>
-              <div className="col-12">
-                <div className="card shadow-sm">
-                  <div className="card-body">
-                    <h5 className="card-title">Registered Branches</h5>
-                    <div className="row g-3">
-                      {branches.length === 0 && <div className="text-muted">No branches yet.</div>}
-                      {branches.map(b => (
-                        <div className="col-12 col-sm-6 col-lg-4" key={b.id}>
-                          <div className="border rounded p-3 h-100">
-                            <div className="d-flex justify-content-between align-items-start">
-                              <div>
-                                <div className="fw-semibold">{b.name}</div>
-                                <div className="small text-muted">{b.address || '—'}</div>
-                              </div>
-                              <button className="btn btn-sm btn-outline-secondary" onClick={()=>{
-                                const name = prompt('Branch name', b.name) || b.name;
-                                const address = prompt('Address', b.address||'') || '';
-                                const admin_name = prompt('Admin name', b.admin_info?.name||'') || '';
-                                const admin_email = prompt('Admin email', b.admin_info?.email||'') || '';
-                                const admin_staff_id = prompt('Admin staff ID', b.admin_info?.staff_id||'') || '';
-                                (async()=>{ try{ await api.put(`/api/auth/branches/${b.id}/`, { name, address, latitude:b.latitude, longitude:b.longitude, admin_name, admin_email, admin_staff_id }); await refreshAll() }catch(e){} })();
-                              }}>Edit</button>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>How it works</h6>
+                          <p>Create a branch office so you can group departments, units, and corps members.</p>
+                          <ul>
+                            <li>Optionally invite an admin by email.</li>
+                            <li>Set coordinates if you use location-based attendance.</li>
+                            <li>You can edit details later from the table.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form id="branch-form" onSubmit={(e)=>{ createBranch(e); setShowAddBranch(false) }}>
+                            <label className="form-label">Branch name</label>
+                            <input className="form-control mb-2" name="name" placeholder="e.g., Head Office" required/>
+                            <label className="form-label">Address</label>
+                            <textarea className="form-control mb-2" name="address" placeholder="Branch address"/>
+                            <div className="row g-2">
+                              <div className="col-md-4"><label className="form-label">Admin Name</label><input className="form-control" name="admin_name" placeholder="Optional" /></div>
+                              <div className="col-md-5"><label className="form-label">Admin Email</label><input className="form-control" type="email" name="admin_email" placeholder="Optional" /></div>
+                              <div className="col-md-3"><label className="form-label">Staff ID</label><input className="form-control" name="admin_staff_id" placeholder="Optional" /></div>
                             </div>
-                            {(b.latitude || b.longitude) && (
-                              <div className="small mt-1">Lat: {b.latitude ?? '—'} · Lng: {b.longitude ?? '—'}</div>
-                            )}
-                            {b.admin_info && (
-                              <div className="mt-2 small">
-                                <div><span className="text-muted">Admin:</span> {b.admin_info.name}</div>
-                                <div><span className="text-muted">Email:</span> {b.admin_info.email}</div>
-                                <div><span className="text-muted">Staff ID:</span> {b.admin_info.staff_id || '—'}</div>
+                            <div className="row g-2 mt-2">
+                              <div className="col-md-6"><label className="form-label">Latitude</label><input className="form-control" name="latitude" placeholder="Optional" /></div>
+                              <div className="col-md-6"><label className="form-label">Longitude</label><input className="form-control" name="longitude" placeholder="Optional" /></div>
+                            </div>
+                            <div className="d-grid mt-3"><button className="btn btn-olive">Add Branch</button></div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showAddDepartment && (
+                <div className="dash-modal" onClick={() => setShowAddDepartment(false)}>
+                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Add Department</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddDepartment(false)}>Close</button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>Flow</h6>
+                          <p>Departments sit under a branch. Units can then be created under a department.</p>
+                          <ul>
+                            <li>Select the branch first.</li>
+                            <li>Enter a department name.</li>
+                            <li>Use Units to add sub-teams.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form onSubmit={(e)=>{ createDepartment(e); setShowAddDepartment(false) }}>
+                            <label className="form-label">Branch</label>
+                            <select className="form-select mb-2" name="branch" required>
+                              <option value="">Select Branch</option>
+                              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                            </select>
+                            <label className="form-label">Department name</label>
+                            <input className="form-control mb-3" name="name" placeholder="e.g., HR" required/>
+                            <div className="d-grid"><button className="btn btn-olive">Add Department</button></div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showAddUnit && (
+                <div className="dash-modal" onClick={() => setShowAddUnit(false)}>
+                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Add Unit</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddUnit(false)}>Close</button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>Flow</h6>
+                          <p>Units are optional sub-groups under a department.</p>
+                          <ul>
+                            <li>Select a department.</li>
+                            <li>Enter a unit name.</li>
+                            <li>Assign corps members later during enrolment.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form onSubmit={(e)=>{ createUnit(e); setShowAddUnit(false) }}>
+                            <label className="form-label">Department</label>
+                            <select className="form-select mb-2" name="department" required>
+                              <option value="">Select Department</option>
+                              {deps.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            </select>
+                            <label className="form-label">Unit name</label>
+                            <input className="form-control mb-3" name="name" placeholder="e.g., Recruitment" required/>
+                            <div className="d-grid"><button className="btn btn-olive">Add Unit</button></div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showAddHoliday && (
+                <div className="dash-modal" onClick={() => setShowAddHoliday(false)}>
+                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Add Holiday</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddHoliday(false)}>Close</button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>What this affects</h6>
+                          <p>Holidays help your attendance and clearance calculations stay accurate.</p>
+                          <ul>
+                            <li>Select start and end dates.</li>
+                            <li>Multi-day holidays are supported.</li>
+                            <li>Corps members won’t be penalized on holidays.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form onSubmit={(e)=>{ createHoliday(e); setShowAddHoliday(false) }}>
+                            <div className="row g-2">
+                              <div className="col-12">
+                                <label className="form-label">Holiday title</label>
+                                <input className="form-control" name="title" placeholder="e.g., Public Holiday" required/>
                               </div>
-                            )}
-                            {/* Departments and Units for this branch */}
-                            <div className="mt-2">
-                              <div className="fw-semibold small text-olive">Departments & Units</div>
-                              {deps.filter(d => d.branch === b.id).length === 0 && (
-                                <div className="small text-muted">No departments yet.</div>
-                              )}
-                              {deps.filter(d => d.branch === b.id).map(d => (
-                                <div key={d.id} className="small mt-2">
-                                  <div className="d-flex align-items-center justify-content-between">
-                                    <div className="fw-semibold">{d.name}</div>
-                                    <button
-                                      className="btn btn-sm btn-outline-secondary"
-                                      onClick={() => {
-                                        const newName = prompt('Edit department name (leave empty to delete)', d.name)
-                                        if(newName === null) return; // cancelled
-                                        const trimmed = (newName || '').trim()
-                                        if(trimmed === ''){
-                                          if(confirm('Delete this department and its units?')){
-                                            (async()=>{ try{ await api.delete(`/api/auth/departments/${d.id}/`); await refreshAll() }catch(e){} })()
-                                          }
-                                        }else{
-                                          (async()=>{ try{ await api.put(`/api/auth/departments/${d.id}/`, { name: trimmed, branch: d.branch }); await refreshAll() }catch(e){} })()
-                                        }
-                                      }}
-                                    >Edit</button>
-                                  </div>
-                                  <div className="text-muted mt-1">
-                                    {units.filter(u => u.department === d.id).length === 0 && 'No units'}
-                                    {units.filter(u => u.department === d.id).map(u => (
-                                      <span key={u.id} className="me-2 d-inline-flex align-items-center">
-                                        {u.name}
-                                        <button
-                                          className="btn btn-sm btn-link text-decoration-none ms-1"
-                                          onClick={() => {
-                                            const newUnitName = prompt('Edit unit name (leave empty to delete)', u.name)
-                                            if(newUnitName === null) return; // cancelled
-                                            const trimmed = (newUnitName || '').trim()
-                                            if(trimmed === ''){
-                                              if(confirm('Delete this unit?')){
-                                                (async()=>{ try{ await api.delete(`/api/auth/units/${u.id}/`); await refreshAll() }catch(e){} })()
-                                              }
-                                            }else{
-                                              (async()=>{ try{ await api.put(`/api/auth/units/${u.id}/`, { name: trimmed, department: u.department }); await refreshAll() }catch(e){} })()
-                                            }
-                                          }}
-                                        >Edit</button>
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
+                              <div className="col-md-6">
+                                <label className="form-label">Start date</label>
+                                <input className="form-control" type="date" name="start_date" required/>
+                              </div>
+                              <div className="col-md-6">
+                                <label className="form-label">End date</label>
+                                <input className="form-control" type="date" name="end_date" required/>
+                              </div>
+                            </div>
+                            <div className="d-grid mt-3"><button className="btn btn-olive">Add Holiday</button></div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showEditProfile && (
+                <div className="dash-modal" onClick={() => setShowEditProfile(false)}>
+                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Edit Organisation Profile</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowEditProfile(false)}>Close</button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>Profile setup</h6>
+                          <p>These settings affect attendance rules and the generated clearance letters.</p>
+                          <ul>
+                            <li>Set late/closing times and thresholds.</li>
+                            <li>Upload logo/signature used on letters.</li>
+                            <li>Set coordinates for location controls.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form onSubmit={(e)=>{ saveProfile(e); setShowEditProfile(false) }} encType="multipart/form-data">
+                            <div className="row g-2">
+                              <div className="col-6 col-md-3"><label className="form-label">Late Time</label><input className="form-control" type="time" name="late_time" defaultValue={profile?.late_time || ''} /></div>
+                              <div className="col-6 col-md-3"><label className="form-label">Closing Time</label><input className="form-control" type="time" name="closing_time" defaultValue={profile?.closing_time || ''} /></div>
+                              <div className="col-6 col-md-3"><label className="form-label">Max Days Late</label><input className="form-control" type="number" min="0" step="1" name="max_days_late" defaultValue={profile?.max_days_late ?? ''} /></div>
+                              <div className="col-6 col-md-3"><label className="form-label">Max Days Absent</label><input className="form-control" type="number" min="0" step="1" name="max_days_absent" defaultValue={profile?.max_days_absent ?? ''} /></div>
+                              <div className="col-12 col-md-3"><label className="form-label">Logo</label><input className="form-control" type="file" name="logo" accept="image/*" /></div>
+                              <div className="col-12 col-md-6"><label className="form-label">Director HR Name</label><input className="form-control" type="text" name="signatory_name" defaultValue={profile?.signatory_name || ''} /></div>
+                              <div className="col-12 col-md-3"><label className="form-label">Director HR Signature</label><input className="form-control" type="file" name="signature" accept="image/*" /></div>
+                              <div className="col-6 col-md-3"><label className="form-label">Org Latitude</label><input className="form-control" name="location_lat" defaultValue={profile?.location_lat ?? ''} placeholder="Latitude" /></div>
+                              <div className="col-6 col-md-3"><label className="form-label">Org Longitude</label><input className="form-control" name="location_lng" defaultValue={profile?.location_lng ?? ''} placeholder="Longitude" /></div>
+                            </div>
+                            <div className="d-grid mt-3"><button className="btn btn-olive">Save</button></div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {editBranch && (
+                <div className="dash-modal" onClick={() => setEditBranch(null)}>
+                  <div className="dash-modal-card" onClick={(e) => e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Edit Branch</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditBranch(null)}>
+                        Close
+                      </button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>Edit flow</h6>
+                          <p>Update branch details and admin invitation information.</p>
+                          <ul>
+                            <li>Change name/address if needed.</li>
+                            <li>Update admin email to reassign access.</li>
+                            <li>Save to apply changes immediately.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              const fd = new FormData(e.target)
+                              const payload = Object.fromEntries(fd)
+                              ;(async () => {
+                                try {
+                                  await api.put(`/api/auth/branches/${editBranch.id}/`, {
+                                    ...payload,
+                                    latitude: payload.latitude || editBranch.latitude,
+                                    longitude: payload.longitude || editBranch.longitude,
+                                  })
+                                  await refreshAll()
+                                  setEditBranch(null)
+                                } catch (err) {}
+                              })()
+                            }}
+                          >
+                            <div className="row g-2">
+                              <div className="col-12">
+                                <label className="form-label">Branch name</label>
+                                <input className="form-control" name="name" defaultValue={editBranch.name} required />
+                              </div>
+                              <div className="col-12">
+                                <label className="form-label">Address</label>
+                                <textarea className="form-control" name="address" defaultValue={editBranch.address || ''} rows="2" />
+                              </div>
+                              <div className="col-md-4">
+                                <label className="form-label">Admin Name</label>
+                                <input className="form-control" name="admin_name" defaultValue={editBranch.admin_info?.name || ''} />
+                              </div>
+                              <div className="col-md-5">
+                                <label className="form-label">Admin Email</label>
+                                <input className="form-control" type="email" name="admin_email" defaultValue={editBranch.admin_info?.email || ''} />
+                              </div>
+                              <div className="col-md-3">
+                                <label className="form-label">Staff ID</label>
+                                <input className="form-control" name="admin_staff_id" defaultValue={editBranch.admin_info?.staff_id || ''} />
+                              </div>
+                              <div className="col-md-6">
+                                <label className="form-label">Latitude</label>
+                                <input className="form-control" name="latitude" defaultValue={editBranch.latitude ?? ''} />
+                              </div>
+                              <div className="col-md-6">
+                                <label className="form-label">Longitude</label>
+                                <input className="form-control" name="longitude" defaultValue={editBranch.longitude ?? ''} />
+                              </div>
+                            </div>
+                            <div className="d-grid mt-3">
+                              <button className="btn btn-olive">Save changes</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {editDepartment && (
+                <div className="dash-modal" onClick={() => setEditDepartment(null)}>
+                  <div className="dash-modal-card" onClick={(e) => e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Edit Department</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditDepartment(null)}>
+                        Close
+                      </button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>Edit flow</h6>
+                          <p>Departments belong to a branch and group units.</p>
+                          <ul>
+                            <li>Update the name or move to another branch.</li>
+                            <li>Deleting a department may remove its units.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              const fd = new FormData(e.target)
+                              const payload = Object.fromEntries(fd)
+                              ;(async () => {
+                                try {
+                                  await api.put(`/api/auth/departments/${editDepartment.id}/`, {
+                                    name: payload.name,
+                                    branch: Number(payload.branch),
+                                  })
+                                  await refreshAll()
+                                  setEditDepartment(null)
+                                } catch (err) {}
+                              })()
+                            }}
+                          >
+                            <label className="form-label">Branch</label>
+                            <select className="form-select mb-2" name="branch" defaultValue={String(editDepartment.branch)} required>
+                              {branches.map((b) => (
+                                <option key={b.id} value={b.id}>
+                                  {b.name}
+                                </option>
                               ))}
-                              {me?.role==='ORG' && (
-                                <div className="mt-3">
-                                  <div className="small mb-1">Inherit from another branch</div>
-                                  <div className="d-flex gap-2">
-                                    <select className="form-select form-select-sm" defaultValue="" onChange={(e)=>{ b._copyFrom = e.target.value }} style={{maxWidth: '60%'}}>
-                                      <option value="">Select source branch</option>
-                                      {branches.filter(x => x.id !== b.id).map(x => (
-                                        <option key={x.id} value={x.id}>{x.name}</option>
-                                      ))}
-                                    </select>
-                                    <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{
-                                      if(!b._copyFrom){ alert('Select a source branch first'); return }
-                                      try{ await api.post(`/api/auth/branches/${b.id}/clone_structure/`, { source: Number(b._copyFrom) }); await refreshAll() }catch(e){}
-                                    }}>Copy</button>
-                                  </div>
-                                </div>
-                              )}
+                            </select>
+                            <label className="form-label">Department name</label>
+                            <input className="form-control" name="name" defaultValue={editDepartment.name} required />
+                            <div className="d-grid mt-3">
+                              <button className="btn btn-olive">Save changes</button>
                             </div>
-                          </div>
+                          </form>
                         </div>
-                      ))}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-              </div>
+              )}
+
+              {editUnit && (
+                <div className="dash-modal" onClick={() => setEditUnit(null)}>
+                  <div className="dash-modal-card" onClick={(e) => e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Edit Unit</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditUnit(null)}>
+                        Close
+                      </button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>Edit flow</h6>
+                          <p>Units are optional sub-groups under departments.</p>
+                          <ul>
+                            <li>Update the unit name.</li>
+                            <li>Move the unit to another department if needed.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              const fd = new FormData(e.target)
+                              const payload = Object.fromEntries(fd)
+                              ;(async () => {
+                                try {
+                                  await api.put(`/api/auth/units/${editUnit.id}/`, {
+                                    name: payload.name,
+                                    department: Number(payload.department),
+                                  })
+                                  await refreshAll()
+                                  setEditUnit(null)
+                                } catch (err) {}
+                              })()
+                            }}
+                          >
+                            <label className="form-label">Department</label>
+                            <select className="form-select mb-2" name="department" defaultValue={String(editUnit.department)} required>
+                              {deps.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.name}
+                                </option>
+                              ))}
+                            </select>
+                            <label className="form-label">Unit name</label>
+                            <input className="form-control" name="name" defaultValue={editUnit.name} required />
+                            <div className="d-grid mt-3">
+                              <button className="btn btn-olive">Save changes</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -1018,135 +1611,308 @@ export default function Dashboard(){
           {activeTab==='structure' && me?.role==='BRANCH' && (
             <>
               <h2 className="mb-3 text-olive">Structure</h2>
-              {/* Identify the admin's own branch */}
+
               {(() => {
                 const myBranch = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
                 if(!myBranch){ return (<div className="text-muted">No branch assigned.</div>) }
                 const myDeps = deps.filter(d => d.branch === myBranch.id)
                 const myUnits = units.filter(u => myDeps.some(d => d.id === u.department))
+
                 return (
-                  <div className="row g-4">
-                    <div className="col-lg-6">
-                      <div className="card shadow-sm">
-                        <div className="card-body">
-                          <h5 className="card-title">My Branch</h5>
-                          <div className="mb-2">
-                            <div className="fw-semibold">{myBranch.name}</div>
-                            <div className="small text-muted">{myBranch.address || '—'}</div>
-                            {(myBranch.latitude || myBranch.longitude) && (
-                              <div className="small mt-1">Lat: {myBranch.latitude ?? '—'} · Lng: {myBranch.longitude ?? '—'}</div>
-                            )}
-                          </div>
-                          {/* Map to update branch location; includes "Use my current location" control */}
-                          <div className="mb-2">
-                            <MapPicker
-                              value={(myBranch.latitude && myBranch.longitude) ? { lat: myBranch.latitude, lng: myBranch.longitude } : null}
-                              onChange={(pos) => { myBranch._newPos = pos }}
-                              height={240}
-                              zoom={myBranch.latitude && myBranch.longitude ? 14 : 6}
-                            />
+                  <>
+                    <div className="dash-struct-nav mb-3">
+                      <button className={`dash-struct-item ${structureTab==='branch'?'active':''}`} type="button" onClick={()=>setStructureTab('branch')}>My Branch</button>
+                      <button className={`dash-struct-item ${structureTab==='departments'?'active':''}`} type="button" onClick={()=>setStructureTab('departments')}>Departments</button>
+                      <button className={`dash-struct-item ${structureTab==='units'?'active':''}`} type="button" onClick={()=>setStructureTab('units')}>Units</button>
+                      <button className={`dash-struct-item ${structureTab==='holidays'?'active':''}`} type="button" onClick={()=>setStructureTab('holidays')}>Holidays</button>
+                    </div>
+
+                    <div className="card shadow-sm dash-card">
+                      <div className="card-body">
+                        <div className="d-flex justify-content-between align-items-center gap-2">
+                          <div className="dash-card-title mb-0">
+                            {structureTab==='branch' ? 'My Branch' : structureTab==='departments' ? 'Departments' : structureTab==='units' ? 'Units' : 'Holidays (view only)'}
                           </div>
                           <div className="d-flex gap-2">
-                            <button className="btn btn-sm btn-outline-secondary" onClick={()=>{
-                              const name = prompt('Branch name', myBranch.name) || myBranch.name;
-                              const address = prompt('Address', myBranch.address||'') || '';
-                              const latitude = prompt('Latitude', myBranch.latitude ?? '') || '';
-                              const longitude = prompt('Longitude', myBranch.longitude ?? '') || '';
-                              (async()=>{ try{ await api.put(`/api/auth/branches/${myBranch.id}/`, { name, address, latitude, longitude }); await refreshAll() }catch(e){} })();
-                            }}>Edit Branch</button>
-                            <button className="btn btn-sm btn-olive" onClick={async()=>{
-                              const pos = myBranch._newPos
-                              if(!pos){ alert('Pick a location on the map or use the 📍 button first.'); return }
-                              try{
-                                await api.put(`/api/auth/branches/${myBranch.id}/`, { latitude: pos.lat, longitude: pos.lng, name: myBranch.name, address: myBranch.address||'' })
-                                await refreshAll()
-                              }catch(e){}
-                            }}>Save Location</button>
+                            {structureTab==='branch' && (
+                              <button className="btn btn-sm btn-olive" type="button" onClick={() => {
+                                setBranchLocationPos(myBranch.latitude && myBranch.longitude ? { lat: myBranch.latitude, lng: myBranch.longitude } : null)
+                                setShowBranchLocation(true)
+                              }}>Update location</button>
+                            )}
+                            {structureTab==='departments' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddDepartment(true)}>Add Department</button>}
+                            {structureTab==='units' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddUnit(true)}>Add Unit</button>}
+                          </div>
+                        </div>
+
+                        <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
+                          <div className="dash-table-search">
+                            <input
+                              className="form-control form-control-sm"
+                              placeholder="Search…"
+                              value={structQuery}
+                              onChange={(e) => {
+                                setStructQuery(e.target.value)
+                                setStructPage(1)
+                              }}
+                            />
+                          </div>
+                          <div className="small text-muted">Page {structPage}</div>
+                        </div>
+
+                        <div className="table-responsive mt-2">
+                          {structureTab==='branch' && (
+                            <table className="table table-sm align-middle">
+                              <thead><tr><th>Name</th><th>Address</th><th>Latitude</th><th>Longitude</th></tr></thead>
+                              <tbody>
+                                <tr>
+                                  <td className="fw-semibold">{myBranch.name}</td>
+                                  <td>{myBranch.address || '—'}</td>
+                                  <td>{myBranch.latitude ?? '—'}</td>
+                                  <td>{myBranch.longitude ?? '—'}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          )}
+
+                          {structureTab==='departments' && (
+                            <table className="table table-sm align-middle dash-table">
+                              <thead><tr><th>Name</th><th></th></tr></thead>
+                              <tbody>
+                                {(() => {
+                                  const q = structQuery.trim().toLowerCase()
+                                  const filtered = q ? myDeps.filter((d) => d.name.toLowerCase().includes(q)) : myDeps
+                                  const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
+                                  const current = Math.min(structPage, totalPages)
+                                  if (current !== structPage) setStructPage(current)
+                                  const start = (current - 1) * structPageSize
+                                  const rows = filtered.slice(start, start + structPageSize)
+                                  return (
+                                    <>
+                                      {rows.map((d) => (
+                                  <tr key={d.id}>
+                                    <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{d.name}</div></td>
+                                    <td className="text-end">
+                                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => {
+                                        const newName = prompt('Edit department name (leave empty to delete)', d.name)
+                                        if(newName === null) return
+                                        const trimmed = (newName || '').trim()
+                                        if(trimmed === ''){
+                                          if(confirm('Delete this department and its units?')){
+                                            ;(async()=>{ try{ await api.delete(`/api/auth/departments/${d.id}/`); await refreshAll() }catch(e){} })()
+                                          }
+                                        }else{
+                                          ;(async()=>{ try{ await api.put(`/api/auth/departments/${d.id}/`, { name: trimmed, branch: d.branch }); await refreshAll() }catch(e){} })()
+                                        }
+                                      }}>Edit</button>
+                                    </td>
+                                  </tr>
+                                      ))}
+                                      {filtered.length===0 && <tr><td colSpan="2" className="text-muted">No departments found.</td></tr>}
+                                      {filtered.length>0 && (
+                                        <tr>
+                                          <td colSpan="2">
+                                            <div className="d-flex justify-content-between align-items-center">
+                                              <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                              <div className="btn-group">
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </>
+                                  )
+                                })()}
+                              </tbody>
+                            </table>
+                          )}
+
+                          {structureTab==='units' && (
+                            <table className="table table-sm align-middle dash-table">
+                              <thead><tr><th>Name</th><th>Department</th><th></th></tr></thead>
+                              <tbody>
+                                {(() => {
+                                  const q = structQuery.trim().toLowerCase()
+                                  const filtered = q
+                                    ? myUnits.filter((u) => `${u.name} ${myDeps.find(d=>d.id===u.department)?.name||''}`.toLowerCase().includes(q))
+                                    : myUnits
+                                  const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
+                                  const current = Math.min(structPage, totalPages)
+                                  if (current !== structPage) setStructPage(current)
+                                  const start = (current - 1) * structPageSize
+                                  const rows = filtered.slice(start, start + structPageSize)
+                                  return (
+                                    <>
+                                      {rows.map((u) => (
+                                  <tr key={u.id}>
+                                    <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{u.name}</div></td>
+                                    <td><div className="text-truncate dash-td-truncate">{myDeps.find(d=>d.id===u.department)?.name || '—'}</div></td>
+                                    <td className="text-end">
+                                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => {
+                                        const newUnitName = prompt('Edit unit name (leave empty to delete)', u.name)
+                                        if(newUnitName === null) return
+                                        const trimmed = (newUnitName || '').trim()
+                                        if(trimmed === ''){
+                                          if(confirm('Delete this unit?')){
+                                            ;(async()=>{ try{ await api.delete(`/api/auth/units/${u.id}/`); await refreshAll() }catch(e){} })()
+                                          }
+                                        }else{
+                                          ;(async()=>{ try{ await api.put(`/api/auth/units/${u.id}/`, { name: trimmed, department: u.department }); await refreshAll() }catch(e){} })()
+                                        }
+                                      }}>Edit</button>
+                                    </td>
+                                  </tr>
+                                      ))}
+                                      {filtered.length===0 && <tr><td colSpan="3" className="text-muted">No units found.</td></tr>}
+                                      {filtered.length>0 && (
+                                        <tr>
+                                          <td colSpan="3">
+                                            <div className="d-flex justify-content-between align-items-center">
+                                              <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                              <div className="btn-group">
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </>
+                                  )
+                                })()}
+                              </tbody>
+                            </table>
+                          )}
+
+                          {structureTab==='holidays' && (
+                            <table className="table table-sm align-middle dash-table">
+                              <thead><tr><th>Title</th><th>Start</th><th>End</th></tr></thead>
+                              <tbody>
+                                {(() => {
+                                  const q = structQuery.trim().toLowerCase()
+                                  const filtered = q
+                                    ? holidays.filter((h) => `${h.title} ${h.start_date} ${h.end_date}`.toLowerCase().includes(q))
+                                    : holidays
+                                  const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
+                                  const current = Math.min(structPage, totalPages)
+                                  if (current !== structPage) setStructPage(current)
+                                  const start = (current - 1) * structPageSize
+                                  const rows = filtered.slice(start, start + structPageSize)
+                                  return (
+                                    <>
+                                      {rows.map((h) => (
+                                  <tr key={h.id}>
+                                    <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{h.title}</div></td>
+                                    <td>{h.start_date}</td>
+                                    <td>{h.end_date}</td>
+                                  </tr>
+                                      ))}
+                                      {filtered.length===0 && <tr><td colSpan="3" className="text-muted">No holidays found.</td></tr>}
+                                      {filtered.length>0 && (
+                                        <tr>
+                                          <td colSpan="3">
+                                            <div className="d-flex justify-content-between align-items-center">
+                                              <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                              <div className="btn-group">
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </>
+                                  )
+                                })()}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {showAddDepartment && (
+                      <div className="dash-modal" onClick={() => setShowAddDepartment(false)}>
+                        <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                          <div className="dash-modal-head">
+                            <strong>Add Department</strong>
+                            <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddDepartment(false)}>Close</button>
+                          </div>
+                          <div className="card-body">
+                            <form onSubmit={(e)=>{ e.preventDefault(); const f=new FormData(e.target); const name=f.get('name'); (async()=>{ try{ await api.post('/api/auth/departments/', { branch: myBranch.id, name }); await refreshAll(); setStatus('saved:department') }catch(err){ setStatus('error:department') } })(); setShowAddDepartment(false) }}>
+                              <input className="form-control mb-3" name="name" placeholder="Department name" required/>
+                              <div className="d-grid"><button className="btn btn-olive">Add Department</button></div>
+                            </form>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="col-lg-6">
-                      <div className="card shadow-sm">
-                        <div className="card-body">
-                          <h5 className="card-title">Create Department</h5>
-                          <form onSubmit={(e)=>{ e.preventDefault(); setStatus('pending'); const f = new FormData(e.target); const name = f.get('name'); (async()=>{ try{ await api.post('/api/auth/departments/', { branch: myBranch.id, name }); await refreshAll(); setStatus('saved:department'); e.target.reset() }catch(err){ setStatus('error:department') } })(); }}>
-                            <input className="form-control mb-2" name="name" placeholder="Department name" required/>
-                            <button className="btn btn-olive">Add Department</button>
-                          </form>
-                          {status==='saved:department' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Department created.</AutoFadeAlert>}
-                          {status==='error:department' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not create department.</AutoFadeAlert>}
+                    {showAddUnit && (
+                      <div className="dash-modal" onClick={() => setShowAddUnit(false)}>
+                        <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                          <div className="dash-modal-head">
+                            <strong>Add Unit</strong>
+                            <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddUnit(false)}>Close</button>
+                          </div>
+                          <div className="card-body">
+                            <form onSubmit={(e)=>{ e.preventDefault(); const f=new FormData(e.target); const name=f.get('name'); const department=Number(f.get('department')); (async()=>{ try{ await api.post('/api/auth/units/', { name, department }); await refreshAll(); setStatus('saved:unit') }catch(err){ setStatus('error:unit') } })(); setShowAddUnit(false) }}>
+                              <select className="form-select mb-2" name="department" required>
+                                <option value="">Select Department</option>
+                                {myDeps.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                              </select>
+                              <input className="form-control mb-3" name="name" placeholder="Unit name" required/>
+                              <div className="d-grid"><button className="btn btn-olive">Add Unit</button></div>
+                            </form>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="col-lg-6">
-                      <div className="card shadow-sm">
-                        <div className="card-body">
-                          <h5 className="card-title">Create Unit</h5>
-                          <form onSubmit={(e)=>{ e.preventDefault(); setStatus('pending'); const f = new FormData(e.target); const name = f.get('name'); const department = Number(f.get('department')); (async()=>{ try{ await api.post('/api/auth/units/', { name, department }); await refreshAll(); setStatus('saved:unit'); e.target.reset() }catch(err){ setStatus('error:unit') } })(); }}>
-                            <select className="form-select mb-2" name="department" required>
-                              <option value="">Select Department</option>
-                              {myDeps.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                            </select>
-                            <input className="form-control mb-2" name="name" placeholder="Unit name" required/>
-                            <button className="btn btn-olive">Add Unit</button>
-                          </form>
-                          {status==='saved:unit' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Unit created.</AutoFadeAlert>}
-                          {status==='error:unit' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not create unit.</AutoFadeAlert>}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="col-12">
-                      <div className="card shadow-sm">
-                        <div className="card-body">
-                          <h5 className="card-title">Departments & Units</h5>
-                          {myDeps.length === 0 && <div className="text-muted">No departments yet.</div>}
-                          {myDeps.map(d => (
-                            <div key={d.id} className="small mt-2">
-                              <div className="d-flex align-items-center justify-content-between">
-                                <div className="fw-semibold">{d.name}</div>
-                                <button className="btn btn-sm btn-outline-secondary" onClick={() => {
-                                  const newName = prompt('Edit department name (leave empty to delete)', d.name)
-                                  if(newName === null) return;
-                                  const trimmed = (newName || '').trim()
-                                  if(trimmed === ''){
-                                    if(confirm('Delete this department and its units?')){
-                                      (async()=>{ try{ await api.delete(`/api/auth/departments/${d.id}/`); await refreshAll() }catch(e){} })()
-                                    }
-                                  }else{
-                                    (async()=>{ try{ await api.put(`/api/auth/departments/${d.id}/`, { name: trimmed, branch: d.branch }); await refreshAll() }catch(e){} })()
-                                  }
-                                }}>Edit</button>
+                    {showBranchLocation && (
+                      <div className="dash-modal" onClick={() => setShowBranchLocation(false)}>
+                        <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                          <div className="dash-modal-head">
+                            <strong>Update Branch Location</strong>
+                            <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowBranchLocation(false)}>Close</button>
+                          </div>
+                          <div className="dash-modal-body">
+                            <div className="dash-modal-grid">
+                              <div className="dash-modal-help">
+                                <h6>Flow</h6>
+                                <p>Admins can update branch coordinates for location-based attendance.</p>
+                                <ul>
+                                  <li>Click on the map to set a pin.</li>
+                                  <li>Use the 📍 control for current location.</li>
+                                  <li>Save to apply immediately.</li>
+                                </ul>
                               </div>
-                              <div className="text-muted mt-1">
-                                {units.filter(u => u.department === d.id).length === 0 && 'No units'}
-                                {units.filter(u => u.department === d.id).map(u => (
-                                  <span key={u.id} className="me-2 d-inline-flex align-items-center">
-                                    {u.name}
-                                    <button className="btn btn-sm btn-link text-decoration-none ms-1" onClick={() => {
-                                      const newUnitName = prompt('Edit unit name (leave empty to delete)', u.name)
-                                      if(newUnitName === null) return;
-                                      const trimmed = (newUnitName || '').trim()
-                                      if(trimmed === ''){
-                                        if(confirm('Delete this unit?')){
-                                          (async()=>{ try{ await api.delete(`/api/auth/units/${u.id}/`); await refreshAll() }catch(e){} })()
-                                        }
-                                      }else{
-                                        (async()=>{ try{ await api.put(`/api/auth/units/${u.id}/`, { name: trimmed, department: u.department }); await refreshAll() }catch(e){} })()
-                                      }
-                                    }}>Edit</button>
-                                  </span>
-                                ))}
+                              <div className="dash-modal-form">
+                                <MapPicker
+                                  value={branchLocationPos}
+                                  onChange={(pos) => setBranchLocationPos(pos)}
+                                  height={260}
+                                  zoom={branchLocationPos ? 14 : 6}
+                                />
+                                <div className="d-grid mt-3">
+                                  <button className="btn btn-olive" type="button" onClick={async()=>{
+                                    if(!branchLocationPos){ alert('Pick a location on the map first.'); return }
+                                    try{
+                                      await api.put(`/api/auth/branches/${myBranch.id}/`, { latitude: branchLocationPos.lat, longitude: branchLocationPos.lng, name: myBranch.name, address: myBranch.address||'' })
+                                      await refreshAll()
+                                      setShowBranchLocation(false)
+                                    }catch(e){}
+                                  }}>Save Location</button>
+                                </div>
                               </div>
                             </div>
-                          ))}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
+                    )}
+                  </>
                 )
               })()}
             </>

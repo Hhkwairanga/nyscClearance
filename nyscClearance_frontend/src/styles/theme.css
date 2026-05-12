@@ -308,6 +308,59 @@ body{ background-color:#f7f9f6; }
 .dash-title{ display:flex; flex-direction: column; line-height: 1.15; }
 .dash-content{ padding: 16px; padding-bottom: 28px; }
 
+.dash-section-head{ display:flex; align-items:flex-end; justify-content: space-between; gap: 12px; }
+.dash-section-title{ font-size: 14px; font-weight: 900; letter-spacing: .02em; text-transform: uppercase; color: rgba(0,0,0,.70); }
+.dash-section-sub{ font-size: 13px; }
+.dash-card{ border-radius: 18px; border: 1px solid #edf0ea; }
+.dash-card .card-body{ padding: 16px; }
+.dash-card-title{ font-weight: 800; letter-spacing: -.02em; color: #151c2f; margin-bottom: 10px; }
+.dash-right{ position: sticky; top: 92px; max-width: 420px; margin-left: auto; }
+.dash-feed{ display:flex; flex-direction: column; gap: 12px; }
+.dash-feed-item{ padding: 12px; border-radius: 14px; border: 1px solid #edf0ea; background: #fff; }
+
+.dash-struct-nav{ display:flex; flex-wrap: wrap; gap: 8px; }
+.dash-struct-item{ border: 1px solid #edf0ea; background:#fff; border-radius: 999px; padding: 8px 12px; font-weight: 700; color: rgba(0,0,0,.70); }
+.dash-struct-item:hover{ background:#f6f8f4; }
+.dash-struct-item.active{ border-color: rgba(85,107,47,.25); background: rgba(85,107,47,.10); color: #2c3a16; }
+
+.dash-list{ display:flex; flex-direction: column; gap: 10px; }
+.dash-list-row{ display:flex; justify-content: space-between; align-items:center; gap: 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid #edf0ea; background:#fff; }
+
+.dash-modal{ position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 1060; display:flex; align-items: flex-start; justify-content: center; padding: 4rem 1rem 2rem; }
+.dash-modal-card{ width: min(720px, 96vw); background:#fff; border-radius: 18px; border: 1px solid #edf0ea; box-shadow: 0 25px 80px rgba(0,0,0,.18); overflow:hidden; }
+.dash-modal-head{ padding: 12px 14px; display:flex; align-items:center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #edf0ea; background: linear-gradient(135deg,#f4f7ef,#eef2e8); }
+.dash-modal-body{ padding: 0; }
+.dash-modal-grid{ display:grid; grid-template-columns: 280px 1fr; }
+.dash-modal-help{ padding: 16px; border-right: 1px solid #edf0ea; background: #f7faf7; }
+.dash-modal-help h6{ margin: 0 0 8px; font-weight: 900; }
+.dash-modal-help p{ margin: 0 0 10px; color: rgba(0,0,0,.65); font-size: 13px; }
+.dash-modal-help ul{ margin: 0; padding-left: 18px; color: rgba(0,0,0,.65); font-size: 13px; }
+.dash-modal-form{ padding: 16px; }
+@media (max-width: 768px){ .dash-modal-grid{ grid-template-columns: 1fr; } .dash-modal-help{ border-right: 0; border-bottom: 1px solid #edf0ea; } }
+
+.dash-table{ table-layout: fixed; }
+.dash-td-truncate{ max-width: 260px; }
+.dash-table-search{ width: min(360px, 100%); }
+
+/* Organisation profile view */
+.dash-profile{ padding-top: 4px; }
+.dash-profile-head{ display:flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.dash-profile-title{ font-weight: 900; letter-spacing: -.02em; color:#151c2f; }
+.dash-profile-sub{ font-size: 13px; }
+.dash-profile-card{ border: 1px solid #edf0ea; border-radius: 18px; background:#fff; padding: 14px; box-shadow: 0 15px 45px rgba(19,28,47,.05); }
+.dash-profile-card-title{ font-weight: 900; margin-bottom: 10px; }
+.dash-kv-grid{ display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dash-kv{ border: 1px solid #edf0ea; border-radius: 14px; padding: 10px 12px; background:#fff; }
+.dash-k{ font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: rgba(0,0,0,.55); }
+.dash-v{ margin-top: 4px; font-weight: 800; color:#151c2f; word-break: break-word; }
+.dash-profile-previews{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.dash-preview{ border: 1px dashed #dfe5d8; border-radius: 16px; padding: 10px; background:#fbfcfa; }
+.dash-preview-label{ font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: rgba(0,0,0,.55); margin-bottom: 8px; }
+.dash-preview-img{ width: 100%; max-height: 110px; object-fit: contain; display:block; background:#fff; border-radius: 12px; border:1px solid #edf0ea; padding: 8px; }
+.dash-preview-empty{ height: 110px; border-radius: 12px; border:1px solid #edf0ea; display:flex; align-items:center; justify-content:center; color: rgba(0,0,0,.55); background:#fff; }
+.dash-profile-hint{ margin-top: 10px; font-size: 13px; }
+@media (max-width: 768px){ .dash-kv-grid{ grid-template-columns: 1fr; } .dash-profile-previews{ grid-template-columns: 1fr; } }
+
 .dash-kpi{
   display:flex;
   align-items:center;
