@@ -5,6 +5,7 @@ import api, { ensureCsrf, clearToken } from './api/axios'
 export default function App(){
   const navigate = useNavigate()
   const location = useLocation()
+  const isHome = location.pathname === '/'
   const [me, setMe] = useState(null)
   useEffect(() => {
     (async()=>{
@@ -38,21 +39,25 @@ export default function App(){
           </div>
         </div>
       </nav>
-      <main className="container py-4">
+      <main className={isHome ? '' : 'container py-4'}>
         <Outlet />
       </main>
-      <a
-        className="contact-fab"
-        href="https://home.sahabs.tech"
-        target="_blank"
-        rel="noreferrer"
-        aria-label="Contact Us"
-        title="Contact Us"
-      >
-        <span role="img" aria-hidden="true">📞</span>
-        <span className="d-none d-sm-inline">Contact Us</span>
-      </a>
-      <div className="app-footer">&copy; Sahab Technology 2025</div>
+      {!isHome && (
+        <>
+          <a
+            className="contact-fab"
+            href="https://home.sahabs.tech"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Contact Us"
+            title="Contact Us"
+          >
+            <span role="img" aria-hidden="true">📞</span>
+            <span className="d-none d-sm-inline">Contact Us</span>
+          </a>
+          <div className="app-footer">&copy; Sahab Technology 2025</div>
+        </>
+      )}
     </>
   )
 }
