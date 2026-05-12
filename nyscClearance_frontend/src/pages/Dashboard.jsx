@@ -2,7 +2,7 @@
 // - Loads profile, structure, stats, notifications
 // - Wallet: funding via Paystack init/verify; modal accepts comma-separated amounts
 // - Handles callback params: ?paystack=1&reference=..., ?fund=1
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
 import { apiHref } from '../api/urls'
@@ -10,6 +10,7 @@ import MapPicker from '../components/MapPicker'
 import { Bar, Doughnut } from 'react-chartjs-2'
 import AutoFadeAlert from '../components/AutoFadeAlert'
 import thankYouAudio from '../assets/thank_you_message.mp3'
+import { Building2, Layers3, LayoutGrid, Menu, Users } from 'lucide-react'
 import { Chart as ChartJS, CategoryScale, LinearScale, ArcElement, BarElement, Tooltip, Legend } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, ArcElement, BarElement, Tooltip, Legend)
 
@@ -40,6 +41,40 @@ export default function Dashboard(){
   const [enrollBranch, setEnrollBranch] = useState('')
   const [enrollDept, setEnrollDept] = useState('')
   const [corperQuery, setCorperQuery] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  const chartTheme = useMemo(
+    () => ({
+      olive: '#556B2F',
+      khaki: '#BDB76B',
+      grid: 'rgba(0,0,0,0.06)',
+      text: 'rgba(0,0,0,0.70)',
+    }),
+    []
+  )
+
+  const barOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: chartTheme.text } },
+        y: { grid: { color: chartTheme.grid }, ticks: { color: chartTheme.text }, beginAtZero: true },
+      },
+    }),
+    [chartTheme]
+  )
+
+  const doughnutOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
+      cutout: '65%',
+    }),
+    []
+  )
 
   // First load: ensure CSRF and fetch all data
   useEffect(() => {
@@ -243,6 +278,47 @@ export default function Dashboard(){
 
   const logoUrl = profile?.logo || ''
 
+  const navItems = useMemo(() => {
+    const items = []
+    const add = (key, label, Icon, badge) => items.push({ key, label, Icon, badge })
+    add('overview', 'Overview', LayoutGrid)
+    if(me?.role === 'ORG' || me?.role === 'BRANCH'){
+      add('structure', 'Structure', Layers3)
+      add('corpers', 'Corpers', Users)
+    }
+    if(me?.role === 'ORG'){
+      add('wallet', 'Wallet', Building2)
+      add('clearance', 'Clearance', LayoutGrid)
+    }
+    if(me?.role === 'BRANCH'){
+      add('wallet', 'Wallet', Building2)
+      add('leave', 'Leaves', LayoutGrid, leaves.filter(l=>l.status==='PENDING').length || null)
+      add('query', 'Queries', LayoutGrid)
+      add('report', 'Reports', LayoutGrid)
+      add('clearance', 'Clearance', LayoutGrid)
+    }
+    if(me?.role === 'CORPER'){
+      add('attendance', 'Attendance', LayoutGrid)
+      add('leave', 'Leaves', LayoutGrid)
+      add('performance', 'Clearance', LayoutGrid)
+      add('wallet', 'Wallet', Building2)
+    }
+    return items
+  }, [me?.role, leaves])
+
+  const tabTitle = useMemo(() => ({
+    overview: 'Overview',
+    structure: 'Structure',
+    corpers: 'Corpers',
+    wallet: 'Wallet',
+    clearance: 'Performance Clearance',
+    leave: 'Leave Management',
+    query: 'Query Management',
+    report: 'Report',
+    attendance: 'Attendance',
+    performance: 'Performance Clearance',
+  }), [])
+
   function fundWallet(){ setShowFund(true); setFundAmount('') }
 
   async function submitFund(){
@@ -379,56 +455,57 @@ export default function Dashboard(){
           </div>
         </div>
       )}
-      <nav className="navbar navbar-light bg-white border-bottom px-3 sticky-top d-flex justify-content-between topnav">
-        <div className="d-flex align-items-center">
-          {logoUrl ? (
-            <img src={logoUrl} alt="Organization Logo" className="org-logo"/>
-          ) : (
-            <div className="org-logo-placeholder"/>
-          )}
-          <div className="ms-2">
-            <div className="fw-semibold small">{me?.name || 'Organization'}</div>
-            <div className="text-muted small">{me?.email}</div>
+      <div className="dash-shell">
+        <aside className={`dash-sidebar ${sidebarOpen ? 'open' : ''}`}>
+          <div className="dash-brand">
+            <div className="d-flex align-items-center gap-2">
+              {logoUrl ? <img src={logoUrl} alt="Organization Logo" className="org-logo"/> : <div className="org-logo-placeholder"/>}
+              <div className="min-w-0">
+                <div className="fw-semibold small text-truncate">{me?.name || 'Dashboard'}</div>
+                <div className="text-muted small text-truncate">{me?.email}</div>
+              </div>
+            </div>
+            <button className="btn btn-sm btn-outline-secondary d-lg-none" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
+              ×
+            </button>
           </div>
-        </div>
-        <div className="">
-          <div className="btn-group" role="group" aria-label="Navigation">
-            {me?.role!=='CORPER' && (
-              <button className={`btn btn-sm ${activeTab==='overview'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('overview')}>Home</button>
-            )}
-            {(me?.role==='ORG' || me?.role==='BRANCH') && (
-              <button className={`btn btn-sm ${activeTab==='structure'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('structure')}>Structure</button>
-            )}
-            {(me?.role==='ORG' || me?.role==='BRANCH') && (
-              <button className={`btn btn-sm ${activeTab==='corpers'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('corpers')}>Corpers Management</button>
-            )}
-            {(me?.role==='ORG') && (
-              <button className={`btn btn-sm ${activeTab==='wallet'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('wallet')}>Wallet</button>
-            )}
-            {(me?.role==='ORG' || me?.role==='BRANCH') && (
-              <button className={`btn btn-sm ${activeTab==='clearance'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('clearance')}>Performance Clearance</button>
-            )}
-            {(me?.role==='BRANCH') && (
-              <>
-                <button className={`btn btn-sm ${activeTab==='wallet'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('wallet')}>Wallet</button>
-                <button className={`btn btn-sm ${activeTab==='leave'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('leave')}>Leave Management {leaves.filter(l=>l.status==='PENDING').length ? <span className="badge bg-danger ms-1">{leaves.filter(l=>l.status==='PENDING').length}</span> : null}</button>
-                <button className={`btn btn-sm ${activeTab==='query'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('query')}>Query Management</button>
-                <button className={`btn btn-sm ${activeTab==='report'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('report')}>Report</button>
-              </>
-            )}
-            {(me?.role==='CORPER') && (
-              <>
-                <button className={`btn btn-sm ${activeTab==='overview'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('overview')}>Home</button>
-                <button className={`btn btn-sm ${activeTab==='attendance'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('attendance')}>Attendance</button>
-                <button className={`btn btn-sm ${activeTab==='leave'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('leave')}>Leave Management</button>
-                <button className={`btn btn-sm ${activeTab==='performance'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('performance')}>Performance Clearance</button>
-                <button className={`btn btn-sm ${activeTab==='wallet'?'btn-olive':'btn-outline-secondary'}`} onClick={()=>setActiveTab('wallet')}>Wallet</button>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
-      <main className="p-3 p-md-4">
+
+          <nav className="dash-nav" aria-label="Dashboard navigation">
+            {navItems.map(({ key, label, Icon, badge }) => (
+              <button
+                key={key}
+                className={`dash-nav-item ${activeTab === key ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab(key)
+                  setSidebarOpen(false)
+                }}
+                type="button"
+              >
+                <Icon size={18} aria-hidden />
+                <span>{label}</span>
+                {badge ? <span className="dash-badge">{badge}</span> : null}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="dash-main">
+          <header className="dash-header">
+            <button
+              className="btn btn-sm btn-outline-secondary d-lg-none"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
+              type="button"
+            >
+              <Menu size={18} />
+            </button>
+            <div className="dash-title">
+              <div className="fw-semibold">{tabTitle[activeTab] || 'Dashboard'}</div>
+              <div className="text-muted small">{me?.role === 'ORG' ? 'Organisation' : me?.role === 'BRANCH' ? 'Admin' : 'Corps Member'}</div>
+            </div>
+          </header>
+
+          <main className="dash-content">
         {status==='saved:face-capture' && (
           <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Face capture saved successfully.</AutoFadeAlert>
         )}
@@ -443,7 +520,6 @@ export default function Dashboard(){
         )}
           {activeTab==='overview' && (
             <>
-              <h2 className="mb-3 text-olive">Overview</h2>
               {me?.role==='ORG' && (
                 <div className="card shadow-sm mb-3"><div className="card-body">
                   <h5 className="card-title">Send Notification (All or Branch)</h5>
@@ -486,29 +562,41 @@ export default function Dashboard(){
               )}
               {me?.role!=='CORPER' && (
               <div className="row g-3">
-                <div className="col-6 col-md-3">
-                  <div className="card text-center shadow-sm"><div className="card-body">
-                    <div className="text-muted small">Corpers</div>
-                    <div className="h4 mb-0">{stats?.totals?.corpers ?? 0}</div>
-                  </div></div>
+                <div className="col-12 col-sm-6 col-lg-3">
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-icon"><Users size={18} aria-hidden /></div>
+                    <div>
+                      <div className="dash-kpi-label">Corpers</div>
+                      <div className="dash-kpi-value">{stats?.totals?.corpers ?? 0}</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="col-6 col-md-3">
-                  <div className="card text-center shadow-sm"><div className="card-body">
-                    <div className="text-muted small">Branches</div>
-                    <div className="h4 mb-0">{stats?.totals?.branches ?? 0}</div>
-                  </div></div>
+                <div className="col-12 col-sm-6 col-lg-3">
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-icon"><Building2 size={18} aria-hidden /></div>
+                    <div>
+                      <div className="dash-kpi-label">Branches</div>
+                      <div className="dash-kpi-value">{stats?.totals?.branches ?? 0}</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="col-6 col-md-3">
-                  <div className="card text-center shadow-sm"><div className="card-body">
-                    <div className="text-muted small">Departments</div>
-                    <div className="h4 mb-0">{stats?.totals?.departments ?? 0}</div>
-                  </div></div>
+                <div className="col-12 col-sm-6 col-lg-3">
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-icon"><Layers3 size={18} aria-hidden /></div>
+                    <div>
+                      <div className="dash-kpi-label">Departments</div>
+                      <div className="dash-kpi-value">{stats?.totals?.departments ?? 0}</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="col-6 col-md-3">
-                  <div className="card text-center shadow-sm"><div className="card-body">
-                    <div className="text-muted small">Units</div>
-                    <div className="h4 mb-0">{stats?.totals?.units ?? 0}</div>
-                  </div></div>
+                <div className="col-12 col-sm-6 col-lg-3">
+                  <div className="dash-kpi">
+                    <div className="dash-kpi-icon"><LayoutGrid size={18} aria-hidden /></div>
+                    <div>
+                      <div className="dash-kpi-label">Units</div>
+                      <div className="dash-kpi-value">{stats?.totals?.units ?? 0}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
               )}
@@ -522,9 +610,10 @@ export default function Dashboard(){
                       datasets: [{
                         label: 'Corpers',
                         data: (stats?.corpers_by_branch||[]).map(r=>r.count),
-                        backgroundColor: '#556B2F'
+                        backgroundColor: chartTheme.olive,
+                        borderRadius: 10
                       }]
-                    }} options={{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }} />
+                    }} options={barOptions} />
                   </div></div>
                 </div>
                 <div className="col-12 col-lg-6">
@@ -532,8 +621,8 @@ export default function Dashboard(){
                     <h6 className="card-title">Attendance</h6>
                     <Doughnut data={{
                       labels:['Today','This Month'],
-                      datasets:[{ data:[stats?.attendance?.today||0, stats?.attendance?.this_month||0], backgroundColor:['#BDB76B','#556B2F'] }]
-                    }} options={{ responsive:true, maintainAspectRatio:false }} />
+                      datasets:[{ data:[stats?.attendance?.today||0, stats?.attendance?.this_month||0], backgroundColor:[chartTheme.khaki, chartTheme.olive], borderWidth: 0 }]
+                    }} options={doughnutOptions} />
                   </div></div>
                 </div>
               </div>
@@ -548,9 +637,10 @@ export default function Dashboard(){
                       datasets: [{
                         label: 'Present',
                         data: (stats?.attendance?.last7||[]).map(r=> r.count),
-                        backgroundColor: '#BDB76B'
+                        backgroundColor: chartTheme.khaki,
+                        borderRadius: 10
                       }]
-                    }} options={{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }} />
+                    }} options={barOptions} />
                   </div></div>
                 </div>
               </div>
@@ -1374,7 +1464,9 @@ export default function Dashboard(){
               <div className="alert alert-info">Edit your personal details (coming soon).</div>
             </>
           )}
-        </main>
+          </main>
+        </div>
+      </div>
     </div>
   )
 }
