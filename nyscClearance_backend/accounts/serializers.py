@@ -12,8 +12,10 @@ User = get_user_model()
 
 
 class OrganizationRegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=8)
-    password_confirm = serializers.CharField(write_only=True, min_length=8)
+    # Password is optional: org users can set it after email verification
+    # (similar to invited branch/corper flows).
+    password = serializers.CharField(write_only=True, min_length=8, required=False, allow_blank=True)
+    password_confirm = serializers.CharField(write_only=True, min_length=8, required=False, allow_blank=True)
     location_lat = serializers.FloatField(required=False, allow_null=True)
     location_lng = serializers.FloatField(required=False, allow_null=True)
 
@@ -25,17 +27,26 @@ class OrganizationRegisterSerializer(serializers.ModelSerializer):
         )
 
     def validate(self, attrs):
-        if attrs.get('password') != attrs.get('password_confirm'):
-            raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
+        password = attrs.get('password')
+        password_confirm = attrs.get('password_confirm')
+        # Only validate mismatch when a password was provided.
+        if password or password_confirm:
+            if password != password_confirm:
+                raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
         return attrs
 
     def create(self, validated_data):
-        password = validated_data.pop('password')
+        password = (validated_data.pop('password', '') or '').strip()
         validated_data.pop('password_confirm', None)
         loc_lat = validated_data.pop('location_lat', None)
         loc_lng = validated_data.pop('location_lng', None)
         user = User.objects.create_user(**validated_data)
-        user.set_password(password)
+
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()
+
         user.is_active = False
         user.is_email_verified = False
         user.save()

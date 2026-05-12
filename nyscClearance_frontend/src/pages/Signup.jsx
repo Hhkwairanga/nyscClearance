@@ -1,14 +1,34 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
-import MapPicker from '../components/MapPicker'
-import axios from 'axios'
+import { Building2, CheckCircle2, Mail, ShieldCheck } from 'lucide-react'
 
 export default function Signup(){
   const [form, setForm] = useState({
-    email: '', name: '', address: '', phone_number: '', password: '', password_confirm: '',
-    location_lat: '', location_lng: ''
+    email: '', name: '', address: '', phone_number: ''
   })
   const [status, setStatus] = useState(null)
+
+  const perks = useMemo(
+    () => [
+      {
+        Icon: ShieldCheck,
+        title: 'Secure onboarding',
+        body: 'Verified accounts and role-based dashboards keep access controlled.',
+      },
+      {
+        Icon: Mail,
+        title: 'Email verification',
+        body: 'Verify your email, then set your password securely.',
+      },
+      {
+        Icon: Building2,
+        title: 'Built for organisations',
+        body: 'Branch admins, corpers, leaves and holidays all in one place.',
+      },
+    ],
+    []
+  )
 
   useEffect(() => { ensureCsrf() }, [])
 
@@ -33,66 +53,97 @@ export default function Signup(){
   }
 
   return (
-    <div className="row justify-content-center">
-      <div className="col-md-8 col-lg-6">
-        <div className="card shadow-sm">
-          <div className="card-body p-4">
-            <h1 className="h4 mb-3 text-olive">Organization Sign Up</h1>
-            <form onSubmit={submit}>
-              <div className="mb-3">
-                <label className="form-label">Email</label>
-                <input name="email" type="email" className="form-control" value={form.email} onChange={onChange} required />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Organization Name</label>
-                <input name="name" className="form-control" value={form.name} onChange={onChange} required />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Address</label>
-                <textarea name="address" className="form-control" value={form.address} onChange={onChange} rows="3" />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Organization Location</label>
-                <div className="row g-2">
-                  <div className="col-md-4">
-                    <input className="form-control" name="location_lat" placeholder="Latitude" value={form.location_lat} onChange={onChange} />
+    <div className="auth-page">
+      <div className="container py-4 py-lg-5">
+        <div className="row align-items-stretch g-4 justify-content-center">
+          <div className="col-lg-5">
+            <div className="auth-side p-4 p-lg-5 h-100">
+              <span className="auth-eyebrow">Organisation signup</span>
+              <h1 className="auth-title mt-2">Start automating NYSC monthly clearance.</h1>
+              <p className="text-muted mt-3">
+                Create your organisation account, set your location, and onboard branches and corps members with verified access.
+              </p>
+
+              <div className="mt-4 d-grid gap-3">
+                {perks.map(({ Icon, title, body }) => (
+                  <div className="auth-perk" key={title}>
+                    <span className="auth-perk-icon" aria-hidden>
+                      <Icon size={18} />
+                    </span>
+                    <div>
+                      <div className="fw-semibold">{title}</div>
+                      <div className="small text-muted">{body}</div>
+                    </div>
                   </div>
-                  <div className="col-md-4">
-                    <input className="form-control" name="location_lng" placeholder="Longitude" value={form.location_lng} onChange={onChange} />
+                ))}
+              </div>
+
+              <div className="auth-side-footer mt-4">
+                <CheckCircle2 size={16} aria-hidden />
+                <span>Already have an account?</span>
+                <Link to="/login" className="auth-link">Log in</Link>
+              </div>
+            </div>
+          </div>
+
+          <div className="col-lg-6">
+            <div className="auth-card p-4 p-lg-5 h-100">
+              <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
+                <div>
+                  <h2 className="h4 mb-1 text-olive">Create your organisation account</h2>
+                  <div className="text-muted small">Takes about 2 minutes.</div>
+                </div>
+              </div>
+
+              <form onSubmit={submit}>
+                <div className="row g-3">
+                  <div className="col-12">
+                    <label className="form-label">Email</label>
+                    <input name="email" type="email" className="form-control" value={form.email} onChange={onChange} required />
+                  </div>
+
+                  <div className="col-12">
+                    <label className="form-label">Organization Name</label>
+                    <input name="name" className="form-control" value={form.name} onChange={onChange} required />
+                  </div>
+
+                  <div className="col-12">
+                    <label className="form-label">Address</label>
+                    <textarea name="address" className="form-control" value={form.address} onChange={onChange} rows="3" />
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label">Phone Number</label>
+                    <input
+                      name="phone_number"
+                      type="tel"
+                      className="form-control"
+                      value={form.phone_number}
+                      onChange={onChange}
+                      placeholder="e.g., +2348012345678"
+                    />
                   </div>
                 </div>
-                <div className="mt-2">
-                  <MapPicker
-                    value={(form.location_lat && form.location_lng) ? { lat: parseFloat(form.location_lat), lng: parseFloat(form.location_lng)} : null}
-                    onChange={(pos) => setForm(prev => ({...prev, location_lat: pos.lat.toFixed(6), location_lng: pos.lng.toFixed(6)}))}
-                  />
+
+                <div className="d-grid mt-4">
+                  <button className="btn btn-olive" disabled={status === 'pending'}>
+                    {status === 'pending' ? 'Creating…' : 'Create account'}
+                  </button>
                 </div>
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Phone Number</label>
-                <input name="phone_number" type="tel" className="form-control" value={form.phone_number} onChange={onChange} placeholder="e.g., +2348012345678" />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Password</label>
-                <input name="password" type="password" className="form-control" value={form.password} onChange={onChange} required minLength={8} />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Confirm Password</label>
-                <input name="password_confirm" type="password" className="form-control" value={form.password_confirm} onChange={onChange} required minLength={8} />
-                {form.password && form.password_confirm && form.password !== form.password_confirm && (
-                  <div className="form-text text-danger">Passwords do not match</div>
-                )}
-              </div>
-              <div className="d-grid">
-                <button className="btn btn-olive" disabled={status==='pending' || (form.password !== form.password_confirm)}>Create account</button>
-              </div>
-            </form>
-            {status==='success' && (
-              <div className="alert alert-success mt-3">Registration successful. Check your email to verify.</div>
-            )}
-            {status?.startsWith('error') && (
-              <div className="alert alert-danger mt-3">{status.split(':')[1]}</div>
-            )}
+
+                <div className="auth-meta mt-3">
+                  <span className="text-muted small">By creating an account, you agree to our Terms.</span>
+                  <Link to="/login" className="small auth-link">
+                    Already have an account? Log in
+                  </Link>
+                </div>
+              </form>
+
+              {status === 'success' && (
+                <div className="alert alert-success mt-3">Registration successful. Check your email to verify and set your password.</div>
+              )}
+              {status?.startsWith('error') && <div className="alert alert-danger mt-3">{status.split(':')[1]}</div>}
+            </div>
           </div>
         </div>
       </div>

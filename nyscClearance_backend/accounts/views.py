@@ -826,7 +826,7 @@ class RegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({
-            'message': 'Registration successful. Please check your email to verify your account.'
+            'message': 'Registration successful. Please check your email to verify your account and set your password.'
         }, status=status.HTTP_201_CREATED)
 
 
