@@ -44,6 +44,8 @@ export default function Dashboard(){
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [structureTab, setStructureTab] = useState('branches')
 
+  const isSaving = status === 'pending'
+
   const [showAddBranch, setShowAddBranch] = useState(false)
   const [showAddDepartment, setShowAddDepartment] = useState(false)
   const [showAddUnit, setShowAddUnit] = useState(false)
@@ -57,6 +59,27 @@ export default function Dashboard(){
   const [structQuery, setStructQuery] = useState('')
   const [structPage, setStructPage] = useState(1)
   const structPageSize = 10
+
+  const modalOpen = !!(
+    showAddBranch ||
+    showAddDepartment ||
+    showAddUnit ||
+    showAddHoliday ||
+    showEditProfile ||
+    showBranchLocation ||
+    editBranch ||
+    editDepartment ||
+    editUnit
+  )
+
+  useEffect(() => {
+    if (!modalOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [modalOpen])
 
   useEffect(() => {
     if (activeTab === 'structure') {
@@ -231,7 +254,9 @@ export default function Dashboard(){
       const res = await api.put('/api/auth/profile/', form, { headers: { 'Content-Type':'multipart/form-data' } })
       setProfile(res.data)
       setStatus('saved:profile')
+      return true
     }catch(err){ setStatus('error:profile') }
+    return false
   }
 
   const latRef = useRef(null)
@@ -240,19 +265,22 @@ export default function Dashboard(){
   async function createBranch(e){
     e.preventDefault(); setStatus('pending')
     const form = new FormData(e.target)
-    try{ await api.post('/api/auth/branches/', Object.fromEntries(form)); await refreshAll(); setStatus('saved:branch') }catch(e){ setStatus('error:branch') }
+    try{ await api.post('/api/auth/branches/', Object.fromEntries(form)); await refreshAll(); setStatus('saved:branch'); return true }catch(e){ setStatus('error:branch') }
+    return false
   }
 
   async function createDepartment(e){
     e.preventDefault(); setStatus('pending')
     const form = new FormData(e.target)
-    try{ await api.post('/api/auth/departments/', Object.fromEntries(form)); await refreshAll(); setStatus('saved:department') }catch(e){ setStatus('error:department') }
+    try{ await api.post('/api/auth/departments/', Object.fromEntries(form)); await refreshAll(); setStatus('saved:department'); return true }catch(e){ setStatus('error:department') }
+    return false
   }
 
   async function createUnit(e){
     e.preventDefault(); setStatus('pending')
     const form = new FormData(e.target)
-    try{ await api.post('/api/auth/units/', Object.fromEntries(form)); await refreshAll(); setStatus('saved:unit') }catch(e){ setStatus('error:unit') }
+    try{ await api.post('/api/auth/units/', Object.fromEntries(form)); await refreshAll(); setStatus('saved:unit'); return true }catch(e){ setStatus('error:unit') }
+    return false
   }
 
   async function createCorper(e){
@@ -306,7 +334,8 @@ export default function Dashboard(){
   async function createHoliday(e){
     e.preventDefault(); setStatus('pending')
     const data = Object.fromEntries(new FormData(e.target))
-    try{ await api.post('/api/auth/holidays/', data); await refreshAll(); setStatus('saved:holiday'); e.target.reset() }catch(e){ setStatus('error:holiday') }
+    try{ await api.post('/api/auth/holidays/', data); await refreshAll(); setStatus('saved:holiday'); e.target.reset(); return true }catch(e){ setStatus('error:holiday') }
+    return false
   }
 
   async function approveLeave(id){ try{ await api.post(`/api/auth/leaves/${id}/approve/`); await refreshAll() }catch(e){} }
@@ -1104,16 +1133,7 @@ export default function Dashboard(){
                             </div>
                           </div>
 
-                          <div className="col-12">
-                            <div className="dash-profile-card">
-                              <div className="dash-profile-card-title">Organisation Location</div>
-                              <div className="dash-kv-grid">
-                                <div className="dash-kv"><div className="dash-k">Latitude</div><div className="dash-v">{profile?.location_lat ?? '—'}</div></div>
-                                <div className="dash-kv"><div className="dash-k">Longitude</div><div className="dash-v">{profile?.location_lng ?? '—'}</div></div>
-                              </div>
-                              <div className="dash-profile-hint text-muted">Used for location-aware attendance verification (when enabled).</div>
-                            </div>
-                          </div>
+                          {/* Organisation coordinates are managed at the admin/branch level */}
                         </div>
                       </div>
                     )}
@@ -1140,7 +1160,13 @@ export default function Dashboard(){
                           </ul>
                         </div>
                         <div className="dash-modal-form">
-                          <form id="branch-form" onSubmit={(e)=>{ createBranch(e); setShowAddBranch(false) }}>
+                          <form
+                            id="branch-form"
+                            onSubmit={async (e) => {
+                              const ok = await createBranch(e)
+                              if (ok) setShowAddBranch(false)
+                            }}
+                          >
                             <label className="form-label">Branch name</label>
                             <input className="form-control mb-2" name="name" placeholder="e.g., Head Office" required/>
                             <label className="form-label">Address</label>
@@ -1154,7 +1180,11 @@ export default function Dashboard(){
                               <div className="col-md-6"><label className="form-label">Latitude</label><input className="form-control" name="latitude" placeholder="Optional" /></div>
                               <div className="col-md-6"><label className="form-label">Longitude</label><input className="form-control" name="longitude" placeholder="Optional" /></div>
                             </div>
-                            <div className="d-grid mt-3"><button className="btn btn-olive">Add Branch</button></div>
+                            <div className="d-grid mt-3">
+                              <button className="btn btn-olive" disabled={isSaving}>
+                                {isSaving ? 'Adding…' : 'Add Branch'}
+                              </button>
+                            </div>
                           </form>
                         </div>
                       </div>
@@ -1182,7 +1212,7 @@ export default function Dashboard(){
                           </ul>
                         </div>
                         <div className="dash-modal-form">
-                          <form onSubmit={(e)=>{ createDepartment(e); setShowAddDepartment(false) }}>
+                          <form onSubmit={async (e)=>{ const ok = await createDepartment(e); if(ok) setShowAddDepartment(false) }}>
                             <label className="form-label">Branch</label>
                             <select className="form-select mb-2" name="branch" required>
                               <option value="">Select Branch</option>
@@ -1190,7 +1220,11 @@ export default function Dashboard(){
                             </select>
                             <label className="form-label">Department name</label>
                             <input className="form-control mb-3" name="name" placeholder="e.g., HR" required/>
-                            <div className="d-grid"><button className="btn btn-olive">Add Department</button></div>
+                            <div className="d-grid">
+                              <button className="btn btn-olive" disabled={isSaving}>
+                                {isSaving ? 'Adding…' : 'Add Department'}
+                              </button>
+                            </div>
                           </form>
                         </div>
                       </div>
@@ -1218,7 +1252,7 @@ export default function Dashboard(){
                           </ul>
                         </div>
                         <div className="dash-modal-form">
-                          <form onSubmit={(e)=>{ createUnit(e); setShowAddUnit(false) }}>
+                          <form onSubmit={async (e)=>{ const ok = await createUnit(e); if(ok) setShowAddUnit(false) }}>
                             <label className="form-label">Department</label>
                             <select className="form-select mb-2" name="department" required>
                               <option value="">Select Department</option>
@@ -1226,7 +1260,11 @@ export default function Dashboard(){
                             </select>
                             <label className="form-label">Unit name</label>
                             <input className="form-control mb-3" name="name" placeholder="e.g., Recruitment" required/>
-                            <div className="d-grid"><button className="btn btn-olive">Add Unit</button></div>
+                            <div className="d-grid">
+                              <button className="btn btn-olive" disabled={isSaving}>
+                                {isSaving ? 'Adding…' : 'Add Unit'}
+                              </button>
+                            </div>
                           </form>
                         </div>
                       </div>
@@ -1254,7 +1292,7 @@ export default function Dashboard(){
                           </ul>
                         </div>
                         <div className="dash-modal-form">
-                          <form onSubmit={(e)=>{ createHoliday(e); setShowAddHoliday(false) }}>
+                          <form onSubmit={async (e)=>{ const ok = await createHoliday(e); if(ok) setShowAddHoliday(false) }}>
                             <div className="row g-2">
                               <div className="col-12">
                                 <label className="form-label">Holiday title</label>
@@ -1269,7 +1307,11 @@ export default function Dashboard(){
                                 <input className="form-control" type="date" name="end_date" required/>
                               </div>
                             </div>
-                            <div className="d-grid mt-3"><button className="btn btn-olive">Add Holiday</button></div>
+                            <div className="d-grid mt-3">
+                              <button className="btn btn-olive" disabled={isSaving}>
+                                {isSaving ? 'Adding…' : 'Add Holiday'}
+                              </button>
+                            </div>
                           </form>
                         </div>
                       </div>
@@ -1297,34 +1339,55 @@ export default function Dashboard(){
                           </ul>
                         </div>
                         <div className="dash-modal-form">
-                          <form onSubmit={(e)=>{ saveProfile(e); setShowEditProfile(false) }} encType="multipart/form-data">
+                          <form onSubmit={async (e)=>{ const ok = await saveProfile(e); if(ok) setShowEditProfile(false) }} encType="multipart/form-data">
                             <div className="dash-form-section">
                               <div className="dash-form-title">Branding & Sign-off</div>
                               <div className="row g-2">
-                                <div className="col-12 col-md-6"><label className="form-label">Director HR Name</label><input className="form-control" type="text" name="signatory_name" defaultValue={profile?.signatory_name || ''} /></div>
-                                <div className="col-12 col-md-3"><label className="form-label">Logo</label><input className="form-control" type="file" name="logo" accept="image/*" /></div>
-                                <div className="col-12 col-md-3"><label className="form-label">Signature</label><input className="form-control" type="file" name="signature" accept="image/*" /></div>
+                                <div className="col-12">
+                                  <label className="form-label">Director HR Name</label>
+                                  <input className="form-control" type="text" name="signatory_name" defaultValue={profile?.signatory_name || ''} />
+                                </div>
+                                <div className="col-12">
+                                  <label className="form-label">Logo</label>
+                                  <input className="form-control" type="file" name="logo" accept="image/*" />
+                                  <div className="form-text">Used on generated clearance letters.</div>
+                                </div>
+                                <div className="col-12">
+                                  <label className="form-label">Signature</label>
+                                  <input className="form-control" type="file" name="signature" accept="image/*" />
+                                  <div className="form-text">Director HR signature for clearance sign-off.</div>
+                                </div>
                               </div>
                             </div>
 
                             <div className="dash-form-section">
                               <div className="dash-form-title">Attendance Rules</div>
                               <div className="row g-2">
-                                <div className="col-6 col-md-3"><label className="form-label">Late Time</label><input className="form-control" type="time" name="late_time" defaultValue={profile?.late_time || ''} /></div>
-                                <div className="col-6 col-md-3"><label className="form-label">Closing Time</label><input className="form-control" type="time" name="closing_time" defaultValue={profile?.closing_time || ''} /></div>
-                                <div className="col-6 col-md-3"><label className="form-label">Max Late Days</label><input className="form-control" type="number" min="0" step="1" name="max_days_late" defaultValue={profile?.max_days_late ?? ''} /></div>
-                                <div className="col-6 col-md-3"><label className="form-label">Max Absent Days</label><input className="form-control" type="number" min="0" step="1" name="max_days_absent" defaultValue={profile?.max_days_absent ?? ''} /></div>
+                                <div className="col-12 col-md-6">
+                                  <label className="form-label">Late Time</label>
+                                  <input className="form-control" type="time" name="late_time" defaultValue={profile?.late_time || ''} />
+                                  <div className="form-text">Use 24-hour format (HH:MM), e.g. 08:30.</div>
+                                </div>
+                                <div className="col-12 col-md-6">
+                                  <label className="form-label">Closing Time</label>
+                                  <input className="form-control" type="time" name="closing_time" defaultValue={profile?.closing_time || ''} />
+                                  <div className="form-text">Use 24-hour format (HH:MM), e.g. 17:00.</div>
+                                </div>
+                                <div className="col-12 col-md-6">
+                                  <label className="form-label">Max Late Days</label>
+                                  <input className="form-control" type="number" min="0" step="1" name="max_days_late" defaultValue={profile?.max_days_late ?? ''} />
+                                </div>
+                                <div className="col-12 col-md-6">
+                                  <label className="form-label">Max Absent Days</label>
+                                  <input className="form-control" type="number" min="0" step="1" name="max_days_absent" defaultValue={profile?.max_days_absent ?? ''} />
+                                </div>
                               </div>
                             </div>
-
-                            <div className="dash-form-section">
-                              <div className="dash-form-title">Organisation Location</div>
-                              <div className="row g-2">
-                                <div className="col-6 col-md-3"><label className="form-label">Latitude</label><input className="form-control" name="location_lat" defaultValue={profile?.location_lat ?? ''} placeholder="Latitude" /></div>
-                                <div className="col-6 col-md-3"><label className="form-label">Longitude</label><input className="form-control" name="location_lng" defaultValue={profile?.location_lng ?? ''} placeholder="Longitude" /></div>
-                              </div>
+                            <div className="d-grid mt-3">
+                              <button className="btn btn-olive" disabled={isSaving}>
+                                {isSaving ? 'Saving…' : 'Save'}
+                              </button>
                             </div>
-                            <div className="d-grid mt-3"><button className="btn btn-olive">Save</button></div>
                           </form>
                         </div>
                       </div>
@@ -1357,6 +1420,7 @@ export default function Dashboard(){
                           <form
                             onSubmit={(e) => {
                               e.preventDefault()
+                              setStatus('pending')
                               const fd = new FormData(e.target)
                               const payload = Object.fromEntries(fd)
                               ;(async () => {
@@ -1368,6 +1432,7 @@ export default function Dashboard(){
                                   })
                                   await refreshAll()
                                   setEditBranch(null)
+                                  setStatus('saved:branch')
                                 } catch (err) {}
                               })()
                             }}
@@ -1403,7 +1468,9 @@ export default function Dashboard(){
                               </div>
                             </div>
                             <div className="d-grid mt-3">
-                              <button className="btn btn-olive">Save changes</button>
+                              <button className="btn btn-olive" disabled={isSaving}>
+                                {isSaving ? 'Saving…' : 'Save changes'}
+                              </button>
                             </div>
                           </form>
                         </div>
@@ -1436,6 +1503,7 @@ export default function Dashboard(){
                           <form
                             onSubmit={(e) => {
                               e.preventDefault()
+                              setStatus('pending')
                               const fd = new FormData(e.target)
                               const payload = Object.fromEntries(fd)
                               ;(async () => {
@@ -1446,6 +1514,7 @@ export default function Dashboard(){
                                   })
                                   await refreshAll()
                                   setEditDepartment(null)
+                                  setStatus('saved:department')
                                 } catch (err) {}
                               })()
                             }}
@@ -1461,7 +1530,9 @@ export default function Dashboard(){
                             <label className="form-label">Department name</label>
                             <input className="form-control" name="name" defaultValue={editDepartment.name} required />
                             <div className="d-grid mt-3">
-                              <button className="btn btn-olive">Save changes</button>
+                              <button className="btn btn-olive" disabled={isSaving}>
+                                {isSaving ? 'Saving…' : 'Save changes'}
+                              </button>
                             </div>
                           </form>
                         </div>
@@ -1494,6 +1565,7 @@ export default function Dashboard(){
                           <form
                             onSubmit={(e) => {
                               e.preventDefault()
+                              setStatus('pending')
                               const fd = new FormData(e.target)
                               const payload = Object.fromEntries(fd)
                               ;(async () => {
@@ -1504,6 +1576,7 @@ export default function Dashboard(){
                                   })
                                   await refreshAll()
                                   setEditUnit(null)
+                                  setStatus('saved:unit')
                                 } catch (err) {}
                               })()
                             }}
@@ -1519,7 +1592,9 @@ export default function Dashboard(){
                             <label className="form-label">Unit name</label>
                             <input className="form-control" name="name" defaultValue={editUnit.name} required />
                             <div className="d-grid mt-3">
-                              <button className="btn btn-olive">Save changes</button>
+                              <button className="btn btn-olive" disabled={isSaving}>
+                                {isSaving ? 'Saving…' : 'Save changes'}
+                              </button>
                             </div>
                           </form>
                         </div>
@@ -1856,7 +1931,18 @@ export default function Dashboard(){
                             <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddDepartment(false)}>Close</button>
                           </div>
                           <div className="card-body">
-                            <form onSubmit={(e)=>{ e.preventDefault(); const f=new FormData(e.target); const name=f.get('name'); (async()=>{ try{ await api.post('/api/auth/departments/', { branch: myBranch.id, name }); await refreshAll(); setStatus('saved:department') }catch(err){ setStatus('error:department') } })(); setShowAddDepartment(false) }}>
+                            <form onSubmit={async (e)=>{
+                              e.preventDefault()
+                              setStatus('pending')
+                              const f=new FormData(e.target)
+                              const name=f.get('name')
+                              try{
+                                await api.post('/api/auth/departments/', { branch: myBranch.id, name })
+                                await refreshAll()
+                                setStatus('saved:department')
+                                setShowAddDepartment(false)
+                              }catch(err){ setStatus('error:department') }
+                            }}>
                               <input className="form-control mb-3" name="name" placeholder="Department name" required/>
                               <div className="d-grid"><button className="btn btn-olive">Add Department</button></div>
                             </form>
@@ -1873,7 +1959,19 @@ export default function Dashboard(){
                             <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddUnit(false)}>Close</button>
                           </div>
                           <div className="card-body">
-                            <form onSubmit={(e)=>{ e.preventDefault(); const f=new FormData(e.target); const name=f.get('name'); const department=Number(f.get('department')); (async()=>{ try{ await api.post('/api/auth/units/', { name, department }); await refreshAll(); setStatus('saved:unit') }catch(err){ setStatus('error:unit') } })(); setShowAddUnit(false) }}>
+                            <form onSubmit={async (e)=>{
+                              e.preventDefault()
+                              setStatus('pending')
+                              const f=new FormData(e.target)
+                              const name=f.get('name')
+                              const department=Number(f.get('department'))
+                              try{
+                                await api.post('/api/auth/units/', { name, department })
+                                await refreshAll()
+                                setStatus('saved:unit')
+                                setShowAddUnit(false)
+                              }catch(err){ setStatus('error:unit') }
+                            }}>
                               <select className="form-select mb-2" name="department" required>
                                 <option value="">Select Department</option>
                                 {myDeps.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -1911,18 +2009,22 @@ export default function Dashboard(){
                                   height={260}
                                   zoom={branchLocationPos ? 14 : 6}
                                 />
-                                <div className="d-grid mt-3">
-                                  <button className="btn btn-olive" type="button" onClick={async()=>{
-                                    if(!branchLocationPos){ alert('Pick a location on the map first.'); return }
-                                    try{
-                                      await api.put(`/api/auth/branches/${myBranch.id}/`, { latitude: branchLocationPos.lat, longitude: branchLocationPos.lng, name: myBranch.name, address: myBranch.address||'' })
-                                      await refreshAll()
-                                      setShowBranchLocation(false)
-                                    }catch(e){}
-                                  }}>Save Location</button>
-                                </div>
+                              <div className="d-grid mt-3">
+                                <button className="btn btn-olive" type="button" disabled={isSaving} onClick={async()=>{
+                                  if(!branchLocationPos){ alert('Pick a location on the map first.'); return }
+                                  setStatus('pending')
+                                  try{
+                                    await api.put(`/api/auth/branches/${myBranch.id}/`, { latitude: branchLocationPos.lat, longitude: branchLocationPos.lng, name: myBranch.name, address: myBranch.address||'' })
+                                    await refreshAll()
+                                    setShowBranchLocation(false)
+                                    setStatus('saved:branch')
+                                  }catch(e){}
+                                }}>
+                                  {isSaving ? 'Saving…' : 'Save Location'}
+                                </button>
                               </div>
                             </div>
+                          </div>
                           </div>
                         </div>
                       </div>
