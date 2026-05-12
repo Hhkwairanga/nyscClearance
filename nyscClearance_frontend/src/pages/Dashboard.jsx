@@ -114,7 +114,7 @@ export default function Dashboard(){
   useEffect(() => {
     if(activeTab !== 'structure') return
     if(me?.role === 'ORG'){
-      setStructureTab((t) => (t === 'profile' || t === 'branches' || t === 'departments' || t === 'units' || t === 'holidays' ? t : 'branches'))
+      setStructureTab((t) => (t === 'profile' || t === 'branches' || t === 'departments' || t === 'units' || t === 'holidays' ? t : 'profile'))
     }else if(me?.role === 'BRANCH'){
       setStructureTab((t) => (t === 'branch' || t === 'departments' || t === 'units' || t === 'holidays' ? t : 'branch'))
     }
@@ -767,11 +767,11 @@ export default function Dashboard(){
               <h2 className="mb-3 text-olive">Structure</h2>
 
               <div className="dash-struct-nav mb-3">
+                <button className={`dash-struct-item ${structureTab==='profile'?'active':''}`} type="button" onClick={()=>setStructureTab('profile')}>Organisation Profile</button>
                 <button className={`dash-struct-item ${structureTab==='branches'?'active':''}`} type="button" onClick={()=>setStructureTab('branches')}>Branches</button>
                 <button className={`dash-struct-item ${structureTab==='departments'?'active':''}`} type="button" onClick={()=>setStructureTab('departments')}>Departments</button>
                 <button className={`dash-struct-item ${structureTab==='units'?'active':''}`} type="button" onClick={()=>setStructureTab('units')}>Units</button>
                 <button className={`dash-struct-item ${structureTab==='holidays'?'active':''}`} type="button" onClick={()=>setStructureTab('holidays')}>Holidays</button>
-                <button className={`dash-struct-item ${structureTab==='profile'?'active':''}`} type="button" onClick={()=>setStructureTab('profile')}>Organisation Profile</button>
               </div>
 
               <div className="card shadow-sm dash-card">
@@ -1065,18 +1065,6 @@ export default function Dashboard(){
                         <div className="row g-3 mt-1">
                           <div className="col-12 col-lg-6">
                             <div className="dash-profile-card">
-                              <div className="dash-profile-card-title">Attendance Rules</div>
-                              <div className="dash-kv-grid">
-                                <div className="dash-kv"><div className="dash-k">Late time</div><div className="dash-v">{profile?.late_time || '—'}</div></div>
-                                <div className="dash-kv"><div className="dash-k">Closing time</div><div className="dash-v">{profile?.closing_time || '—'}</div></div>
-                                <div className="dash-kv"><div className="dash-k">Max days late</div><div className="dash-v">{profile?.max_days_late ?? '—'}</div></div>
-                                <div className="dash-kv"><div className="dash-k">Max days absent</div><div className="dash-v">{profile?.max_days_absent ?? '—'}</div></div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="col-12 col-lg-6">
-                            <div className="dash-profile-card">
                               <div className="dash-profile-card-title">Branding & Sign-off</div>
                               <div className="dash-kv-grid">
                                 <div className="dash-kv"><div className="dash-k">Director HR</div><div className="dash-v">{profile?.signatory_name || '—'}</div></div>
@@ -1100,6 +1088,18 @@ export default function Dashboard(){
                                     <div className="dash-preview-empty">No signature</div>
                                   )}
                                 </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="col-12 col-lg-6">
+                            <div className="dash-profile-card">
+                              <div className="dash-profile-card-title">Attendance Rules</div>
+                              <div className="dash-kv-grid">
+                                <div className="dash-kv"><div className="dash-k">Late time</div><div className="dash-v">{profile?.late_time || '—'}</div></div>
+                                <div className="dash-kv"><div className="dash-k">Closing time</div><div className="dash-v">{profile?.closing_time || '—'}</div></div>
+                                <div className="dash-kv"><div className="dash-k">Max late days</div><div className="dash-v">{profile?.max_days_late ?? '—'}</div></div>
+                                <div className="dash-kv"><div className="dash-k">Max absent days</div><div className="dash-v">{profile?.max_days_absent ?? '—'}</div></div>
                               </div>
                             </div>
                           </div>
@@ -1298,16 +1298,31 @@ export default function Dashboard(){
                         </div>
                         <div className="dash-modal-form">
                           <form onSubmit={(e)=>{ saveProfile(e); setShowEditProfile(false) }} encType="multipart/form-data">
-                            <div className="row g-2">
-                              <div className="col-6 col-md-3"><label className="form-label">Late Time</label><input className="form-control" type="time" name="late_time" defaultValue={profile?.late_time || ''} /></div>
-                              <div className="col-6 col-md-3"><label className="form-label">Closing Time</label><input className="form-control" type="time" name="closing_time" defaultValue={profile?.closing_time || ''} /></div>
-                              <div className="col-6 col-md-3"><label className="form-label">Max Days Late</label><input className="form-control" type="number" min="0" step="1" name="max_days_late" defaultValue={profile?.max_days_late ?? ''} /></div>
-                              <div className="col-6 col-md-3"><label className="form-label">Max Days Absent</label><input className="form-control" type="number" min="0" step="1" name="max_days_absent" defaultValue={profile?.max_days_absent ?? ''} /></div>
-                              <div className="col-12 col-md-3"><label className="form-label">Logo</label><input className="form-control" type="file" name="logo" accept="image/*" /></div>
-                              <div className="col-12 col-md-6"><label className="form-label">Director HR Name</label><input className="form-control" type="text" name="signatory_name" defaultValue={profile?.signatory_name || ''} /></div>
-                              <div className="col-12 col-md-3"><label className="form-label">Director HR Signature</label><input className="form-control" type="file" name="signature" accept="image/*" /></div>
-                              <div className="col-6 col-md-3"><label className="form-label">Org Latitude</label><input className="form-control" name="location_lat" defaultValue={profile?.location_lat ?? ''} placeholder="Latitude" /></div>
-                              <div className="col-6 col-md-3"><label className="form-label">Org Longitude</label><input className="form-control" name="location_lng" defaultValue={profile?.location_lng ?? ''} placeholder="Longitude" /></div>
+                            <div className="dash-form-section">
+                              <div className="dash-form-title">Branding & Sign-off</div>
+                              <div className="row g-2">
+                                <div className="col-12 col-md-6"><label className="form-label">Director HR Name</label><input className="form-control" type="text" name="signatory_name" defaultValue={profile?.signatory_name || ''} /></div>
+                                <div className="col-12 col-md-3"><label className="form-label">Logo</label><input className="form-control" type="file" name="logo" accept="image/*" /></div>
+                                <div className="col-12 col-md-3"><label className="form-label">Signature</label><input className="form-control" type="file" name="signature" accept="image/*" /></div>
+                              </div>
+                            </div>
+
+                            <div className="dash-form-section">
+                              <div className="dash-form-title">Attendance Rules</div>
+                              <div className="row g-2">
+                                <div className="col-6 col-md-3"><label className="form-label">Late Time</label><input className="form-control" type="time" name="late_time" defaultValue={profile?.late_time || ''} /></div>
+                                <div className="col-6 col-md-3"><label className="form-label">Closing Time</label><input className="form-control" type="time" name="closing_time" defaultValue={profile?.closing_time || ''} /></div>
+                                <div className="col-6 col-md-3"><label className="form-label">Max Late Days</label><input className="form-control" type="number" min="0" step="1" name="max_days_late" defaultValue={profile?.max_days_late ?? ''} /></div>
+                                <div className="col-6 col-md-3"><label className="form-label">Max Absent Days</label><input className="form-control" type="number" min="0" step="1" name="max_days_absent" defaultValue={profile?.max_days_absent ?? ''} /></div>
+                              </div>
+                            </div>
+
+                            <div className="dash-form-section">
+                              <div className="dash-form-title">Organisation Location</div>
+                              <div className="row g-2">
+                                <div className="col-6 col-md-3"><label className="form-label">Latitude</label><input className="form-control" name="location_lat" defaultValue={profile?.location_lat ?? ''} placeholder="Latitude" /></div>
+                                <div className="col-6 col-md-3"><label className="form-label">Longitude</label><input className="form-control" name="location_lng" defaultValue={profile?.location_lng ?? ''} placeholder="Longitude" /></div>
+                              </div>
                             </div>
                             <div className="d-grid mt-3"><button className="btn btn-olive">Save</button></div>
                           </form>
