@@ -43,6 +43,16 @@ export default function Dashboard(){
   const [enrollBranch, setEnrollBranch] = useState('')
   const [enrollDept, setEnrollDept] = useState('')
   const [corperQuery, setCorperQuery] = useState('')
+  const [corperPage, setCorperPage] = useState(1)
+  const [corperPageSize, setCorperPageSize] = useState(20)
+  const [corperSearchOpen, setCorperSearchOpen] = useState(false)
+  const [corperSortKey, setCorperSortKey] = useState('name')
+  const [corperSortDir, setCorperSortDir] = useState('asc')
+  const [corperFilterBranch, setCorperFilterBranch] = useState('all')
+  const [showAddCorper, setShowAddCorper] = useState(false)
+  const [editCorper, setEditCorper] = useState(null)
+  const [editCorperForm, setEditCorperForm] = useState(null)
+  const [selectedCorper, setSelectedCorper] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [structureTab, setStructureTab] = useState('branches')
 
@@ -99,6 +109,18 @@ export default function Dashboard(){
       end_date: editHoliday.end_date || editHoliday.start_date || '',
     })
   }, [editHoliday])
+
+  useEffect(() => {
+    if (!editCorper) {
+      setEditCorperForm(null)
+      return
+    }
+    setEditCorperForm({
+      branch: editCorper.branch || '',
+      department: editCorper.department || '',
+      unit: editCorper.unit || '',
+    })
+  }, [editCorper])
   const [structQuery, setStructQuery] = useState('')
   const [structPage, setStructPage] = useState(1)
   const [structPageSize, setStructPageSize] = useState(20)
@@ -116,7 +138,8 @@ export default function Dashboard(){
     showBranchLocation ||
     editBranch ||
     editDepartment ||
-    editUnit
+    editUnit ||
+    selectedCorper
   )
 
   useEffect(() => {
@@ -344,11 +367,20 @@ export default function Dashboard(){
     // Drop empty values and branch for branch-admins (defaults server-side)
     Object.keys(data).forEach(k => { if(data[k] === '') delete data[k] })
     if(me?.role === 'BRANCH') delete data.branch
+    if(typeof data.state_code === 'string') data.state_code = data.state_code.trim().toUpperCase()
+    if(typeof data.full_name === 'string') data.full_name = data.full_name.trim()
     try{
       await api.post('/api/auth/corpers/', data)
       await refreshAll(); setStatus('saved:corper')
       e.target.reset()
-    }catch(e){ setStatus('error:corper') }
+      return true
+    }catch(err){
+      const msg = err?.response?.data?.detail
+        || Object.values(err?.response?.data || {})?.[0]?.[0]
+        || err.message
+      setStatus(`error:corper:${msg}`)
+    }
+    return false
   }
 
   function enrollBranchOptions(){
@@ -2417,178 +2449,415 @@ export default function Dashboard(){
           {activeTab==='corpers' && (me?.role==='ORG' || me?.role==='BRANCH') && (
             <>
               <h2 className="mb-3 text-olive">Corpers</h2>
-              <div className="card shadow-sm">
-                <div className="card-body">
-                  <h5 className="card-title">Enroll Corp Member</h5>
-                  <form onSubmit={createCorper}>
-                    {/* Row 1: Basic details */}
-                    <div className="row g-2 align-items-end mb-1">
-                      <div className="col-md-4">
-                        <label className="form-label">Email</label>
-                        <input className="form-control" type="email" name="email" placeholder="corper@example.com" required />
-                      </div>
-                      <div className="col-md-4">
-                        <label className="form-label">Full Name</label>
-                        <input className="form-control" name="full_name" placeholder="Surname Firstname Lastname" required />
-                      </div>
-                      <div className="col-md-2">
-                        <label className="form-label">Gender</label>
-                        <select className="form-select" name="gender" required>
-                          <option value="">Select...</option>
-                          <option value="M">Male</option>
-                          <option value="F">Female</option>
-                          <option value="O">Other</option>
-                        </select>
-                      </div>
-                      <div className="col-md-2">
-                        <label className="form-label">Passing Out</label>
-                        <input className="form-control" type="date" name="passing_out_date" required />
-                      </div>
-                    </div>
 
-                    {/* Row 2: Placement */}
-                    <div className="row g-2 align-items-end">
-                      <div className="col-md-3">
-                        <label className="form-label">State Code</label>
-                        <input className="form-control" name="state_code" placeholder="AA/00A/0000" required />
-                      </div>
-                      {me?.role==='ORG' && (
-                        <div className="col-md-3">
-                          <label className="form-label">Branch</label>
-                          <select className="form-select" name="branch" required value={enrollBranch}
-                                  onChange={(e)=>{ setEnrollBranch(e.target.value); setEnrollDept('') }}>
-                            <option value="">Select branch</option>
-                            {enrollBranchOptions().map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                          </select>
+              <div className="card shadow-sm dash-card">
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-center gap-2">
+                    <div className="dash-card-title mb-0">Registered Corpers</div>
+                    <button className="btn btn-sm btn-olive" type="button" onClick={() => setShowAddCorper(true)}>
+                      Add Corper
+                    </button>
+                  </div>
+
+                  <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      <button
+                        className={`btn btn-sm ${corperSearchOpen ? 'btn-olive' : 'btn-outline-secondary'}`}
+                        type="button"
+                        aria-label="Search"
+                        onClick={() => setCorperSearchOpen((v) => !v)}
+                      >
+                        <Search size={16} />
+                      </button>
+                      {corperSearchOpen && (
+                        <div className="dash-table-search">
+                          <input
+                            className="form-control form-control-sm"
+                            placeholder="Search…"
+                            value={corperQuery}
+                            onChange={(e) => {
+                              setCorperQuery(e.target.value)
+                              setCorperPage(1)
+                            }}
+                          />
                         </div>
                       )}
-                      <div className="col-md-3">
-                        <label className="form-label">Department (optional)</label>
-                        <select className="form-select" name="department" value={enrollDept}
-                                onChange={(e)=> setEnrollDept(e.target.value)}>
-                          <option value="">Select department</option>
-                          {enrollDeptOptions().map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+
+                      {me?.role === 'ORG' && (
+                        <select
+                          className="form-select form-select-sm"
+                          style={{ width: 170 }}
+                          value={corperFilterBranch}
+                          onChange={(e) => {
+                            setCorperFilterBranch(e.target.value)
+                            setCorperPage(1)
+                          }}
+                          aria-label="Filter by branch"
+                        >
+                          <option value="all">All branches</option>
+                          {branches.map((b) => (
+                            <option key={b.id} value={String(b.id)}>
+                              {b.name}
+                            </option>
+                          ))}
                         </select>
-                      </div>
-                      <div className="col-md-3">
-                        <label className="form-label">Unit (optional)</label>
-                        <select className="form-select" name="unit">
-                          <option value="">Select unit</option>
-                          {enrollUnitOptions().map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                        </select>
-                      </div>
-                      <div className="col-12 col-md-2 d-grid">
-                        <button className="btn btn-olive">Enroll</button>
+                      )}
+
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ width: 160 }}
+                        value={corperSortKey}
+                        onChange={(e) => {
+                          setCorperSortKey(e.target.value)
+                          setCorperPage(1)
+                        }}
+                        aria-label="Sort by"
+                      >
+                        <option value="name">Sort: Name</option>
+                        <option value="code">Sort: State code</option>
+                        <option value="branch">Sort: Branch</option>
+                      </select>
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ width: 110 }}
+                        value={corperSortDir}
+                        onChange={(e) => {
+                          setCorperSortDir(e.target.value)
+                          setCorperPage(1)
+                        }}
+                        aria-label="Sort direction"
+                      >
+                        <option value="asc">Asc</option>
+                        <option value="desc">Desc</option>
+                      </select>
+                    </div>
+
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="small text-muted">Rows</span>
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ width: 96 }}
+                        value={corperPageSize}
+                        onChange={(e) => {
+                          setCorperPageSize(Number(e.target.value))
+                          setCorperPage(1)
+                        }}
+                      >
+                        {[20, 50, 100].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="table-responsive mt-2">
+                    <table className="table table-sm align-middle dash-table">
+                      <thead>
+                        <tr>
+                          <th>Full Name</th>
+                          <th>State Code</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const q = corperSearchOpen ? corperQuery.trim().toLowerCase() : ''
+                          let filtered = q
+                            ? corpers.filter((c) => `${c.full_name} ${c.email || ''} ${c.state_code}`.toLowerCase().includes(q))
+                            : corpers
+
+                          if (me?.role === 'ORG' && corperFilterBranch !== 'all') {
+                            filtered = filtered.filter((c) => String(c.branch || '') === corperFilterBranch)
+                          }
+
+                          const dir = corperSortDir === 'desc' ? -1 : 1
+                          const getBranchName = (id) => branches.find((b) => b.id === id)?.name || ''
+                          const getDeptName = (id) => deps.find((d) => d.id === id)?.name || ''
+                          const getUnitName = (id) => units.find((u) => u.id === id)?.name || ''
+                          const cmp = (a, b) => {
+                            const av = (
+                              corperSortKey === 'code'
+                                ? a.state_code || ''
+                                : corperSortKey === 'branch'
+                                  ? getBranchName(a.branch)
+                                  : a.full_name || ''
+                            ).toLowerCase()
+                            const bv = (
+                              corperSortKey === 'code'
+                                ? b.state_code || ''
+                                : corperSortKey === 'branch'
+                                  ? getBranchName(b.branch)
+                                  : b.full_name || ''
+                            ).toLowerCase()
+                            return av.localeCompare(bv) * dir
+                          }
+                          filtered = [...filtered].sort(cmp)
+
+                          const totalPages = Math.max(1, Math.ceil(filtered.length / corperPageSize))
+                          const current = Math.min(corperPage, totalPages)
+                          if (current !== corperPage) setCorperPage(current)
+                          const start = (current - 1) * corperPageSize
+                          const rows = filtered.slice(start, start + corperPageSize)
+
+                          return (
+                            <>
+                              {rows.map((c) => (
+                                <tr key={c.id} role="button" onClick={() => setSelectedCorper(c)}>
+                                  <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{c.full_name}</div></td>
+                                  <td>{c.state_code}</td>
+                                  <td className="text-end">
+                                    <button className="btn btn-sm btn-outline-secondary" type="button" onClick={(e) => { e.stopPropagation(); setSelectedCorper(c) }}>
+                                      View
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                              {filtered.length === 0 && <tr><td colSpan="3" className="text-muted">No corpers found.</td></tr>}
+                              {filtered.length > 0 && (
+                                <tr>
+                                  <td colSpan="3">
+                                    <div className="d-flex justify-content-between align-items-center">
+                                      <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                      <div className="btn-group">
+                                        <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setCorperPage(p=>Math.max(1,p-1))}>Prev</button>
+                                        <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setCorperPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </>
+                          )
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {status==='saved:corper' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Enrollment successful. A verification email was sent to the corper.</AutoFadeAlert>}
+                  {status?.startsWith('error:corper:') && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>{status.split(':').slice(2).join(':')}</AutoFadeAlert>}
+                  {status==='saved:corper-update' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Corper updated.</AutoFadeAlert>}
+                  {status==='error:corper-update' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not update corper.</AutoFadeAlert>}
+                </div>
+              </div>
+
+              {showAddCorper && (
+                <div className="dash-modal" onClick={()=>setShowAddCorper(false)}>
+                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Add Corper</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowAddCorper(false)}>Close</button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>Flow</h6>
+                          <p>Create a corper account and assign placement.</p>
+                          <ul>
+                            <li>Corper receives an email to verify and set password.</li>
+                            <li>Use Face capture after creation.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form onSubmit={async (e)=>{ const ok = await createCorper(e); if(ok) setShowAddCorper(false) }}>
+                            <div className="dash-form-section">
+                              <div className="dash-form-title">Basic Details</div>
+                              <div className="row g-2">
+                                <div className="col-12 col-md-6">
+                                  <label className="form-label">Email</label>
+                                  <input className="form-control" type="email" name="email" placeholder="corper@example.com" required />
+                                </div>
+                                <div className="col-12 col-md-6">
+                                  <label className="form-label">Full Name</label>
+                                  <input className="form-control" name="full_name" placeholder="Surname Firstname Lastname" required />
+                                </div>
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">Gender</label>
+                                  <select className="form-select" name="gender" required>
+                                    <option value="">Select...</option>
+                                    <option value="M">Male</option>
+                                    <option value="F">Female</option>
+                                    <option value="O">Other</option>
+                                  </select>
+                                </div>
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">State Code</label>
+                                  <input className="form-control" name="state_code" placeholder="AA/00A/0000" required />
+                                  <div className="form-text">Format: `AA/00A/0000`</div>
+                                </div>
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">Passing Out Date</label>
+                                  <input className="form-control" type="date" name="passing_out_date" required />
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="dash-form-section">
+                              <div className="dash-form-title">Placement</div>
+                              <div className="row g-2">
+                                {me?.role==='ORG' && (
+                                  <div className="col-12 col-md-4">
+                                    <label className="form-label">Branch</label>
+                                    <select className="form-select" name="branch" required value={enrollBranch} onChange={(e)=>{ setEnrollBranch(e.target.value); setEnrollDept('') }}>
+                                      <option value="">Select branch</option>
+                                      {enrollBranchOptions().map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                    </select>
+                                  </div>
+                                )}
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">Department (optional)</label>
+                                  <select className="form-select" name="department" value={enrollDept} onChange={(e)=> setEnrollDept(e.target.value)}>
+                                    <option value="">Select department</option>
+                                    {enrollDeptOptions().map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                  </select>
+                                </div>
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">Unit (optional)</label>
+                                  <select className="form-select" name="unit">
+                                    <option value="">Select unit</option>
+                                    {enrollUnitOptions().map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="dash-modal-actions">
+                              <div className="d-grid">
+                                <button className="btn btn-olive" disabled={isSaving}>{isSaving ? 'Adding…' : 'Enroll'}</button>
+                              </div>
+                            </div>
+                          </form>
+                        </div>
                       </div>
                     </div>
-                  </form>
-                  {status==='saved:corper' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Enrollment successful. A verification email was sent to the corper. Use native app for face enrollment.</AutoFadeAlert>}
-                  {status==='error:corper' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not enroll corper.</AutoFadeAlert>}
-                </div>
-              </div>
-            <div className="card shadow-sm mt-3">
-              <div className="card-body">
-                <h5 className="card-title">Registered Corpers</h5>
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <div className="small text-muted">Manage and update placements</div>
-                  <div style={{minWidth: 260}}>
-                    <input className="form-control form-control-sm" placeholder="Search corpers..." value={corperQuery} onChange={(e)=>setCorperQuery(e.target.value)} />
                   </div>
                 </div>
-                <div className="table-responsive">
-                  <table className="table table-sm align-middle">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>Full Name</th>
-                        <th>Email</th>
-                        <th>State Code</th>
-                        <th>Branch</th>
-                        {(me?.role==='BRANCH' || me?.role==='ORG') && <th>Department</th>}
-                        {(me?.role==='BRANCH' || me?.role==='ORG') && <th>Unit</th>}
-                        {(me?.role==='BRANCH' || me?.role==='ORG') && <th>Actions</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(corpers.filter(c=>{
-                        const q = corperQuery.trim().toLowerCase(); if(!q) return true;
-                        const branchName = branches.find(b=>b.id===c.branch)?.name || ''
-                        const hay = `${c.full_name} ${c.email||''} ${c.state_code} ${branchName}`.toLowerCase()
-                        return hay.includes(q)
-                      })).map((c, idx) => (
-                        <tr key={c.id}>
-                          <td>{idx+1}</td>
-                          <td>{c.full_name}</td>
-                          <td>{c.email}</td>
-                          <td>{c.state_code}</td>
-                          <td>
-                            {me?.role==='ORG' ? (
-                              <select className="form-select form-select-sm" defaultValue={c.branch || ''} onChange={e=>{ c._newBranch = e.target.value }}>
-                                <option value="">—</option>
-                                {branches.map(b=> (
-                                  <option key={b.id} value={b.id}>{b.name}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              (branches.find(b=>b.id===c.branch)?.name) || '—'
+              )}
+
+              {editCorper && editCorperForm && (
+                <div className="dash-modal" onClick={()=>setEditCorper(null)}>
+                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Edit Corper Placement</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setEditCorper(null)}>Close</button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>Flow</h6>
+                          <p>Update branch/department/unit placement.</p>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form onSubmit={async (e)=>{
+                            e.preventDefault();
+                            setStatus('pending')
+                            try{
+                              await api.patch(`/api/auth/corpers/${editCorper.id}/`, {
+                                branch: editCorperForm.branch || null,
+                                department: editCorperForm.department || null,
+                                unit: editCorperForm.unit || null,
+                              })
+                              await refreshAll();
+                              setStatus('saved:corper-update');
+                              setEditCorper(null)
+                            }catch(err){ setStatus('error:corper-update') }
+                          }}>
+                            {me?.role==='ORG' && (
+                              <div className="mb-2">
+                                <label className="form-label">Branch</label>
+                                <select className="form-select" value={editCorperForm.branch} onChange={(e)=>setEditCorperForm(p=>({ ...p, branch: e.target.value, department:'', unit:'' }))}>
+                                  <option value="">—</option>
+                                  {branches.map(b=> <option key={b.id} value={b.id}>{b.name}</option>)}
+                                </select>
+                              </div>
                             )}
-                          </td>
-                          {(me?.role==='BRANCH' || me?.role==='ORG') && (
-                            <>
-                              <td>
-                                <select className="form-select form-select-sm" defaultValue={c.department || ''} onChange={e=>{ c._newDept = e.target.value }}>
-                                  <option value="">—</option>
-                                  {deps.filter(d=> {
-                                    const branchId = Number(c._newBranch || c.branch)
-                                    return d.branch === branchId
-                                  }).map(d=> (
-                                    <option key={d.id} value={d.id}>{d.name}</option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td>
-                                <select className="form-select form-select-sm" defaultValue={c.unit || ''} onChange={e=>{ c._newUnit = e.target.value }}>
-                                  <option value="">—</option>
-                                  {units.filter(u=> {
-                                    const deptId = Number(c._newDept || c.department)
-                                    if (deptId) return u.department === deptId
-                                    // No department selected: limit to units whose department is under the selected branch
-                                    const branchId = Number(c._newBranch || c.branch)
-                                    const deptIdsForBranch = deps.filter(d => d.branch === branchId).map(d => d.id)
-                                    return deptIdsForBranch.includes(u.department)
-                                  }).map(u=> (
-                                    <option key={u.id} value={u.id}>{u.name}</option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="d-flex gap-2">
-                                <button className="btn btn-sm btn-olive" onClick={async()=>{
-                                  const payload = {}
-                                  if(c._newBranch!==undefined){ payload.branch = c._newBranch || null; payload.department = null; payload.unit = null }
-                                  if(c._newDept!==undefined){ payload.department = c._newDept || null; if(!payload.branch && c._newDept) { payload.branch = deps.find(d=>d.id===Number(c._newDept))?.branch } }
-                                  if(c._newUnit!==undefined){ payload.unit = c._newUnit || null }
-                                  try{
-                                    await api.patch(`/api/auth/corpers/${c.id}/`, payload)
-                                    setStatus('saved:corper-update')
-                                    await refreshAll()
-                                  }catch(e){ setStatus('error:corper-update') }
-                                }}>Save</button>
-                <a className="btn btn-sm btn-outline-secondary" href={apiHref(`/api/auth/capture/${c.id}/`)} target="_blank" rel="noreferrer">Capture Face</a>
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                      {corpers.length===0 && (
-                        <tr><td colSpan="5" className="text-muted">No corpers enrolled yet.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                            <div className="mb-2">
+                              <label className="form-label">Department</label>
+                              <select className="form-select" value={editCorperForm.department} onChange={(e)=>setEditCorperForm(p=>({ ...p, department: e.target.value, unit:'' }))}>
+                                <option value="">—</option>
+                                {deps.filter(d=>{
+                                  const bid = Number(editCorperForm.branch || editCorper.branch)
+                                  return !bid || d.branch === bid
+                                }).map(d=> <option key={d.id} value={d.id}>{d.name}</option>)}
+                              </select>
+                            </div>
+                            <div className="mb-2">
+                              <label className="form-label">Unit</label>
+                              <select className="form-select" value={editCorperForm.unit} onChange={(e)=>setEditCorperForm(p=>({ ...p, unit: e.target.value }))}>
+                                <option value="">—</option>
+                                {units.filter(u=>{
+                                  const did = Number(editCorperForm.department || editCorper.department)
+                                  return !did || u.department === did
+                                }).map(u=> <option key={u.id} value={u.id}>{u.name}</option>)}
+                              </select>
+                            </div>
+                            <div className="dash-modal-actions">
+                              <div className="d-grid">
+                                <button className="btn btn-olive" disabled={isSaving}>{isSaving ? 'Saving…' : 'Save'}</button>
+                              </div>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                {status==='saved:corper-update' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Corper updated successfully.</AutoFadeAlert>}
-                {status==='error:corper-update' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not update corper.</AutoFadeAlert>}
-              </div>
-            </div>
+              )}
+
+              {selectedCorper && (
+                <div className="dash-modal" onClick={()=>setSelectedCorper(null)}>
+                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Corper Details</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setSelectedCorper(null)}>Close</button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>Details</h6>
+                          <p>Review the corper’s record and manage placement.</p>
+                          <ul>
+                            <li>Use Edit placement to change assignment.</li>
+                            <li>Use Face capture to enroll face data.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <div className="dash-profile-card">
+                            <div className="dash-profile-card-title">Corper</div>
+                            <div className="dash-kv-grid">
+                              <div className="dash-kv"><div className="dash-k">Full name</div><div className="dash-v">{selectedCorper.full_name}</div></div>
+                              <div className="dash-kv"><div className="dash-k">State code</div><div className="dash-v">{selectedCorper.state_code}</div></div>
+                              <div className="dash-kv"><div className="dash-k">Email</div><div className="dash-v">{selectedCorper.email || '—'}</div></div>
+                              <div className="dash-kv"><div className="dash-k">Gender</div><div className="dash-v">{selectedCorper.gender || '—'}</div></div>
+                              <div className="dash-kv"><div className="dash-k">Passing out</div><div className="dash-v">{selectedCorper.passing_out_date || '—'}</div></div>
+                            </div>
+                          </div>
+
+                          <div className="dash-profile-card mt-3">
+                            <div className="dash-profile-card-title">Placement</div>
+                            <div className="dash-kv-grid">
+                              <div className="dash-kv"><div className="dash-k">Branch</div><div className="dash-v">{branches.find(b=>b.id===selectedCorper.branch)?.name || '—'}</div></div>
+                              <div className="dash-kv"><div className="dash-k">Department</div><div className="dash-v">{deps.find(d=>d.id===selectedCorper.department)?.name || '—'}</div></div>
+                              <div className="dash-kv"><div className="dash-k">Unit</div><div className="dash-v">{units.find(u=>u.id===selectedCorper.unit)?.name || '—'}</div></div>
+                            </div>
+                          </div>
+
+                          <div className="dash-modal-actions">
+                            <div className="d-flex gap-2">
+                              <button className="btn btn-outline-secondary" type="button" onClick={()=>{ setEditCorper(selectedCorper); setSelectedCorper(null) }}>
+                                Edit placement
+                              </button>
+                              <a className="btn btn-outline-secondary" href={apiHref(`/api/auth/capture/${selectedCorper.id}/`)} target="_blank" rel="noreferrer">
+                                Face capture
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
