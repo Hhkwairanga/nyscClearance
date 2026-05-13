@@ -7,6 +7,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
 import { apiHref } from '../api/urls'
 import MapPicker from '../components/MapPicker'
+import GeofencePicker from '../components/GeofencePicker'
 import { Bar, Line } from 'react-chartjs-2'
 import AutoFadeAlert from '../components/AutoFadeAlert'
 import thankYouAudio from '../assets/thank_you_message.mp3'
@@ -56,6 +57,33 @@ export default function Dashboard(){
   const [editBranch, setEditBranch] = useState(null)
   const [editDepartment, setEditDepartment] = useState(null)
   const [editUnit, setEditUnit] = useState(null)
+
+  const [newBranchForm, setNewBranchForm] = useState({
+    name: '',
+    address: '',
+    admin_name: '',
+    admin_email: '',
+    admin_staff_id: '',
+    latitude: '',
+    longitude: '',
+  })
+  const [editBranchForm, setEditBranchForm] = useState(null)
+
+  useEffect(() => {
+    if (!editBranch) {
+      setEditBranchForm(null)
+      return
+    }
+    setEditBranchForm({
+      name: editBranch.name || '',
+      address: editBranch.address || '',
+      admin_name: editBranch.admin_info?.name || '',
+      admin_email: editBranch.admin_info?.email || '',
+      admin_staff_id: editBranch.admin_info?.staff_id || '',
+      latitude: editBranch.latitude ?? '',
+      longitude: editBranch.longitude ?? '',
+    })
+  }, [editBranch])
   const [structQuery, setStructQuery] = useState('')
   const [structPage, setStructPage] = useState(1)
   const structPageSize = 10
@@ -1161,29 +1189,88 @@ export default function Dashboard(){
                         </div>
                         <div className="dash-modal-form">
                           <form
-                            id="branch-form"
                             onSubmit={async (e) => {
-                              const ok = await createBranch(e)
-                              if (ok) setShowAddBranch(false)
+                              e.preventDefault()
+                              setStatus('pending')
+                              try {
+                                await api.post('/api/auth/branches/', {
+                                  ...newBranchForm,
+                                  latitude: newBranchForm.latitude === '' ? null : Number(newBranchForm.latitude),
+                                  longitude: newBranchForm.longitude === '' ? null : Number(newBranchForm.longitude),
+                                })
+                                await refreshAll()
+                                setStatus('saved:branch')
+                                setShowAddBranch(false)
+                                setNewBranchForm({
+                                  name: '',
+                                  address: '',
+                                  admin_name: '',
+                                  admin_email: '',
+                                  admin_staff_id: '',
+                                  latitude: '',
+                                  longitude: '',
+                                })
+                              } catch (err) {
+                                setStatus('error:branch')
+                              }
                             }}
                           >
                             <label className="form-label">Branch name</label>
-                            <input className="form-control mb-2" name="name" placeholder="e.g., Head Office" required/>
-                            <label className="form-label">Address</label>
-                            <textarea className="form-control mb-2" name="address" placeholder="Branch address"/>
-                            <div className="row g-2">
-                              <div className="col-md-4"><label className="form-label">Admin Name</label><input className="form-control" name="admin_name" placeholder="Optional" /></div>
-                              <div className="col-md-5"><label className="form-label">Admin Email</label><input className="form-control" type="email" name="admin_email" placeholder="Optional" /></div>
-                              <div className="col-md-3"><label className="form-label">Staff ID</label><input className="form-control" name="admin_staff_id" placeholder="Optional" /></div>
-                            </div>
+                            <input
+                              className="form-control mb-2"
+                              value={newBranchForm.name}
+                              onChange={(e) => setNewBranchForm((p) => ({ ...p, name: e.target.value }))}
+                              placeholder="e.g., Head Office"
+                              required
+                            />
+
+                            <GeofencePicker
+                              address={newBranchForm.address}
+                              onAddressChange={(v) => setNewBranchForm((p) => ({ ...p, address: v }))}
+                              lat={newBranchForm.latitude}
+                              lng={newBranchForm.longitude}
+                              onLatLngChange={({ lat, lng }) =>
+                                setNewBranchForm((p) => ({ ...p, latitude: String(lat), longitude: String(lng) }))
+                              }
+                            />
+
                             <div className="row g-2 mt-2">
-                              <div className="col-md-6"><label className="form-label">Latitude</label><input className="form-control" name="latitude" placeholder="Optional" /></div>
-                              <div className="col-md-6"><label className="form-label">Longitude</label><input className="form-control" name="longitude" placeholder="Optional" /></div>
+                              <div className="col-md-4">
+                                <label className="form-label">Admin Name</label>
+                                <input
+                                  className="form-control"
+                                  value={newBranchForm.admin_name}
+                                  onChange={(e) => setNewBranchForm((p) => ({ ...p, admin_name: e.target.value }))}
+                                  placeholder="Optional"
+                                />
+                              </div>
+                              <div className="col-md-5">
+                                <label className="form-label">Admin Email</label>
+                                <input
+                                  className="form-control"
+                                  type="email"
+                                  value={newBranchForm.admin_email}
+                                  onChange={(e) => setNewBranchForm((p) => ({ ...p, admin_email: e.target.value }))}
+                                  placeholder="Optional"
+                                />
+                              </div>
+                              <div className="col-md-3">
+                                <label className="form-label">Staff ID</label>
+                                <input
+                                  className="form-control"
+                                  value={newBranchForm.admin_staff_id}
+                                  onChange={(e) => setNewBranchForm((p) => ({ ...p, admin_staff_id: e.target.value }))}
+                                  placeholder="Optional"
+                                />
+                              </div>
                             </div>
-                            <div className="d-grid mt-3">
-                              <button className="btn btn-olive" disabled={isSaving}>
-                                {isSaving ? 'Adding…' : 'Add Branch'}
-                              </button>
+
+                            <div className="dash-modal-actions">
+                              <div className="d-grid">
+                                <button className="btn btn-olive" disabled={isSaving}>
+                                  {isSaving ? 'Adding…' : 'Add Branch'}
+                                </button>
+                              </div>
                             </div>
                           </form>
                         </div>
@@ -1417,62 +1504,84 @@ export default function Dashboard(){
                           </ul>
                         </div>
                         <div className="dash-modal-form">
-                          <form
-                            onSubmit={(e) => {
-                              e.preventDefault()
-                              setStatus('pending')
-                              const fd = new FormData(e.target)
-                              const payload = Object.fromEntries(fd)
-                              ;(async () => {
+                          {editBranchForm && (
+                            <form
+                              onSubmit={async (e) => {
+                                e.preventDefault()
+                                setStatus('pending')
                                 try {
                                   await api.put(`/api/auth/branches/${editBranch.id}/`, {
-                                    ...payload,
-                                    latitude: payload.latitude || editBranch.latitude,
-                                    longitude: payload.longitude || editBranch.longitude,
+                                    ...editBranchForm,
+                                    latitude: editBranchForm.latitude === '' ? null : Number(editBranchForm.latitude),
+                                    longitude: editBranchForm.longitude === '' ? null : Number(editBranchForm.longitude),
                                   })
                                   await refreshAll()
                                   setEditBranch(null)
                                   setStatus('saved:branch')
-                                } catch (err) {}
-                              })()
-                            }}
-                          >
-                            <div className="row g-2">
-                              <div className="col-12">
-                                <label className="form-label">Branch name</label>
-                                <input className="form-control" name="name" defaultValue={editBranch.name} required />
+                                } catch (err) {
+                                  setStatus('error:branch')
+                                }
+                              }}
+                            >
+                              <div className="row g-2">
+                                <div className="col-12">
+                                  <label className="form-label">Branch name</label>
+                                  <input
+                                    className="form-control"
+                                    value={editBranchForm.name}
+                                    onChange={(e) => setEditBranchForm((p) => ({ ...p, name: e.target.value }))}
+                                    required
+                                  />
+                                </div>
                               </div>
-                              <div className="col-12">
-                                <label className="form-label">Address</label>
-                                <textarea className="form-control" name="address" defaultValue={editBranch.address || ''} rows="2" />
+
+                              <GeofencePicker
+                                address={editBranchForm.address}
+                                onAddressChange={(v) => setEditBranchForm((p) => ({ ...p, address: v }))}
+                                lat={editBranchForm.latitude}
+                                lng={editBranchForm.longitude}
+                                onLatLngChange={({ lat, lng }) =>
+                                  setEditBranchForm((p) => ({ ...p, latitude: String(lat), longitude: String(lng) }))
+                                }
+                              />
+
+                              <div className="row g-2 mt-2">
+                                <div className="col-md-4">
+                                  <label className="form-label">Admin Name</label>
+                                  <input
+                                    className="form-control"
+                                    value={editBranchForm.admin_name}
+                                    onChange={(e) => setEditBranchForm((p) => ({ ...p, admin_name: e.target.value }))}
+                                  />
+                                </div>
+                                <div className="col-md-5">
+                                  <label className="form-label">Admin Email</label>
+                                  <input
+                                    className="form-control"
+                                    type="email"
+                                    value={editBranchForm.admin_email}
+                                    onChange={(e) => setEditBranchForm((p) => ({ ...p, admin_email: e.target.value }))}
+                                  />
+                                </div>
+                                <div className="col-md-3">
+                                  <label className="form-label">Staff ID</label>
+                                  <input
+                                    className="form-control"
+                                    value={editBranchForm.admin_staff_id}
+                                    onChange={(e) => setEditBranchForm((p) => ({ ...p, admin_staff_id: e.target.value }))}
+                                  />
+                                </div>
                               </div>
-                              <div className="col-md-4">
-                                <label className="form-label">Admin Name</label>
-                                <input className="form-control" name="admin_name" defaultValue={editBranch.admin_info?.name || ''} />
+
+                              <div className="dash-modal-actions">
+                                <div className="d-grid">
+                                  <button className="btn btn-olive" disabled={isSaving}>
+                                    {isSaving ? 'Saving…' : 'Save changes'}
+                                  </button>
+                                </div>
                               </div>
-                              <div className="col-md-5">
-                                <label className="form-label">Admin Email</label>
-                                <input className="form-control" type="email" name="admin_email" defaultValue={editBranch.admin_info?.email || ''} />
-                              </div>
-                              <div className="col-md-3">
-                                <label className="form-label">Staff ID</label>
-                                <input className="form-control" name="admin_staff_id" defaultValue={editBranch.admin_info?.staff_id || ''} />
-                              </div>
-                              <div className="col-md-6">
-                                <label className="form-label">Latitude</label>
-                                <input className="form-control" name="latitude" defaultValue={editBranch.latitude ?? ''} />
-                              </div>
-                              <div className="col-md-6">
-                                <label className="form-label">Longitude</label>
-                                <input className="form-control" name="longitude" defaultValue={editBranch.longitude ?? ''} />
-                              </div>
-                            </div>
-                            <div className="d-grid mt-3">
-                              <button className="btn btn-olive" disabled={isSaving}>
-                                {isSaving ? 'Saving…' : 'Save changes'}
-                              </button>
-                            </div>
-                          </form>
+                            </form>
+                          )}
                         </div>
                       </div>
                     </div>
