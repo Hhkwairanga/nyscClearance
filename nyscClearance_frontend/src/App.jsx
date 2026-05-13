@@ -6,6 +6,7 @@ export default function App(){
   const navigate = useNavigate()
   const location = useLocation()
   const isHome = location.pathname === '/'
+  const isDashboard = location.pathname === '/dashboard' || location.pathname.startsWith('/dashboard/')
   const [me, setMe] = useState(null)
   useEffect(() => {
     (async()=>{
@@ -26,7 +27,7 @@ export default function App(){
   const isAuthed = !!me?.authenticated
   const dashPath = !isAuthed ? '/' : (me?.role==='ORG' ? '/dashboard/org' : me?.role==='BRANCH' ? '/dashboard/branch' : '/dashboard/corper')
   return (
-    <>
+    <div className="app-shell">
       <nav className="navbar navbar-expand-lg navbar-dark bg-olive">
         <div className="container">
           <Link to={dashPath} className="navbar-brand d-flex align-items-center">
@@ -39,25 +40,10 @@ export default function App(){
           </div>
         </div>
       </nav>
-      <main className={isHome ? '' : 'container py-4'}>
+      <main className={isHome || isDashboard ? '' : 'container py-4'}>
         <Outlet />
       </main>
-      {!isHome && (
-        <>
-          <a
-            className="contact-fab"
-            href="https://home.sahabs.tech"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Contact Us"
-            title="Contact Us"
-          >
-            <span role="img" aria-hidden="true">📞</span>
-            <span className="d-none d-sm-inline">Contact Us</span>
-          </a>
-          <div className="app-footer">&copy; Sahab Technology 2025</div>
-        </>
-      )}
-    </>
+      {/* Footer intentionally only exists on the landing page */}
+    </div>
   )
 }

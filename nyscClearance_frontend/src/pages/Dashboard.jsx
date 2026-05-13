@@ -27,6 +27,8 @@ export default function Dashboard(){
   const [stats, setStats] = useState(null)
   const [clearance, setClearance] = useState([])
   const [clQuery, setClQuery] = useState('')
+  const [clSearchOpen, setClSearchOpen] = useState(false)
+  const [clPageSize, setClPageSize] = useState(50)
   const [holidays, setHolidays] = useState([])
   const [holidaysAll, setHolidaysAll] = useState([])
   const [leaves, setLeaves] = useState([])
@@ -54,6 +56,7 @@ export default function Dashboard(){
   const [editCorperForm, setEditCorperForm] = useState(null)
   const [selectedCorper, setSelectedCorper] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [structureTab, setStructureTab] = useState('branches')
 
   const isSaving = status === 'pending'
@@ -271,6 +274,12 @@ export default function Dashboard(){
       })()
     }
   }, [])
+
+  useEffect(() => {
+    if(activeTab === 'clearance'){
+      setClPage(1)
+    }
+  }, [clPageSize, activeTab])
 
   useEffect(() => {
     if(me && me.authenticated === false){
@@ -610,7 +619,7 @@ export default function Dashboard(){
         </div>
       )}
       <div className="dash-shell">
-        <aside className={`dash-sidebar ${sidebarOpen ? 'open' : ''}`}>
+        <aside className={`dash-sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
           <div className="dash-brand">
             <div className="d-flex align-items-center gap-2">
               {logoUrl ? <img src={logoUrl} alt="Organization Logo" className="org-logo"/> : <div className="org-logo-placeholder"/>}
@@ -653,6 +662,14 @@ export default function Dashboard(){
             >
               <Menu size={18} />
             </button>
+            <button
+              className="btn btn-sm btn-outline-secondary d-none d-lg-inline-flex"
+              type="button"
+              aria-label="Toggle sidebar"
+              onClick={() => setSidebarCollapsed((v) => !v)}
+            >
+              <Menu size={18} />
+            </button>
             <div className="dash-title">
               <div className="fw-semibold">{tabTitle[activeTab] || 'Dashboard'}</div>
               <div className="text-muted small">{me?.role === 'ORG' ? 'Organisation' : me?.role === 'BRANCH' ? 'Admin' : 'Corps Member'}</div>
@@ -678,12 +695,7 @@ export default function Dashboard(){
                 <div className="col-12 col-xxl-9">
                   {me?.role !== 'CORPER' && (
                     <>
-                      <div className="dash-section-head">
-                        <div>
-                          <div className="dash-section-title">Key metrics</div>
-                          <div className="dash-section-sub text-muted">A quick snapshot of your organisation activity.</div>
-                        </div>
-                      </div>
+                      <div className="dash-section-head" />
 
                       <div className="row g-3">
                         <div className="col-12 col-sm-6 col-xl-3">
@@ -2027,15 +2039,40 @@ export default function Dashboard(){
           {activeTab==='clearance' && (me?.role==='ORG' || me?.role==='BRANCH') && (
             <>
               <h2 className="mb-3 text-olive">Performance Clearance (Prev. Month)</h2>
-              <div className="card shadow-sm">
+              <div className="card shadow-sm dash-card">
                 <div className="card-body">
-                  <div className="row g-2 mb-2">
-                    <div className="col-md-4">
-                      <input className="form-control form-control-sm" placeholder="Search corpers... (name, code, branch)" value={clQuery} onChange={(e)=>{ setClQuery(e.target.value); setClPage(1) }} />
+                  <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      <button
+                        className={`btn btn-sm ${clSearchOpen ? 'btn-olive' : 'btn-outline-secondary'}`}
+                        type="button"
+                        aria-label="Search"
+                        onClick={() => setClSearchOpen((v) => !v)}
+                      >
+                        <Search size={16} />
+                      </button>
+                      {clSearchOpen && (
+                        <div className="dash-table-search">
+                          <input
+                            className="form-control form-control-sm"
+                            placeholder="Search corpers... (name, code, branch)"
+                            value={clQuery}
+                            onChange={(e)=>{ setClQuery(e.target.value); setClPage(1) }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="small text-muted">Rows</span>
+                      <select className="form-select form-select-sm" style={{ width: 96 }} value={clPageSize} onChange={(e)=>{ setClPageSize(Number(e.target.value)); setClPage(1) }}>
+                        {[50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
                     </div>
                   </div>
-                  <div className="table-responsive">
-                    <table className="table table-sm align-middle">
+
+                  <div className="table-responsive mt-2">
+                    <table className="table table-sm align-middle dash-table dash-table-auto">
                       <thead>
                         <tr>
                           <th>S/N</th>
@@ -2051,8 +2088,8 @@ export default function Dashboard(){
                       </thead>
                       <tbody>
                         {(() => {
-                          const pageSize = 50
-                          const q = clQuery.trim().toLowerCase()
+                          const pageSize = clPageSize
+                          const q = clSearchOpen ? clQuery.trim().toLowerCase() : ''
                           const filtered = q ? clearance.filter(r => `${r.full_name} ${r.state_code} ${r.branch}`.toLowerCase().includes(q)) : clearance
                           const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
                           const current = Math.min(clPage, totalPages)
@@ -2063,9 +2100,9 @@ export default function Dashboard(){
                             {rows.map((row, idx) => (
                               <tr key={row.id}>
                                 <td>{start + idx + 1}</td>
-                                <td>{row.full_name}</td>
+                                <td><div className="text-truncate dash-td-truncate-wide">{row.full_name}</div></td>
                                 <td>{row.state_code}</td>
-                                <td>{row.branch || '—'}</td>
+                                <td><div className="text-truncate dash-td-truncate-wide">{row.branch || '—'}</div></td>
                                 <td className="text-end">{row.absent}</td>
                                 <td className="text-end">{row.late}</td>
                                 <td>{row.qualified ? <span className="badge bg-success">Yes</span> : <span className="badge bg-danger">No</span>}</td>
@@ -2088,8 +2125,8 @@ export default function Dashboard(){
                     </table>
                   </div>
                   {(() => {
-                    const pageSize = 50
-                    const q = clQuery.trim().toLowerCase()
+                    const pageSize = clPageSize
+                    const q = clSearchOpen ? clQuery.trim().toLowerCase() : ''
                     const filtered = q ? clearance.filter(r => `${r.full_name} ${r.state_code} ${r.branch}`.toLowerCase().includes(q)) : clearance
                     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
                     const current = Math.min(clPage, totalPages)
