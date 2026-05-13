@@ -127,6 +127,29 @@ class PublicHoliday(models.Model):
         return f"{self.title} - {self.start_date} to {self.end_date}"
 
 
+class NationalHoliday(models.Model):
+    """Country-level public holidays synced from Nager.Date.
+
+    These are read-only from the UI and apply to all organisations.
+    Organisations can still add custom holidays via `PublicHoliday`.
+    """
+
+    country_code = models.CharField(max_length=2, default='NG', db_index=True)
+    date = models.DateField(db_index=True)
+    name = models.CharField(max_length=255)
+    local_name = models.CharField(max_length=255, blank=True, default='')
+    raw = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('country_code', 'date', 'name')
+        ordering = ('date', 'name')
+
+    def __str__(self):
+        return f"{self.country_code} {self.date} {self.name}"
+
+
 class LeaveRequest(models.Model):
     STATUS_CHOICES = (
         ('PENDING', 'Pending'),

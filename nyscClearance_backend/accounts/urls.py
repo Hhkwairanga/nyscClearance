@@ -37,6 +37,7 @@ from .views import (
     PaystackVerifyView,
     ClearanceStatusView,
     ClearanceApproveView,
+    AllHolidaysView,
 )
 
 router = DefaultRouter()
@@ -61,6 +62,7 @@ urlpatterns = [
     path('me/', MeView.as_view(), name='me'),
     path('profile/', ProfileView.as_view(), name='profile'),
     path('stats/', StatsView.as_view(), name='stats'),
+    path('holidays/all/', AllHolidaysView.as_view(), name='holidays-all'),
     # Face capture (HTML page + processing endpoint)
     path('capture/<int:corper_id>/', capture_page, name='capture'),
     path('capture/<int:corper_id>/process/', capture_process_frame, name='capture-process'),

@@ -11,7 +11,7 @@ import GeofencePicker from '../components/GeofencePicker'
 import { Bar, Line } from 'react-chartjs-2'
 import AutoFadeAlert from '../components/AutoFadeAlert'
 import thankYouAudio from '../assets/thank_you_message.mp3'
-import { Bell, Building2, Layers3, LayoutGrid, Menu, Pencil, Trash2, Users } from 'lucide-react'
+import { Bell, Building2, Layers3, LayoutGrid, Menu, Pencil, Search, Trash2, Users } from 'lucide-react'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
 
@@ -28,6 +28,7 @@ export default function Dashboard(){
   const [clearance, setClearance] = useState([])
   const [clQuery, setClQuery] = useState('')
   const [holidays, setHolidays] = useState([])
+  const [holidaysAll, setHolidaysAll] = useState([])
   const [leaves, setLeaves] = useState([])
   const [notifications, setNotifications] = useState([])
   const [wallet, setWallet] = useState(null)
@@ -57,6 +58,8 @@ export default function Dashboard(){
   const [editBranch, setEditBranch] = useState(null)
   const [editDepartment, setEditDepartment] = useState(null)
   const [editUnit, setEditUnit] = useState(null)
+  const [editHoliday, setEditHoliday] = useState(null)
+  const [editHolidayForm, setEditHolidayForm] = useState(null)
 
   const [newBranchForm, setNewBranchForm] = useState({
     name: '',
@@ -84,9 +87,25 @@ export default function Dashboard(){
       longitude: editBranch.longitude ?? '',
     })
   }, [editBranch])
+
+  useEffect(() => {
+    if (!editHoliday) {
+      setEditHolidayForm(null)
+      return
+    }
+    setEditHolidayForm({
+      title: editHoliday.title || '',
+      start_date: editHoliday.start_date || '',
+      end_date: editHoliday.end_date || editHoliday.start_date || '',
+    })
+  }, [editHoliday])
   const [structQuery, setStructQuery] = useState('')
   const [structPage, setStructPage] = useState(1)
-  const structPageSize = 10
+  const [structPageSize, setStructPageSize] = useState(20)
+  const [structSearchOpen, setStructSearchOpen] = useState(false)
+  const [structSortKey, setStructSortKey] = useState('name')
+  const [structSortDir, setStructSortDir] = useState('asc')
+  const [structFilter, setStructFilter] = useState('all')
 
   const modalOpen = !!(
     showAddBranch ||
@@ -113,6 +132,11 @@ export default function Dashboard(){
     if (activeTab === 'structure') {
       setStructQuery('')
       setStructPage(1)
+      setStructSearchOpen(false)
+      setStructFilter('all')
+      // Default sort per section
+      setStructSortDir('asc')
+      setStructSortKey(structureTab === 'holidays' ? 'date' : structureTab === 'profile' ? 'name' : 'name')
     }
   }, [activeTab, structureTab])
 
@@ -240,7 +264,7 @@ export default function Dashboard(){
 
   async function refreshAll(){
     try{
-      const [m,p,b,d,u,c,s,h,l,n,w,a,cl] = await Promise.all([
+      const [m,p,b,d,u,c,s,h,l,n,w,a,cl,ha] = await Promise.all([
         api.get('/api/auth/me/'),
         api.get('/api/auth/profile/'),
         api.get('/api/auth/branches/'),
@@ -254,6 +278,7 @@ export default function Dashboard(){
         api.get('/api/auth/wallet/').catch(()=>({data:null})),
         api.get('/api/auth/announcement/').catch(()=>({data:null, status:204})),
         api.get('/api/auth/clearance/status/').catch(()=>({data:[]})),
+        api.get('/api/auth/holidays/all/').catch(()=>({data:[]})),
       ])
       setMe(m.data)
       setProfile(p.data)
@@ -263,6 +288,7 @@ export default function Dashboard(){
       setCorpers(c.data)
       setStats(s.data)
       setHolidays(h.data)
+      setHolidaysAll(Array.isArray(ha.data) ? ha.data : [])
       setLeaves(l.data)
       setNotifications(n.data)
       setWallet(w.data)
@@ -842,37 +868,143 @@ export default function Dashboard(){
                       {structureTab==='departments' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddDepartment(true)}>Add Department</button>}
                       {structureTab==='units' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddUnit(true)}>Add Unit</button>}
                       {structureTab==='holidays' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddHoliday(true)}>Add Holiday</button>}
-                      {structureTab==='profile' && <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowEditProfile(true)}>Edit</button>}
+                      {structureTab==='profile' && <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowEditProfile(true)}>Edit Profile</button>}
                     </div>
                   </div>
 
+                  {structureTab !== 'profile' && (
                   <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
-                    <div className="dash-table-search">
-                      <input
-                        className="form-control form-control-sm"
-                        placeholder="Search…"
-                        value={structQuery}
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      <button
+                        className={`btn btn-sm ${structSearchOpen ? 'btn-olive' : 'btn-outline-secondary'}`}
+                        type="button"
+                        aria-label="Search"
+                        onClick={() => setStructSearchOpen((v) => !v)}
+                      >
+                        <Search size={16} />
+                      </button>
+                      {structSearchOpen && (
+                        <div className="dash-table-search">
+                          <input
+                            className="form-control form-control-sm"
+                            placeholder="Search…"
+                            value={structQuery}
+                            onChange={(e) => {
+                              setStructQuery(e.target.value)
+                              setStructPage(1)
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {structureTab === 'holidays' && (
+                        <select
+                          className="form-select form-select-sm"
+                          style={{ width: 140 }}
+                          value={structFilter}
+                          onChange={(e) => {
+                            setStructFilter(e.target.value)
+                            setStructPage(1)
+                          }}
+                          aria-label="Filter"
+                        >
+                          <option value="all">All</option>
+                          <option value="manual">Manual</option>
+                          <option value="auto">Auto (NG)</option>
+                        </select>
+                      )}
+
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ width: 140 }}
+                        value={structSortKey}
                         onChange={(e) => {
-                          setStructQuery(e.target.value)
+                          setStructSortKey(e.target.value)
                           setStructPage(1)
                         }}
-                      />
+                        aria-label="Sort by"
+                      >
+                        {structureTab === 'branches' && (
+                          <>
+                            <option value="name">Sort: Name</option>
+                            <option value="address">Sort: Address</option>
+                          </>
+                        )}
+                        {structureTab === 'departments' && (
+                          <>
+                            <option value="name">Sort: Name</option>
+                            <option value="branch">Sort: Branch</option>
+                          </>
+                        )}
+                        {structureTab === 'units' && (
+                          <>
+                            <option value="name">Sort: Name</option>
+                            <option value="department">Sort: Department</option>
+                          </>
+                        )}
+                        {structureTab === 'holidays' && (
+                          <>
+                            <option value="date">Sort: Date</option>
+                            <option value="title">Sort: Title</option>
+                            <option value="type">Sort: Type</option>
+                          </>
+                        )}
+                        {structureTab === 'profile' && <option value="name">Sort: Name</option>}
+                      </select>
+
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ width: 110 }}
+                        value={structSortDir}
+                        onChange={(e) => {
+                          setStructSortDir(e.target.value)
+                          setStructPage(1)
+                        }}
+                        aria-label="Sort direction"
+                      >
+                        <option value="asc">Asc</option>
+                        <option value="desc">Desc</option>
+                      </select>
                     </div>
-                    <div className="small text-muted">
-                      Page {structPage}
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="small text-muted">Rows</span>
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ width: 96 }}
+                        value={structPageSize}
+                        onChange={(e) => {
+                          setStructPageSize(Number(e.target.value))
+                          setStructPage(1)
+                        }}
+                      >
+                        {[20, 50, 100].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="small text-muted">Page {structPage}</span>
                     </div>
                   </div>
+                  )}
 
-                  <div className="table-responsive mt-2">
+                  <div className={structureTab === 'profile' ? 'mt-3' : 'table-responsive mt-2'}>
                     {structureTab==='branches' && (
                       <table className="table table-sm align-middle dash-table">
                         <thead><tr><th>Name</th><th>Address</th><th>Admin Email</th><th></th></tr></thead>
                         <tbody>
                           {(() => {
-                            const q = structQuery.trim().toLowerCase()
-                            const filtered = q
+                            const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
+                            let filtered = q
                               ? branches.filter((b) => `${b.name} ${b.address || ''} ${b.admin_info?.email || ''}`.toLowerCase().includes(q))
                               : branches
+                            const cmp = (a, b) => {
+                              const dir = structSortDir === 'desc' ? -1 : 1
+                              const av = (structSortKey === 'address' ? (a.address || '') : a.name || '').toLowerCase()
+                              const bv = (structSortKey === 'address' ? (b.address || '') : b.name || '').toLowerCase()
+                              return av.localeCompare(bv) * dir
+                            }
+                            filtered = [...filtered].sort(cmp)
                             const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
                             const current = Math.min(structPage, totalPages)
                             if (current !== structPage) setStructPage(current)
@@ -935,10 +1067,17 @@ export default function Dashboard(){
                         <thead><tr><th>Name</th><th>Branch</th><th></th></tr></thead>
                         <tbody>
                           {(() => {
-                            const q = structQuery.trim().toLowerCase()
-                            const filtered = q
+                            const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
+                            let filtered = q
                               ? deps.filter((d) => `${d.name} ${branches.find(b=>b.id===d.branch)?.name || ''}`.toLowerCase().includes(q))
                               : deps
+                            const cmp = (a, b) => {
+                              const dir = structSortDir === 'desc' ? -1 : 1
+                              const av = (structSortKey === 'branch' ? (branches.find(x=>x.id===a.branch)?.name || '') : a.name || '').toLowerCase()
+                              const bv = (structSortKey === 'branch' ? (branches.find(x=>x.id===b.branch)?.name || '') : b.name || '').toLowerCase()
+                              return av.localeCompare(bv) * dir
+                            }
+                            filtered = [...filtered].sort(cmp)
                             const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
                             const current = Math.min(structPage, totalPages)
                             if (current !== structPage) setStructPage(current)
@@ -999,10 +1138,17 @@ export default function Dashboard(){
                         <thead><tr><th>Name</th><th>Department</th><th></th></tr></thead>
                         <tbody>
                           {(() => {
-                            const q = structQuery.trim().toLowerCase()
-                            const filtered = q
+                            const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
+                            let filtered = q
                               ? units.filter((u) => `${u.name} ${deps.find(d=>d.id===u.department)?.name || ''}`.toLowerCase().includes(q))
                               : units
+                            const cmp = (a, b) => {
+                              const dir = structSortDir === 'desc' ? -1 : 1
+                              const av = (structSortKey === 'department' ? (deps.find(x=>x.id===a.department)?.name || '') : a.name || '').toLowerCase()
+                              const bv = (structSortKey === 'department' ? (deps.find(x=>x.id===b.department)?.name || '') : b.name || '').toLowerCase()
+                              return av.localeCompare(bv) * dir
+                            }
+                            filtered = [...filtered].sort(cmp)
                             const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
                             const current = Math.min(structPage, totalPages)
                             if (current !== structPage) setStructPage(current)
@@ -1060,13 +1206,34 @@ export default function Dashboard(){
 
                     {structureTab==='holidays' && (
                       <table className="table table-sm align-middle dash-table">
-                        <thead><tr><th>Title</th><th>Start</th><th>End</th><th></th></tr></thead>
+                        <thead><tr><th>Title</th><th>Date</th><th>Type</th><th></th></tr></thead>
                         <tbody>
                           {(() => {
-                            const q = structQuery.trim().toLowerCase()
-                            const filtered = q
-                              ? holidays.filter((h) => `${h.title} ${h.start_date} ${h.end_date}`.toLowerCase().includes(q))
-                              : holidays
+                            const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
+                            const base = holidaysAll.length ? holidaysAll : holidays
+                            let filtered = q
+                              ? base.filter((h) => `${h.title} ${h.start_date} ${h.end_date} ${h.source||''}`.toLowerCase().includes(q))
+                              : base
+
+                            if(structFilter !== 'all'){
+                              filtered = filtered.filter((h) => {
+                                const isAuto = h.source === 'NATIONAL' || h.deletable === false
+                                return structFilter === 'auto' ? isAuto : !isAuto
+                              })
+                            }
+
+                            const dir = structSortDir === 'desc' ? -1 : 1
+                            const cmp = (a, b) => {
+                              const typeLabel = (h) => (h.source === 'NATIONAL' || h.deletable === false ? 'auto' : 'manual')
+                              const getVal = (h) => {
+                                if(structSortKey === 'title') return (h.title || '').toLowerCase()
+                                if(structSortKey === 'type') return typeLabel(h)
+                                // date
+                                return (h.start_date || '').toLowerCase()
+                              }
+                              return getVal(a).localeCompare(getVal(b)) * dir
+                            }
+                            filtered = [...filtered].sort(cmp)
                             const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
                             const current = Math.min(structPage, totalPages)
                             if (current !== structPage) setStructPage(current)
@@ -1075,14 +1242,44 @@ export default function Dashboard(){
                             return (
                               <>
                                 {rows.map((h) => (
-                            <tr key={h.id}>
-                              <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{h.title}</div></td>
-                              <td>{h.start_date}</td>
-                              <td>{h.end_date}</td>
-                              <td className="text-end">
-                                <button className="btn btn-sm btn-outline-danger" type="button" onClick={async()=>{ try{ await api.delete(`/api/auth/holidays/${h.id}/`); await refreshAll() }catch(e){} }}>Delete</button>
-                              </td>
-                            </tr>
+                                  <tr key={h.id}>
+                                    <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{h.title}</div></td>
+                                    <td>{h.start_date}{h.end_date && h.end_date !== h.start_date ? ` → ${h.end_date}` : ''}</td>
+                                    <td>
+                                      {h.source === 'NATIONAL' || h.deletable === false ? (
+                                        <span className="badge bg-secondary">Auto (NG)</span>
+                                      ) : (
+                                        <span className="badge bg-olive">Manual</span>
+                                      )}
+                                    </td>
+                                    <td className="text-end">
+                                      {h.deletable === false || h.source === 'NATIONAL' ? (
+                                        <span className="badge bg-secondary">Auto</span>
+                                      ) : (
+                                        <div className="btn-group">
+                                          <button
+                                            className="btn btn-sm btn-outline-secondary"
+                                            type="button"
+                                            aria-label="Edit holiday"
+                                            onClick={() => setEditHoliday(h)}
+                                          >
+                                            <Pencil size={16} />
+                                          </button>
+                                          <button
+                                            className="btn btn-sm btn-outline-danger"
+                                            type="button"
+                                            aria-label="Delete holiday"
+                                            onClick={async()=>{
+                                              if(!confirm(`Delete holiday "${h.title}"?`)) return
+                                              try{ await api.delete(`/api/auth/holidays/${h.id}/`); await refreshAll() }catch(e){}
+                                            }}
+                                          >
+                                            <Trash2 size={16} />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
                                 ))}
                                 {filtered.length===0 && <tr><td colSpan="4" className="text-muted">No holidays found.</td></tr>}
                                 {filtered.length>0 && (
@@ -1108,15 +1305,7 @@ export default function Dashboard(){
                     {structureTab==='profile' && (
                       <div className="dash-profile">
                         <div className="dash-profile-head">
-                          <div>
-                            <div className="dash-profile-title">Organisation Profile</div>
-                            <div className="dash-profile-sub text-muted">Review your rules, branding, and verification details.</div>
-                          </div>
-                          <div className="dash-profile-actions">
-                            <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowEditProfile(true)}>
-                              Edit profile
-                            </button>
-                          </div>
+                          <div />
                         </div>
 
                         <div className="row g-3 mt-1">
@@ -1376,6 +1565,7 @@ export default function Dashboard(){
                             <li>Select start and end dates.</li>
                             <li>Multi-day holidays are supported.</li>
                             <li>Corps members won’t be penalized on holidays.</li>
+                            <li>Synced national holidays appear as Auto (NG) in the Holidays table.</li>
                           </ul>
                         </div>
                         <div className="dash-modal-form">
@@ -1398,6 +1588,86 @@ export default function Dashboard(){
                               <button className="btn btn-olive" disabled={isSaving}>
                                 {isSaving ? 'Adding…' : 'Add Holiday'}
                               </button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {editHoliday && editHolidayForm && (
+                <div className="dash-modal" onClick={() => setEditHoliday(null)}>
+                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+                    <div className="dash-modal-head">
+                      <strong>Edit Holiday</strong>
+                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditHoliday(null)}>Close</button>
+                    </div>
+                    <div className="dash-modal-body">
+                      <div className="dash-modal-grid">
+                        <div className="dash-modal-help">
+                          <h6>Edit flow</h6>
+                          <p>Update the holiday details. National holidays are synced automatically and cannot be edited.</p>
+                          <ul>
+                            <li>Update title and date range.</li>
+                            <li>Save to apply immediately.</li>
+                          </ul>
+                        </div>
+                        <div className="dash-modal-form">
+                          <form
+                            onSubmit={async (e) => {
+                              e.preventDefault()
+                              setStatus('pending')
+                              try{
+                                await api.put(`/api/auth/holidays/${editHoliday.id}/`, {
+                                  title: editHolidayForm.title,
+                                  start_date: editHolidayForm.start_date,
+                                  end_date: editHolidayForm.end_date,
+                                })
+                                await refreshAll()
+                                setStatus('saved:holiday')
+                                setEditHoliday(null)
+                              }catch(err){ setStatus('error:holiday') }
+                            }}
+                          >
+                            <div className="row g-2">
+                              <div className="col-12">
+                                <label className="form-label">Holiday title</label>
+                                <input
+                                  className="form-control"
+                                  value={editHolidayForm.title}
+                                  onChange={(e)=>setEditHolidayForm(p=>({ ...p, title: e.target.value }))}
+                                  required
+                                />
+                              </div>
+                              <div className="col-md-6">
+                                <label className="form-label">Start date</label>
+                                <input
+                                  className="form-control"
+                                  type="date"
+                                  value={editHolidayForm.start_date}
+                                  onChange={(e)=>setEditHolidayForm(p=>({ ...p, start_date: e.target.value }))}
+                                  required
+                                />
+                              </div>
+                              <div className="col-md-6">
+                                <label className="form-label">End date</label>
+                                <input
+                                  className="form-control"
+                                  type="date"
+                                  value={editHolidayForm.end_date}
+                                  onChange={(e)=>setEditHolidayForm(p=>({ ...p, end_date: e.target.value }))}
+                                  required
+                                />
+                              </div>
+                            </div>
+                            <div className="dash-modal-actions">
+                              <div className="d-grid">
+                                <button className="btn btn-olive" disabled={isSaving}>
+                                  {isSaving ? 'Saving…' : 'Save changes'}
+                                </button>
+                              </div>
                             </div>
                           </form>
                         </div>

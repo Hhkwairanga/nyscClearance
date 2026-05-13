@@ -10,6 +10,7 @@ from .models import (
     TempFaceEncoding,
     AttendanceLog,
     PublicHoliday,
+    NationalHoliday,
     LeaveRequest,
     Notification,
     WalletAccount,
@@ -81,6 +82,13 @@ class PublicHolidayAdmin(admin.ModelAdmin):
     list_display = ('title', 'user', 'start_date', 'end_date', 'created_at')
     list_filter = ('user', 'start_date', 'end_date')
     search_fields = ('title', 'user__email')
+
+
+@admin.register(NationalHoliday)
+class NationalHolidayAdmin(admin.ModelAdmin):
+    list_display = ('country_code', 'date', 'name')
+    list_filter = ('country_code', 'date')
+    search_fields = ('name', 'local_name', 'country_code')
 
 
 @admin.register(LeaveRequest)

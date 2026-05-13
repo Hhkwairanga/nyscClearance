@@ -106,6 +106,15 @@ Attendance
 - On each finalize, `time_in` is set if missing; `time_out` is always updated to now (not before `time_in`).
 - Holidays block check-in.
 
+Automatic Nigerian Public Holidays
+---------------------------------
+
+- National (Nigeria) public holidays are synced from the free Nager.Date API and stored in the database.
+- Organisations can still add custom/manual holidays from the dashboard.
+- Run yearly sync (e.g. via cron):
+
+    python manage.py sync_national_holidays --country NG --year 2026
+
 Clearance Letters
 -----------------
 

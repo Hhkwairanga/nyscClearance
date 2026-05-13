@@ -56,6 +56,8 @@ from .serializers import (
 )
 from .tokens import validate_email_token, generate_email_token
 from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog, WalletAccount, WalletTransaction, ClearanceOverride, TempFaceEncoding
+from .models import NationalHoliday
+from .services.holidays import ensure_national_holidays, is_holiday_for_org, working_days
 from django.db.models import Count
 from django.db import models
 
@@ -595,10 +597,9 @@ def attendance_authorize(request):
     threshold = getattr(settings, 'ATTENDANCE_GEOFENCE_METERS', 250)
     dist = _haversine_m(lat, lng, tgt_lat, tgt_lng)
     allowed = dist <= threshold
-    # Block on public holidays for the organization
+    # Block on public holidays (manual org + national)
     today = timezone.localdate()
-    is_holiday = PublicHoliday.objects.filter(user=cm.user, start_date__lte=today, end_date__gte=today).exists()
-    if is_holiday:
+    if is_holiday_for_org(cm.user, today).is_holiday:
         return JsonResponse({'allowed': False, 'detail': 'Today is a public holiday for your organization'}, status=403)
     return JsonResponse({'allowed': allowed, 'distance_m': round(dist, 1), 'threshold_m': threshold, 'source': src or 'unknown'})
 
@@ -707,6 +708,14 @@ def attendance_process_frame(request):
         from .models import AttendanceLog
         now = timezone.localtime()
         today = timezone.localdate()
+        # Block on public holidays (manual org + national)
+        if is_holiday_for_org(cm.user, today).is_holiday:
+            label = 'HOLIDAY'
+            head_color = (0, 0, 255)
+            cv2.putText(bgr, label, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.8, head_color, 2, cv2.LINE_AA)
+            _, buffer = cv2.imencode('.jpg', bgr)
+            processed_frame = base64.b64encode(buffer).decode('utf-8')
+            return JsonResponse({'ok': False, 'reason': 'holiday', 'frame': processed_frame})
         # Derive state from state_code if possible
         state = ''
         try:
@@ -778,9 +787,9 @@ def attendance_finalize(request):
     threshold = getattr(settings, 'ATTENDANCE_GEOFENCE_METERS', 250)
     if _haversine_m(lat, lng, tgt_lat, tgt_lng) > threshold:
         return JsonResponse({'detail': 'You are not within the attendance proximity'}, status=403)
-    # Block on public holidays
+    # Block on public holidays (manual org + national)
     today = timezone.localdate()
-    if PublicHoliday.objects.filter(user=cm.user, start_date__lte=today, end_date__gte=today).exists():
+    if is_holiday_for_org(cm.user, today).is_holiday:
         return JsonResponse({'detail': 'Today is a public holiday for your organization'}, status=403)
     # Persist attendance log: create/update today's record
     from .models import AttendanceLog
@@ -1298,6 +1307,59 @@ class PublicHolidayViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
+class AllHolidaysView(APIView):
+    """Return combined national + organisation manual holidays.
+
+    National holidays are read-only and apply to all orgs.
+    Manual holidays are organization-scoped and deletable.
+    """
+
+    def get(self, request):
+        user = request.user
+        if not getattr(user, 'authenticated', True):
+            return Response({'detail': 'Not authenticated'}, status=401)
+
+        # Determine org user
+        org_user = user if user.role == 'ORG' else None
+        if user.role == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=user).first()
+            org_user = b.user if b else None
+        elif user.role == 'CORPER':
+            try:
+                org_user = user.corper_profile.user
+            except Exception:
+                org_user = None
+
+        year = timezone.localdate().year
+        # Ensure we have national holidays (lazy auto-sync)
+        ensure_national_holidays(year=year, country_code='NG')
+        ensure_national_holidays(year=year + 1, country_code='NG')
+        # National holidays for current year (and next year for smoother UX)
+        national = NationalHoliday.objects.filter(country_code='NG', date__year__in=[year, year + 1]).order_by('date')
+        manual = PublicHoliday.objects.filter(user=org_user).order_by('start_date') if org_user else PublicHoliday.objects.none()
+
+        out = []
+        for h in national:
+            out.append({
+                'id': f'national:{h.id}',
+                'source': 'NATIONAL',
+                'title': h.name,
+                'start_date': h.date.isoformat(),
+                'end_date': h.date.isoformat(),
+                'deletable': False,
+            })
+        for h in manual:
+            out.append({
+                'id': h.id,
+                'source': 'MANUAL',
+                'title': h.title,
+                'start_date': h.start_date.isoformat() if h.start_date else None,
+                'end_date': h.end_date.isoformat() if h.end_date else None,
+                'deletable': user.role == 'ORG',
+            })
+        return Response(out)
+
+
 class LeaveRequestViewSet(viewsets.ModelViewSet):
     serializer_class = LeaveRequestSerializer
 
@@ -1443,17 +1505,8 @@ def _prev_month_bounds(today=None):
 
 
 def _working_days(user, start_date, end_date):
-    """Return list of working dates excluding weekends and org public holidays."""
-    days = []
-    d = start_date
-    holidays = PublicHoliday.objects.filter(user=user, start_date__lte=end_date, end_date__gte=start_date)
-    def is_holiday(x):
-        return holidays.filter(start_date__lte=x, end_date__gte=x).exists()
-    while d <= end_date:
-        if d.weekday() < 5 and not is_holiday(d):
-            days.append(d)
-        d += timezone.timedelta(days=1)
-    return days
+    """Return list of working dates excluding weekends and holidays."""
+    return working_days(user, start_date, end_date)
 
 
 def verify_clearance(request):
