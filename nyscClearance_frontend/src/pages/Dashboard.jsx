@@ -52,9 +52,16 @@ export default function Dashboard(){
   const [corperSortDir, setCorperSortDir] = useState('asc')
   const [corperFilterBranch, setCorperFilterBranch] = useState('all')
   const [showAddCorper, setShowAddCorper] = useState(false)
+  const [corperFormErrors, setCorperFormErrors] = useState({})
   const [editCorper, setEditCorper] = useState(null)
   const [editCorperForm, setEditCorperForm] = useState(null)
   const [selectedCorper, setSelectedCorper] = useState(null)
+
+  useEffect(() => {
+    if (!showAddCorper) {
+      setCorperFormErrors({})
+    }
+  }, [showAddCorper])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [structureTab, setStructureTab] = useState('branches')
@@ -371,6 +378,7 @@ export default function Dashboard(){
 
   async function createCorper(e){
     e.preventDefault(); setStatus('pending')
+    setCorperFormErrors({})
     const fd = new FormData(e.target)
     const data = Object.fromEntries(fd)
     // Drop empty values and branch for branch-admins (defaults server-side)
@@ -382,8 +390,13 @@ export default function Dashboard(){
       await api.post('/api/auth/corpers/', data)
       await refreshAll(); setStatus('saved:corper')
       e.target.reset()
+      setCorperFormErrors({})
       return true
     }catch(err){
+      const payload = err?.response?.data
+      if(payload && typeof payload === 'object' && !Array.isArray(payload)){
+        setCorperFormErrors(payload)
+      }
       const msg = err?.response?.data?.detail
         || Object.values(err?.response?.data || {})?.[0]?.[0]
         || err.message
@@ -510,37 +523,77 @@ export default function Dashboard(){
     }, { credit: 0, debit: 0 })
     const [txPage, setTxPage] = useState(1)
     const [txQuery, setTxQuery] = useState('')
+    const [txSearchOpen, setTxSearchOpen] = useState(false)
+    const [txPageSize, setTxPageSize] = useState(50)
     const filteredTxs = txs.filter(t => {
-      const q = txQuery.trim().toLowerCase()
+      const q = txSearchOpen ? txQuery.trim().toLowerCase() : ''
       if(!q) return true
       const hay = [t.description||'', t.reference||'', t.type||'', new Date(t.created_at).toLocaleString()].join(' ').toLowerCase()
       return hay.includes(q)
     })
-    const txPageSize = 50
     const txTotalPages = Math.max(1, Math.ceil(filteredTxs.length / txPageSize))
     const txStart = (txPage - 1) * txPageSize
     const pageTxs = filteredTxs.slice(txStart, txStart + txPageSize)
     return (
       <div className="row g-3">
-        <div className="col-12 col-lg-4">
-          <div className="card shadow-sm"><div className="card-body">
-            <div className="text-muted small">Current Balance</div>
-            <div className="display-6">₦{Number(bal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-            <div className="mt-2 small">
-              <div><span className="text-muted">Total Credit:</span> ₦{totals.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-              <div><span className="text-muted">Total Debit:</span> ₦{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+        <div className="col-12 col-xxl-4">
+          <div className="card shadow-sm dash-card h-100">
+            <div className="card-body">
+              <div className="dash-card-title mb-2">Wallet</div>
+              <div className="text-muted small">Current balance</div>
+              <div className="display-6" style={{lineHeight:1.05}}>₦{Number(bal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div className="row g-2 mt-3">
+                <div className="col-6">
+                  <div className="dash-kv">
+                    <div className="dash-k">Total credit</div>
+                    <div className="dash-v">₦{totals.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                  </div>
+                </div>
+                <div className="col-6">
+                  <div className="dash-kv">
+                    <div className="dash-k">Total debit</div>
+                    <div className="dash-v">₦{totals.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                  </div>
+                </div>
+              </div>
+              <button className="btn btn-olive mt-3 w-100" onClick={fundWallet}>Fund Wallet</button>
             </div>
-            <button className="btn btn-olive mt-3" onClick={fundWallet}>Fund Wallet</button>
-          </div></div>
+          </div>
         </div>
-        <div className="col-12 col-lg-8">
-          <div className="card shadow-sm"><div className="card-body">
-            <h6 className="card-title">Transactions</h6>
-            <div className="mb-2">
-              <input className="form-control form-control-sm" placeholder="Search transactions..." value={txQuery} onChange={(e)=>{ setTxQuery(e.target.value); setTxPage(1) }} />
-            </div>
-            <div className="table-responsive">
-              <table className="table table-sm align-middle">
+
+        <div className="col-12 col-xxl-8">
+          <div className="card shadow-sm dash-card">
+            <div className="card-body">
+              <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div className="dash-card-title mb-0">Transactions</div>
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <button
+                    className={`btn btn-sm ${txSearchOpen ? 'btn-olive' : 'btn-outline-secondary'}`}
+                    type="button"
+                    aria-label="Search transactions"
+                    onClick={() => setTxSearchOpen((v) => !v)}
+                  >
+                    <Search size={16} />
+                  </button>
+                  {txSearchOpen && (
+                    <div className="dash-table-search">
+                      <input
+                        className="form-control form-control-sm"
+                        placeholder="Search transactions…"
+                        value={txQuery}
+                        onChange={(e)=>{ setTxQuery(e.target.value); setTxPage(1) }}
+                      />
+                    </div>
+                  )}
+                  <span className="small text-muted">Rows</span>
+                  <select className="form-select form-select-sm" style={{width:96}} value={txPageSize} onChange={(e)=>{ setTxPageSize(Number(e.target.value)); setTxPage(1) }}>
+                    {[50,100].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="table-responsive mt-2">
+              <table className="table table-sm align-middle dash-table">
                 <thead>
                   <tr>
                     <th>S/N</th>
@@ -557,7 +610,7 @@ export default function Dashboard(){
                     <tr key={t.id}>
                       <td>{txStart + i + 1}</td>
                       <td>{new Date(t.created_at).toLocaleString()}</td>
-                      <td>{t.description}{t.reference?` (${t.reference})`:''}</td>
+                      <td><div className="text-truncate dash-td-truncate-wide">{t.description}{t.reference?` (${t.reference})`:''}</div></td>
                       <td>{t.type}</td>
                       <td className="text-end">₦{Number(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       <td className="text-end">₦{Number(t.vat_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
@@ -570,7 +623,7 @@ export default function Dashboard(){
                 </tbody>
               </table>
             </div>
-            {filteredTxs.length>50 && (
+            {filteredTxs.length>txPageSize && (
               <div className="d-flex justify-content-between align-items-center mt-2">
                 <div className="small text-muted">Page {txPage} of {txTotalPages} · {filteredTxs.length} result(s)</div>
                 <div className="btn-group">
@@ -579,7 +632,8 @@ export default function Dashboard(){
                 </div>
               </div>
             )}
-          </div></div>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -674,6 +728,7 @@ export default function Dashboard(){
               <div className="fw-semibold">{tabTitle[activeTab] || 'Dashboard'}</div>
               <div className="text-muted small">{me?.role === 'ORG' ? 'Organisation' : me?.role === 'BRANCH' ? 'Admin' : 'Corps Member'}</div>
             </div>
+
           </header>
 
           <main className="dash-content">
@@ -871,21 +926,23 @@ export default function Dashboard(){
                 </div>
               )}
 
-              <div className="card shadow-sm dash-card">
-                <div className="card-body">
-                  <div className="dash-card-title">All notifications</div>
-                  <div className="dash-feed">
-                    {notifications.map((n) => (
-                      <div key={n.id} className="dash-feed-item">
-                        <div className="fw-semibold">{n.title}</div>
-                        <div className="small text-muted">{new Date(n.created_at).toLocaleString()}</div>
-                        <div className="small mt-1">{n.message}</div>
-                      </div>
-                    ))}
-                    {notifications.length === 0 && <div className="text-muted">No notifications yet.</div>}
+              {me?.role === 'CORPER' && (
+                <div className="card shadow-sm dash-card">
+                  <div className="card-body">
+                    <div className="dash-card-title">All notifications</div>
+                    <div className="dash-feed">
+                      {notifications.map((n) => (
+                        <div key={n.id} className="dash-feed-item">
+                          <div className="fw-semibold">{n.title}</div>
+                          <div className="small text-muted">{new Date(n.created_at).toLocaleString()}</div>
+                          <div className="small mt-1">{n.message}</div>
+                        </div>
+                      ))}
+                      {notifications.length === 0 && <div className="text-muted">No notifications yet.</div>}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </>
           )}
 
@@ -2703,7 +2760,27 @@ export default function Dashboard(){
                               <div className="row g-2">
                                 <div className="col-12 col-md-6">
                                   <label className="form-label">Email</label>
-                                  <input className="form-control" type="email" name="email" placeholder="corper@example.com" required />
+                                  <input
+                                    className={`form-control ${corperFormErrors?.email ? 'is-invalid' : ''}`}
+                                    type="email"
+                                    name="email"
+                                    placeholder="corper@example.com"
+                                    required
+                                    onChange={() => {
+                                      if (corperFormErrors?.email) {
+                                        setCorperFormErrors((p) => {
+                                          const next = { ...(p || {}) }
+                                          delete next.email
+                                          return next
+                                        })
+                                      }
+                                    }}
+                                  />
+                                  {corperFormErrors?.email && (
+                                    <div className="invalid-feedback">
+                                      {Array.isArray(corperFormErrors.email) ? corperFormErrors.email[0] : String(corperFormErrors.email)}
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="col-12 col-md-6">
                                   <label className="form-label">Full Name</label>
@@ -3033,6 +3110,10 @@ export default function Dashboard(){
             </>
           )}
           </main>
+
+          <div className="dash-mini-footer">
+            © {new Date().getFullYear()} Sahab Technology Integrated Limited
+          </div>
         </div>
       </div>
     </div>

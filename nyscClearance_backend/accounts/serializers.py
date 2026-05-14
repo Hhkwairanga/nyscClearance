@@ -325,18 +325,20 @@ class CorpMemberSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         owner = request.user if request else None
 
-        corper_user, created = User.objects.get_or_create(
+        # Do not allow enrolling with an email that already exists.
+        # This avoids role conflicts and makes onboarding explicit.
+        if email and User.objects.filter(email=email).exists():
+            raise serializers.ValidationError({'email': 'A user with this email already exists.'})
+
+        corper_user = User.objects.create(
             email=email,
-            defaults={
-                'name': full_name,
-                'is_active': False,
-                'is_email_verified': False,
-                'role': 'CORPER',
-            }
+            name=full_name,
+            is_active=False,
+            is_email_verified=False,
+            role='CORPER',
         )
-        if created:
-            corper_user.set_unusable_password()
-            corper_user.save()
+        corper_user.set_unusable_password()
+        corper_user.save()
 
         # Determine owning organization and default branch if created by a branch admin
         from .models import BranchOffice
