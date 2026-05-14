@@ -8,16 +8,18 @@ import api, { ensureCsrf } from '../api/axios'
 import { apiHref } from '../api/urls'
 import MapPicker from '../components/MapPicker'
 import GeofencePicker from '../components/GeofencePicker'
-import { Bar, Line } from 'react-chartjs-2'
+import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import AutoFadeAlert from '../components/AutoFadeAlert'
 import thankYouAudio from '../assets/thank_you_message.mp3'
 import {
   BarChart3,
   Bell,
   Building2,
+  CalendarDays,
   FileCheck2,
   FileSearch,
   FileText,
+  Home,
   Layers3,
   LayoutGrid,
   Menu,
@@ -26,9 +28,10 @@ import {
   Trash2,
   Users,
   CalendarCheck2,
+  Wallet,
 } from 'lucide-react'
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend } from 'chart.js'
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
+import { Chart as ChartJS, CategoryScale, LinearScale, ArcElement, BarElement, LineElement, PointElement, Filler, Tooltip, Legend } from 'chart.js'
+ChartJS.register(CategoryScale, LinearScale, ArcElement, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
 
 export default function Dashboard(){
   const navigate = useNavigate()
@@ -72,6 +75,11 @@ export default function Dashboard(){
   const [editCorper, setEditCorper] = useState(null)
   const [editCorperForm, setEditCorperForm] = useState(null)
   const [selectedCorper, setSelectedCorper] = useState(null)
+
+  const [myLeaveQuery, setMyLeaveQuery] = useState('')
+  const [myLeaveSearchOpen, setMyLeaveSearchOpen] = useState(false)
+  const [myLeavePage, setMyLeavePage] = useState(1)
+  const [myLeavePageSize, setMyLeavePageSize] = useState(20)
 
   useEffect(() => {
     if (!showAddCorper) {
@@ -503,7 +511,7 @@ export default function Dashboard(){
   const navItems = useMemo(() => {
     const items = []
     const add = (key, label, Icon, badge) => items.push({ key, label, Icon, badge })
-    add('overview', 'Overview', LayoutGrid)
+    add('overview', 'Overview', Home)
     if(me?.role === 'ORG' || me?.role === 'BRANCH'){
       add('structure', 'Structure', Layers3)
       add('corpers', 'Corpers', Users)
@@ -520,10 +528,10 @@ export default function Dashboard(){
       add('clearance', 'Clearance', FileCheck2)
     }
     if(me?.role === 'CORPER'){
-      add('attendance', 'Attendance', LayoutGrid)
-      add('leave', 'Leaves', LayoutGrid)
-      add('performance', 'Clearance', LayoutGrid)
-      add('wallet', 'Wallet', Building2)
+      add('attendance', 'Attendance', CalendarCheck2)
+      add('leave', 'Leaves', CalendarDays)
+      add('performance', 'Clearance', FileCheck2)
+      add('wallet', 'Wallet', Wallet)
     }
 
     add('notifications', 'Notifications', Bell, (me?.role === 'CORPER' ? (unreadNotifications || null) : null))
@@ -3218,60 +3226,217 @@ export default function Dashboard(){
                 <a className="btn btn-olive" href={apiHref('/api/auth/attendance/')} target="_blank" rel="noreferrer">Mark Attendance</a>
                 </div>
               )}
-              <div className="row g-3">
-                <div className="col-12 col-lg-6">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
-                    <h6 className="card-title">My Attendance (Hours)</h6>
-                    <Bar data={{
-                      labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
-                      datasets: [{ label: 'Hours', data: (stats?.attendance?.last7||[]).map(r=> r.hours ?? 0), backgroundColor: '#556B2F' }]
-                    }} options={{ responsive:true, maintainAspectRatio:false, scales:{ y:{ title:{ display:true, text:'Hours' } } }, plugins:{legend:{display:false}} }} />
-                  </div></div>
-                </div>
-                <div className="col-12 col-lg-6">
-                  <div className="card shadow-sm"><div className="card-body" style={{height:300}}>
-                    <h6 className="card-title">Today vs Month</h6>
-                    <Doughnut data={{
-                      labels:['Today','This Month'],
-                      datasets:[{ data:[stats?.attendance?.today||0, stats?.attendance?.this_month||0], backgroundColor:['#BDB76B','#556B2F'] }]
-                    }} options={{ responsive:true, maintainAspectRatio:false }} />
-                  </div></div>
-                </div>
-              </div>
+              {(() => {
+                const last7 = stats?.attendance?.last7 || []
+                const totalHours7 = last7.reduce((sum, r) => sum + Number(r.hours || 0), 0)
+                const totalDays7 = last7.length
+                const avgHours = totalDays7 ? (totalHours7 / totalDays7) : 0
+                const checkins7 = last7.reduce((sum, r) => sum + Number(r.count || 0), 0)
+                const monthCheckins = Number(stats?.attendance?.this_month || 0)
+                const todayCheckins = Number(stats?.attendance?.today || 0)
+                return (
+                  <>
+                    <div className="row g-3">
+                      <div className="col-12 col-sm-6 col-lg-3">
+                        <div className="dash-kpi">
+                          <div className="dash-kpi-icon"><CalendarCheck2 size={18} aria-hidden /></div>
+                          <div>
+                            <div className="dash-kpi-label">Today</div>
+                            <div className="dash-kpi-value">{todayCheckins}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="col-12 col-sm-6 col-lg-3">
+                        <div className="dash-kpi">
+                          <div className="dash-kpi-icon"><CalendarDays size={18} aria-hidden /></div>
+                          <div>
+                            <div className="dash-kpi-label">This Month</div>
+                            <div className="dash-kpi-value">{monthCheckins}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="col-12 col-sm-6 col-lg-3">
+                        <div className="dash-kpi">
+                          <div className="dash-kpi-icon"><BarChart3 size={18} aria-hidden /></div>
+                          <div>
+                            <div className="dash-kpi-label">Hours (7 days)</div>
+                            <div className="dash-kpi-value">{totalHours7.toFixed(1)}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="col-12 col-sm-6 col-lg-3">
+                        <div className="dash-kpi">
+                          <div className="dash-kpi-icon"><LayoutGrid size={18} aria-hidden /></div>
+                          <div>
+                            <div className="dash-kpi-label">Avg Hours/Day</div>
+                            <div className="dash-kpi-value">{avgHours.toFixed(1)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="row g-3 mt-1">
+                      <div className="col-12 col-lg-6">
+                        <div className="card shadow-sm dash-card"><div className="card-body" style={{height:320}}>
+                          <div className="dash-card-title">Check-ins by Day (Last 7 Days)</div>
+                          <Bar data={{
+                            labels: last7.map(r=> new Date(r.date).toLocaleDateString()),
+                            datasets: [{ label: 'Check-ins', data: last7.map(r=> r.count ?? 0), backgroundColor: chartTheme.khaki, borderRadius: 10 }]
+                          }} options={{
+                            ...barOptions,
+                            scales: {
+                              x: { grid: { display:false }, ticks: { color: chartTheme.text }, title: { display:true, text:'Day' } },
+                              y: { grid: { color: chartTheme.grid }, ticks: { color: chartTheme.text }, beginAtZero:true, title: { display:true, text:'Check-ins' } },
+                            }
+                          }} />
+                        </div></div>
+                      </div>
+                      <div className="col-12 col-lg-6">
+                        <div className="card shadow-sm dash-card"><div className="card-body" style={{height:320}}>
+                          <div className="dash-card-title">Hours by Day (Last 7 Days)</div>
+                          <Line
+                            data={{
+                              labels: last7.map(r=> new Date(r.date).toLocaleDateString()),
+                              datasets: [{
+                                label: 'Hours',
+                                data: last7.map(r=> r.hours ?? 0),
+                                borderColor: chartTheme.olive,
+                                backgroundColor: chartTheme.oliveSoft,
+                                tension: 0.35,
+                                fill: true,
+                                pointRadius: 3,
+                              }]
+                            }}
+                            options={lineOptions}
+                          />
+                        </div></div>
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
             </>
           )}
 
         {activeTab==='leave' && me?.role==='CORPER' && (
           <>
             <h2 className="mb-3 text-olive">Leave Management</h2>
-            <div className="card shadow-sm mb-3"><div className="card-body">
-              <h5 className="card-title">Apply for Leave</h5>
-              <form onSubmit={createLeave}>
-                <div className="row g-2">
-                  <div className="col-md-4"><label className="form-label">Start Date</label><input className="form-control" type="date" name="start_date" required/></div>
-                  <div className="col-md-4"><label className="form-label">End Date</label><input className="form-control" type="date" name="end_date" required/></div>
-                  <div className="col-12"><label className="form-label">Reason</label><textarea className="form-control" name="reason" rows="2"/></div>
-                  <div className="col-12 col-md-3 d-grid"><button className="btn btn-olive">Submit</button></div>
+            <div className="row g-3">
+              <div className="col-12 col-xl-4">
+                <div className="card shadow-sm dash-card h-100">
+                  <div className="card-body">
+                    <div className="dash-card-title mb-2">Apply for Leave</div>
+                    <div className="text-muted small mb-3">Submit a leave request for approval.</div>
+                    <form onSubmit={createLeave}>
+                      <div className="row g-2">
+                        <div className="col-12">
+                          <label className="form-label">Start Date</label>
+                          <input className="form-control" type="date" name="start_date" required/>
+                        </div>
+                        <div className="col-12">
+                          <label className="form-label">End Date</label>
+                          <input className="form-control" type="date" name="end_date" required/>
+                        </div>
+                        <div className="col-12">
+                          <label className="form-label">Reason</label>
+                          <textarea className="form-control" name="reason" rows="3" placeholder="Optional details" />
+                        </div>
+                      </div>
+                      <div className="dash-modal-actions">
+                        <div className="d-grid">
+                          <button className="btn btn-olive" disabled={status==='pending'}>
+                            {status==='pending' ? 'Submitting…' : 'Submit'}
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                    {status==='saved:leave' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Leave request submitted.</AutoFadeAlert>}
+                    {status==='error:leave' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not submit leave request.</AutoFadeAlert>}
+                  </div>
                 </div>
-              </form>
-              {status==='saved:leave' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Leave request submitted.</AutoFadeAlert>}
-              {status==='error:leave' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Could not submit leave request.</AutoFadeAlert>}
-            </div></div>
-            <div className="card shadow-sm"><div className="card-body">
-              <h5 className="card-title">My Leave Requests</h5>
-              <div className="mb-2" style={{maxWidth:260}}>
-                <input className="form-control form-control-sm" placeholder="Search my leaves..." onChange={(e)=>{ const v=e.target.value.toLowerCase(); const el=document.getElementById('my-leaves-body'); if(!el) return; for(const tr of el.querySelectorAll('tr[data-row]')){ const text=tr.getAttribute('data-hay')||''; tr.style.display = text.includes(v)?'':'none' } }} />
               </div>
-              <div className="table-responsive">
-                <table className="table table-sm">
-                  <thead><tr><th>#</th><th>Start</th><th>End</th><th>Status</th></tr></thead>
-                  <tbody id="my-leaves-body">
-                    {leaves.map((r,idx)=>(<tr key={r.id} data-row data-hay={`${r.start_date} ${r.end_date} ${r.status}`.toLowerCase()}><td>{idx+1}</td><td>{r.start_date}</td><td>{r.end_date}</td><td>{r.status}</td></tr>))}
-                    {leaves.length===0 && <tr><td colSpan="4" className="text-muted">No leave requests yet.</td></tr>}
-                  </tbody>
-                </table>
+
+              <div className="col-12 col-xl-8">
+                <div className="card shadow-sm dash-card">
+                  <div className="card-body">
+                    <div className="d-flex justify-content-between align-items-center gap-2">
+                      <div className="dash-card-title mb-0">My Leave Requests</div>
+                      <div className="d-flex align-items-center gap-2">
+                        <button
+                          className={`btn btn-sm ${myLeaveSearchOpen ? 'btn-olive' : 'btn-outline-secondary'}`}
+                          type="button"
+                          aria-label="Search"
+                          onClick={() => setMyLeaveSearchOpen((v)=>!v)}
+                        >
+                          <Search size={16} />
+                        </button>
+                        {myLeaveSearchOpen && (
+                          <div className="dash-table-search">
+                            <input
+                              className="form-control form-control-sm"
+                              placeholder="Search…"
+                              value={myLeaveQuery}
+                              onChange={(e)=>{ setMyLeaveQuery(e.target.value); setMyLeavePage(1) }}
+                            />
+                          </div>
+                        )}
+                        <span className="small text-muted">Rows</span>
+                        <select className="form-select form-select-sm" style={{width:96}} value={myLeavePageSize} onChange={(e)=>{ setMyLeavePageSize(Number(e.target.value)); setMyLeavePage(1) }}>
+                          {[20,50,100].map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="table-responsive mt-2">
+                      <table className="table table-sm align-middle dash-table">
+                        <thead>
+                          <tr><th>#</th><th>Start</th><th>End</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            const q = myLeaveSearchOpen ? myLeaveQuery.trim().toLowerCase() : ''
+                            let filtered = q ? leaves.filter(r => `${r.start_date} ${r.end_date} ${r.status}`.toLowerCase().includes(q)) : leaves
+                            const totalPages = Math.max(1, Math.ceil(filtered.length / myLeavePageSize))
+                            const current = Math.min(myLeavePage, totalPages)
+                            if(current !== myLeavePage) setMyLeavePage(current)
+                            const start = (current - 1) * myLeavePageSize
+                            const rows = filtered.slice(start, start + myLeavePageSize)
+                            return (
+                              <>
+                                {rows.map((r, idx) => (
+                                  <tr key={r.id}>
+                                    <td>{start + idx + 1}</td>
+                                    <td>{r.start_date}</td>
+                                    <td>{r.end_date}</td>
+                                    <td>
+                                      {r.status === 'APPROVED' ? <span className="badge bg-success">APPROVED</span> : r.status === 'REJECTED' ? <span className="badge bg-danger">REJECTED</span> : <span className="badge bg-warning text-dark">PENDING</span>}
+                                    </td>
+                                  </tr>
+                                ))}
+                                {filtered.length===0 && <tr><td colSpan="4" className="text-muted">No leave requests found.</td></tr>}
+                                {filtered.length>0 && totalPages>1 && (
+                                  <tr>
+                                    <td colSpan="4">
+                                      <div className="d-flex justify-content-between align-items-center">
+                                        <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                        <div className="btn-group">
+                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setMyLeavePage(p=>Math.max(1,p-1))}>Prev</button>
+                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setMyLeavePage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
+                            )
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div></div>
+            </div>
           </>
         )}
 
@@ -3347,7 +3512,7 @@ export default function Dashboard(){
           </main>
 
           <div className="dash-mini-footer">
-            © {new Date().getFullYear()} Sahab Technology Integrated Limited
+            © {new Date().getFullYear()} Sahab Technology Integrated Limited. All rights reserved.
           </div>
         </div>
       </div>

@@ -66,8 +66,8 @@ export default function Landing() {
                   Finally Automated.
                 </h1>
                 <p className="lead text-muted mb-4">
-                  Onboard corpers, manage branches, approve leaves and publish holidays, then generate clearance in minutes.
-                  Simple, secure, and made for speed.
+                  Face Recognition Check In, Geofenced Attendance and QR Verified Clearance Letters.
+                  Manage Corps Members from One Platform, Set Up in Minutes.
                 </p>
                 <div className="d-flex flex-wrap gap-2 mb-5">
                   <Link className="btn btn-olive px-4" to="/signup">

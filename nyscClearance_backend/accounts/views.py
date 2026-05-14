@@ -1649,10 +1649,17 @@ def performance_clearance_page(request):
     is_first_clearance = not WalletTransaction.objects.filter(
         type='DEBIT', reference__startswith=f"NYSC-{cm.state_code}-"
     ).exists()
+    # Also skip penalty if the corper was enrolled after the clearance month started.
+    enrolled_after_start = False
+    try:
+        joined = getattr(request.user, 'date_joined', None)
+        enrolled_after_start = bool(joined and joined.date() > start)
+    except Exception:
+        enrolled_after_start = False
     # Allow if override exists for this month
     yyyymm = start.strftime('%Y%m')
     has_override = ClearanceOverride.objects.filter(corper=cm, year_month=yyyymm).exists()
-    if not is_first_clearance and not has_override:
+    if not is_first_clearance and not has_override and not enrolled_after_start:
         work_days = _working_days(cm.user, start, end)
         work_set = set(work_days)
         logs = AttendanceLog.objects.filter(account=request.user, date__gte=start, date__lte=end)
@@ -2066,10 +2073,17 @@ class ClearanceStatusView(APIView):
                         late += 1
             absent = max(0, len(work_days) - present)
             is_first = not WalletTransaction.objects.filter(type='DEBIT', reference__startswith=f"NYSC-{cm.state_code}-").exists()
+            # If corper was enrolled after the clearance month started, do not penalize them for missing days.
+            enrolled_after_start = False
+            try:
+                joined = getattr(cm.account, 'date_joined', None)
+                enrolled_after_start = bool(joined and joined.date() > start)
+            except Exception:
+                enrolled_after_start = False
             override = ClearanceOverride.objects.filter(corper=cm, year_month=yyyymm).exists()
             exceeded_abs = (max_absent is not None and absent > (max_absent or 0))
             exceeded_late = (max_late is not None and late > (max_late or 0))
-            qualified = is_first or override or (not exceeded_abs and not exceeded_late)
+            qualified = is_first or override or enrolled_after_start or (not exceeded_abs and not exceeded_late)
             downloaded = WalletTransaction.objects.filter(type='DEBIT', reference=f"NYSC-{cm.state_code}-{yyyymm}").exists()
             results.append({
                 'id': cm.id,
