@@ -11,7 +11,22 @@ import GeofencePicker from '../components/GeofencePicker'
 import { Bar, Line } from 'react-chartjs-2'
 import AutoFadeAlert from '../components/AutoFadeAlert'
 import thankYouAudio from '../assets/thank_you_message.mp3'
-import { Bell, Building2, Layers3, LayoutGrid, Menu, Pencil, Search, Trash2, Users } from 'lucide-react'
+import {
+  BarChart3,
+  Bell,
+  Building2,
+  FileCheck2,
+  FileSearch,
+  FileText,
+  Layers3,
+  LayoutGrid,
+  Menu,
+  Pencil,
+  Search,
+  Trash2,
+  Users,
+  CalendarCheck2,
+} from 'lucide-react'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
 
@@ -33,6 +48,7 @@ export default function Dashboard(){
   const [holidaysAll, setHolidaysAll] = useState([])
   const [leaves, setLeaves] = useState([])
   const [notifications, setNotifications] = useState([])
+  const [unreadNotifications, setUnreadNotifications] = useState(0)
   const [wallet, setWallet] = useState(null)
   const [announcement, setAnnouncement] = useState(null)
   const [showFund, setShowFund] = useState(false)
@@ -227,6 +243,39 @@ export default function Dashboard(){
       setStructureTab((t) => (t === 'branch' || t === 'departments' || t === 'units' || t === 'holidays' ? t : 'branch'))
     }
   }, [activeTab, me?.role])
+
+  // Track unread notifications for corpers (persist across sessions)
+  useEffect(() => {
+    if (me?.role !== 'CORPER') return
+    const list = Array.isArray(notifications) ? notifications : []
+    let seenMs = 0
+    try{
+      const key = `nyscClearance:notifSeen:${me?.email || 'me'}`
+      seenMs = Number(localStorage.getItem(key) || 0) || 0
+    }catch(e){
+      seenMs = 0
+    }
+    const unread = list.filter(n => {
+      const t = new Date(n.created_at).getTime()
+      return Number.isFinite(t) && t > seenMs
+    }).length
+    setUnreadNotifications(unread)
+  }, [notifications, me?.role, me?.email])
+
+  useEffect(() => {
+    if(me?.role !== 'CORPER') return
+    if(activeTab !== 'notifications') return
+    const list = Array.isArray(notifications) ? notifications : []
+    const latest = list.reduce((mx, n) => {
+      const t = new Date(n.created_at).getTime()
+      return Number.isFinite(t) ? Math.max(mx, t) : mx
+    }, 0)
+    try{
+      const key = `nyscClearance:notifSeen:${me?.email || 'me'}`
+      localStorage.setItem(key, String(latest || Date.now()))
+    }catch(e){}
+    setUnreadNotifications(0)
+  }, [activeTab, me?.role, me?.email, notifications])
 
   // Handle result banners and Paystack return
   useEffect(() => {
@@ -465,10 +514,10 @@ export default function Dashboard(){
     }
     if(me?.role === 'BRANCH'){
       add('wallet', 'Wallet', Building2)
-      add('leave', 'Leaves', LayoutGrid, leaves.filter(l=>l.status==='PENDING').length || null)
-      add('query', 'Queries', LayoutGrid)
-      add('report', 'Reports', LayoutGrid)
-      add('clearance', 'Clearance', LayoutGrid)
+      add('leave', 'Leaves', CalendarCheck2, leaves.filter(l=>l.status==='PENDING').length || null)
+      add('query', 'Queries', FileSearch)
+      add('report', 'Reports', BarChart3)
+      add('clearance', 'Clearance', FileCheck2)
     }
     if(me?.role === 'CORPER'){
       add('attendance', 'Attendance', LayoutGrid)
@@ -477,9 +526,9 @@ export default function Dashboard(){
       add('wallet', 'Wallet', Building2)
     }
 
-    add('notifications', 'Notifications', Bell, notifications.length || null)
+    add('notifications', 'Notifications', Bell, (me?.role === 'CORPER' ? (unreadNotifications || null) : null))
     return items
-  }, [me?.role, leaves, notifications.length])
+  }, [me?.role, leaves, notifications.length, unreadNotifications])
 
   const tabTitle = useMemo(() => ({
     overview: 'Overview',
@@ -525,12 +574,31 @@ export default function Dashboard(){
     const [txQuery, setTxQuery] = useState('')
     const [txSearchOpen, setTxSearchOpen] = useState(false)
     const [txPageSize, setTxPageSize] = useState(50)
-    const filteredTxs = txs.filter(t => {
+    const [txFilterType, setTxFilterType] = useState('all')
+    const [txSortKey, setTxSortKey] = useState('date')
+    const [txSortDir, setTxSortDir] = useState('desc')
+
+    const filteredTxs = (() => {
       const q = txSearchOpen ? txQuery.trim().toLowerCase() : ''
-      if(!q) return true
-      const hay = [t.description||'', t.reference||'', t.type||'', new Date(t.created_at).toLocaleString()].join(' ').toLowerCase()
-      return hay.includes(q)
-    })
+      let out = txs
+      if(q){
+        out = out.filter(t => {
+          const hay = [t.description||'', t.reference||'', t.type||'', new Date(t.created_at).toLocaleString()].join(' ').toLowerCase()
+          return hay.includes(q)
+        })
+      }
+      if(txFilterType !== 'all'){
+        out = out.filter(t => (t.type || '').toUpperCase() === txFilterType)
+      }
+      const dir = txSortDir === 'asc' ? 1 : -1
+      const cmp = (a, b) => {
+        if(txSortKey === 'amount') return (Number(a.total_amount||0) - Number(b.total_amount||0)) * dir
+        if(txSortKey === 'type') return String(a.type||'').localeCompare(String(b.type||'')) * dir
+        // date
+        return String(a.created_at||'').localeCompare(String(b.created_at||'')) * dir
+      }
+      return [...out].sort(cmp)
+    })()
     const txTotalPages = Math.max(1, Math.ceil(filteredTxs.length / txPageSize))
     const txStart = (txPage - 1) * txPageSize
     const pageTxs = filteredTxs.slice(txStart, txStart + txPageSize)
@@ -585,6 +653,20 @@ export default function Dashboard(){
                       />
                     </div>
                   )}
+                  <select className="form-select form-select-sm" style={{width:140}} value={txFilterType} onChange={(e)=>{ setTxFilterType(e.target.value); setTxPage(1) }} aria-label="Filter">
+                    <option value="all">All</option>
+                    <option value="CREDIT">Credit</option>
+                    <option value="DEBIT">Debit</option>
+                  </select>
+                  <select className="form-select form-select-sm" style={{width:140}} value={txSortKey} onChange={(e)=>{ setTxSortKey(e.target.value); setTxPage(1) }} aria-label="Sort by">
+                    <option value="date">Sort: Date</option>
+                    <option value="amount">Sort: Amount</option>
+                    <option value="type">Sort: Type</option>
+                  </select>
+                  <select className="form-select form-select-sm" style={{width:110}} value={txSortDir} onChange={(e)=>{ setTxSortDir(e.target.value); setTxPage(1) }} aria-label="Sort direction">
+                    <option value="desc">Desc</option>
+                    <option value="asc">Asc</option>
+                  </select>
                   <span className="small text-muted">Rows</span>
                   <select className="form-select form-select-sm" style={{width:96}} value={txPageSize} onChange={(e)=>{ setTxPageSize(Number(e.target.value)); setTxPage(1) }}>
                     {[50,100].map(n => <option key={n} value={n}>{n}</option>)}
@@ -747,6 +829,7 @@ export default function Dashboard(){
           {activeTab==='overview' && (
             <>
               <div className="row g-3">
+                {me?.role !== 'CORPER' && (
                 <div className="col-12 col-xxl-9">
                   {me?.role !== 'CORPER' && (
                     <>
@@ -837,39 +920,56 @@ export default function Dashboard(){
                       </div>
                     </>
                   )}
-
-                  {me?.role === 'CORPER' && (
-                    <div className="card shadow-sm dash-card"><div className="card-body">
-                      <div className="dash-card-title">Welcome</div>
-                      <div className="text-muted">Your latest updates and notifications appear on the right.</div>
-                    </div></div>
-                  )}
                 </div>
+                )}
 
-                <div className="col-12 col-xxl-3">
-                  <div className="dash-right">
-                    {me?.role === 'CORPER' && (
+                {me?.role === 'CORPER' && (
+                  <>
+                    <div className="col-12 col-lg-6">
+                      <div className="card shadow-sm dash-card"><div className="card-body" style={{height:360}}>
+                        <div className="dash-card-title">My Attendance (Last 7 Days)</div>
+                        <Bar
+                          data={{
+                            labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
+                            datasets: [{
+                              label: 'Hours',
+                              data: (stats?.attendance?.last7||[]).map(r=> r.hours ?? 0),
+                              backgroundColor: chartTheme.olive,
+                              borderRadius: 10,
+                            }]
+                          }}
+                          options={{
+                            ...barOptions,
+                            scales: {
+                              x: { grid: { display: false }, ticks: { color: chartTheme.text }, title: { display: true, text: 'Day' } },
+                              y: { grid: { color: chartTheme.grid }, ticks: { color: chartTheme.text }, beginAtZero: true, title: { display: true, text: 'Hours' } },
+                            },
+                          }}
+                        />
+                      </div></div>
+                    </div>
+                    <div className="col-12 col-lg-6">
                       <div className="card shadow-sm dash-card">
-                        <div className="card-body">
+                        <div className="card-body" style={{height:360, overflow:'auto'}}>
                           <div className="dash-card-title">Notifications</div>
                           <div className="dash-feed">
-                            {notifications.slice(0, 4).map((n) => (
+                            {(unreadNotifications ? notifications.slice(0, 4) : []).map((n) => (
                               <div key={n.id} className="dash-feed-item">
                                 <div className="fw-semibold">{n.title}</div>
                                 <div className="small text-muted">{new Date(n.created_at).toLocaleString()}</div>
                                 <div className="small mt-1">{n.message}</div>
                               </div>
                             ))}
-                            {notifications.length === 0 && <div className="text-muted">No notifications yet.</div>}
+                            {unreadNotifications === 0 && <div className="text-muted">No new notifications.</div>}
                           </div>
                           <button className="btn btn-outline-secondary btn-sm mt-3" type="button" onClick={() => setActiveTab('notifications')}>
                             View all
                           </button>
                         </div>
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  </>
+                )}
               </div>
             </>
           )}
@@ -893,7 +993,10 @@ export default function Dashboard(){
                           try {
                             await api.post('/api/auth/notifications/', data)
                             await refreshAll()
-                          } catch (err) {}
+                            setStatus('saved:notification')
+                          } catch (err) {
+                            setStatus('error:notification')
+                          }
                         })()
                         e.target.reset()
                       }}
@@ -924,6 +1027,13 @@ export default function Dashboard(){
                     </form>
                   </div>
                 </div>
+              )}
+
+              {status === 'saved:notification' && (
+                <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Notification sent.</AutoFadeAlert>
+              )}
+              {status === 'error:notification' && (
+                <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Failed to send notification.</AutoFadeAlert>
               )}
 
               {me?.role === 'CORPER' && (
@@ -2240,20 +2350,110 @@ export default function Dashboard(){
                           </div>
                         </div>
 
-                        <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
-                          <div className="dash-table-search">
-                            <input
-                              className="form-control form-control-sm"
-                              placeholder="Search…"
-                              value={structQuery}
-                              onChange={(e) => {
-                                setStructQuery(e.target.value)
-                                setStructPage(1)
-                              }}
-                            />
+                        {structureTab !== 'holidays' ? (
+                          <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
+                            <div className="dash-table-search">
+                              <input
+                                className="form-control form-control-sm"
+                                placeholder="Search…"
+                                value={structQuery}
+                                onChange={(e) => {
+                                  setStructQuery(e.target.value)
+                                  setStructPage(1)
+                                }}
+                              />
+                            </div>
+                            <div className="small text-muted">Page {structPage}</div>
                           </div>
-                          <div className="small text-muted">Page {structPage}</div>
-                        </div>
+                        ) : (
+                          <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
+                            <div className="d-flex align-items-center gap-2 flex-wrap">
+                              <button
+                                className={`btn btn-sm ${structSearchOpen ? 'btn-olive' : 'btn-outline-secondary'}`}
+                                type="button"
+                                aria-label="Search"
+                                onClick={() => setStructSearchOpen((v) => !v)}
+                              >
+                                <Search size={16} />
+                              </button>
+                              {structSearchOpen && (
+                                <div className="dash-table-search">
+                                  <input
+                                    className="form-control form-control-sm"
+                                    placeholder="Search…"
+                                    value={structQuery}
+                                    onChange={(e) => {
+                                      setStructQuery(e.target.value)
+                                      setStructPage(1)
+                                    }}
+                                  />
+                                </div>
+                              )}
+
+                              <select
+                                className="form-select form-select-sm"
+                                style={{ width: 140 }}
+                                value={structFilter}
+                                onChange={(e) => {
+                                  setStructFilter(e.target.value)
+                                  setStructPage(1)
+                                }}
+                                aria-label="Filter"
+                              >
+                                <option value="all">All</option>
+                                <option value="manual">Manual</option>
+                                <option value="auto">Auto (NG)</option>
+                              </select>
+
+                              <select
+                                className="form-select form-select-sm"
+                                style={{ width: 140 }}
+                                value={structSortKey}
+                                onChange={(e) => {
+                                  setStructSortKey(e.target.value)
+                                  setStructPage(1)
+                                }}
+                                aria-label="Sort by"
+                              >
+                                <option value="date">Sort: Date</option>
+                                <option value="title">Sort: Title</option>
+                                <option value="type">Sort: Type</option>
+                              </select>
+
+                              <select
+                                className="form-select form-select-sm"
+                                style={{ width: 110 }}
+                                value={structSortDir}
+                                onChange={(e) => {
+                                  setStructSortDir(e.target.value)
+                                  setStructPage(1)
+                                }}
+                                aria-label="Sort direction"
+                              >
+                                <option value="asc">Asc</option>
+                                <option value="desc">Desc</option>
+                              </select>
+                            </div>
+                            <div className="d-flex align-items-center gap-2">
+                              <span className="small text-muted">Rows</span>
+                              <select
+                                className="form-select form-select-sm"
+                                style={{ width: 96 }}
+                                value={structPageSize}
+                                onChange={(e) => {
+                                  setStructPageSize(Number(e.target.value))
+                                  setStructPage(1)
+                                }}
+                              >
+                                {[20, 50, 100].map((n) => (
+                                  <option key={n} value={n}>
+                                    {n}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
 
                         <div className="table-responsive mt-2">
                           {structureTab==='branch' && (
@@ -2383,31 +2583,66 @@ export default function Dashboard(){
 
                           {structureTab==='holidays' && (
                             <table className="table table-sm align-middle dash-table">
-                              <thead><tr><th>Title</th><th>Start</th><th>End</th></tr></thead>
+                              <thead><tr><th>Title</th><th>Date</th><th>Type</th><th></th></tr></thead>
                               <tbody>
                                 {(() => {
-                                  const q = structQuery.trim().toLowerCase()
-                                  const filtered = q
-                                    ? holidays.filter((h) => `${h.title} ${h.start_date} ${h.end_date}`.toLowerCase().includes(q))
-                                    : holidays
+                                  const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
+                                  const base = holidaysAll.length ? holidaysAll : holidays
+                                  let filtered = q
+                                    ? base.filter((h) => `${h.title} ${h.start_date} ${h.end_date} ${h.source||''}`.toLowerCase().includes(q))
+                                    : base
+
+                                  if(structFilter !== 'all'){
+                                    filtered = filtered.filter((h) => {
+                                      const isAuto = h.source === 'NATIONAL' || h.deletable === false
+                                      return structFilter === 'auto' ? isAuto : !isAuto
+                                    })
+                                  }
+
+                                  const dir = structSortDir === 'desc' ? -1 : 1
+                                  const cmp = (a, b) => {
+                                    const typeLabel = (h) => (h.source === 'NATIONAL' || h.deletable === false ? 'auto' : 'manual')
+                                    const getVal = (h) => {
+                                      if(structSortKey === 'title') return (h.title || '').toLowerCase()
+                                      if(structSortKey === 'type') return typeLabel(h)
+                                      return (h.start_date || '').toLowerCase()
+                                    }
+                                    return getVal(a).localeCompare(getVal(b)) * dir
+                                  }
+                                  filtered = [...filtered].sort(cmp)
+
                                   const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
                                   const current = Math.min(structPage, totalPages)
                                   if (current !== structPage) setStructPage(current)
                                   const start = (current - 1) * structPageSize
                                   const rows = filtered.slice(start, start + structPageSize)
+
                                   return (
                                     <>
                                       {rows.map((h) => (
-                                  <tr key={h.id}>
-                                    <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{h.title}</div></td>
-                                    <td>{h.start_date}</td>
-                                    <td>{h.end_date}</td>
-                                  </tr>
+                                        <tr key={h.id}>
+                                          <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{h.title}</div></td>
+                                          <td>{h.start_date}{h.end_date && h.end_date !== h.start_date ? ` → ${h.end_date}` : ''}</td>
+                                          <td>
+                                            {h.source === 'NATIONAL' || h.deletable === false ? (
+                                              <span className="badge bg-secondary">Auto (NG)</span>
+                                            ) : (
+                                              <span className="badge bg-olive">Manual</span>
+                                            )}
+                                          </td>
+                                          <td className="text-end">
+                                            {h.source === 'NATIONAL' || h.deletable === false ? (
+                                              <span className="badge bg-secondary">Auto</span>
+                                            ) : (
+                                              <span className="badge bg-olive">Manual</span>
+                                            )}
+                                          </td>
+                                        </tr>
                                       ))}
-                                      {filtered.length===0 && <tr><td colSpan="3" className="text-muted">No holidays found.</td></tr>}
+                                      {filtered.length===0 && <tr><td colSpan="4" className="text-muted">No holidays found.</td></tr>}
                                       {filtered.length>0 && (
                                         <tr>
-                                          <td colSpan="3">
+                                          <td colSpan="4">
                                             <div className="d-flex justify-content-between align-items-center">
                                               <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
                                               <div className="btn-group">
