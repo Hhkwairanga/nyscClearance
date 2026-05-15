@@ -66,8 +66,8 @@ export default function Landing() {
                   Finally Automated.
                 </h1>
                 <p className="lead text-muted mb-4">
-                  Face Recognition Check In, Geofenced Attendance and QR Verified Clearance Letters.
-                  Manage Corps Members from One Platform, Set Up in Minutes.
+                  Face recognition check-in. Geofence attendance. QR verified clearance letters — all in one platform.
+                  Set it up in minutes, not days.
                 </p>
                 <div className="d-flex flex-wrap gap-2 mb-5">
                   <Link className="btn btn-olive px-4" to="/signup">

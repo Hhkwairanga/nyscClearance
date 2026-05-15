@@ -3047,6 +3047,18 @@ export default function Dashboard(){
                                   <label className="form-label">Passing Out Date</label>
                                   <input className="form-control" type="date" name="passing_out_date" required />
                                 </div>
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">CDS Day</label>
+                                  <select className="form-select" name="cds_day" required>
+                                    <option value="">Select CDS day</option>
+                                    <option value="0">Monday</option>
+                                    <option value="1">Tuesday</option>
+                                    <option value="2">Wednesday</option>
+                                    <option value="3">Thursday</option>
+                                    <option value="4">Friday</option>
+                                  </select>
+                                  <div className="form-text">CDS day is excluded from required attendance days.</div>
+                                </div>
                               </div>
                             </div>
 
@@ -3187,6 +3199,7 @@ export default function Dashboard(){
                               <div className="dash-kv"><div className="dash-k">Email</div><div className="dash-v">{selectedCorper.email || '—'}</div></div>
                               <div className="dash-kv"><div className="dash-k">Gender</div><div className="dash-v">{selectedCorper.gender || '—'}</div></div>
                               <div className="dash-kv"><div className="dash-k">Passing out</div><div className="dash-v">{selectedCorper.passing_out_date || '—'}</div></div>
+                              <div className="dash-kv"><div className="dash-k">CDS day</div><div className="dash-v">{selectedCorper.cds_day === 0 ? 'Monday' : selectedCorper.cds_day === 1 ? 'Tuesday' : selectedCorper.cds_day === 2 ? 'Wednesday' : selectedCorper.cds_day === 3 ? 'Thursday' : selectedCorper.cds_day === 4 ? 'Friday' : '—'}</div></div>
                             </div>
                           </div>
 

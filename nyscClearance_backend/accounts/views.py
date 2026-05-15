@@ -1509,6 +1509,22 @@ def _working_days(user, start_date, end_date):
     return working_days(user, start_date, end_date)
 
 
+def _working_days_for_corper(cm, start_date, end_date):
+    """Working days for a specific corper.
+
+    Excludes weekends, holidays, and the corper's CDS day (if set).
+    """
+
+    exclude = getattr(cm, 'cds_day', None)
+    try:
+        exclude = int(exclude) if exclude is not None else None
+    except Exception:
+        exclude = None
+    if exclude is not None and (exclude < 0 or exclude > 4):
+        exclude = None
+    return working_days(cm.user, start_date, end_date, exclude_weekday=exclude)
+
+
 def verify_clearance(request):
     """Public endpoint to verify a clearance reference.
 
@@ -1660,11 +1676,20 @@ def performance_clearance_page(request):
     yyyymm = start.strftime('%Y%m')
     has_override = ClearanceOverride.objects.filter(corper=cm, year_month=yyyymm).exists()
     if not is_first_clearance and not has_override and not enrolled_after_start:
-        work_days = _working_days(cm.user, start, end)
+        work_days = _working_days_for_corper(cm, start, end)
         work_set = set(work_days)
         logs = AttendanceLog.objects.filter(account=request.user, date__gte=start, date__lte=end)
-        present_dates = set(logs.values_list('date', flat=True))
-        present = len(present_dates & work_set)
+        all_present_dates = set(logs.values_list('date', flat=True))
+        present_required = len(all_present_dates & work_set)
+        cds_day = getattr(cm, 'cds_day', None)
+        present_cds = 0
+        try:
+            cds_int = int(cds_day) if cds_day is not None else None
+        except Exception:
+            cds_int = None
+        if cds_int is not None and 0 <= cds_int <= 4:
+            present_cds = len([d for d in all_present_dates if d.weekday() == cds_int])
+        present = min(len(work_days), present_required + present_cds)
         late_time = getattr(prof, 'late_time', None)
         late = 0
         if late_time:
@@ -2061,14 +2086,25 @@ class ClearanceStatusView(APIView):
 
         results = []
         for cm in corpers:
-            work_days = _working_days(cm.user, start, end)
+            work_days = _working_days_for_corper(cm, start, end)
             work_set = set(work_days)
             cm_logs = logs_by_acc.get(getattr(cm, 'account_id', None), [])
-            present_dates = set([lg.date for lg in cm_logs]) & work_set
-            present = len(present_dates)
+            all_present_dates = set([lg.date for lg in cm_logs])
+            present_required = len(all_present_dates & work_set)
+            # CDS days are excluded from required days, but attendance on CDS can count toward the threshold.
+            cds_day = getattr(cm, 'cds_day', None)
+            present_cds = 0
+            try:
+                cds_int = int(cds_day) if cds_day is not None else None
+            except Exception:
+                cds_int = None
+            if cds_int is not None and 0 <= cds_int <= 4:
+                present_cds = len([d for d in all_present_dates if d.weekday() == cds_int])
+            present = min(len(work_days), present_required + present_cds)
             late = 0
             if late_time:
                 for lg in cm_logs:
+                    # Late applies only on working days (CDS excluded)
                     if lg.date in work_set and lg.time_in and lg.time_in > late_time:
                         late += 1
             absent = max(0, len(work_days) - present)

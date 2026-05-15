@@ -84,16 +84,19 @@ body{ background-color:#f7f9f6; }
   box-shadow: 0 25px 80px rgba(85,107,47,.10);
 }
 .nl-hero-card h1{ color: var(--nl-green); }
+.nl-avatar-stack{ display:inline-flex; align-items:center; }
 .nl-avatar-stack span{
   display:inline-block;
-  width:22px;
-  height:22px;
+  width:40px;
+  height:40px;
   border-radius:50%;
-  background: var(--nl-muted-green);
+  margin-left:-14px;
   border:2px solid #fff;
-  margin-left:-6px;
+  background: var(--khaki);
 }
-.nl-avatar-stack span:first-child{ margin-left:0; }
+.nl-avatar-stack span:first-child{ margin-left:0; background: var(--khaki); }
+.nl-avatar-stack span:nth-child(2){ background: #8aa94f; }
+.nl-avatar-stack span:nth-child(3){ background: var(--olive); }
 .nl-dashboard-preview{
   width: min(100%, 340px);
   background:#fff;
@@ -156,8 +159,21 @@ body{ background-color:#f7f9f6; }
   align-items:center;
   justify-content:center;
   font-weight: 900;
-  box-shadow: 0 0 0 8px rgba(255,255,255,.05);
+  position: relative;
+  /* Original halo ring (animated) */
+  box-shadow: 0 0 0 10px rgba(255,255,255,.10);
+  animation: nlHalo 2.8s ease-in-out infinite;
 }
+@keyframes nlHalo{
+  0%, 100%{ box-shadow: 0 0 0 10px rgba(255,255,255,.10); }
+  50%{ box-shadow: 0 0 0 14px rgba(255,255,255,.16); }
+}
+
+/* Stagger the halo pulse from step 1 → 4 */
+.nl-how-section .row > div:nth-child(1) .nl-step-number{ animation-delay: 0s; }
+.nl-how-section .row > div:nth-child(2) .nl-step-number{ animation-delay: .2s; }
+.nl-how-section .row > div:nth-child(3) .nl-step-number{ animation-delay: .4s; }
+.nl-how-section .row > div:nth-child(4) .nl-step-number{ animation-delay: .6s; }
 .nl-stars{ color:#ffb000; display:flex; gap:2px; }
 
 .nl-pricing-card{ position:relative; border:1px solid #edf0ea; }
@@ -190,6 +206,7 @@ body{ background-color:#f7f9f6; }
   .nl-circle{ display:none; }
   .nl-pricing-card.featured{ transform:none; }
   .nl-section-title{ line-height: 1.05; }
+  .nl-avatar-stack span{ width:36px; height:36px; margin-left:-12px; }
 }
 
 /* Legal pages */

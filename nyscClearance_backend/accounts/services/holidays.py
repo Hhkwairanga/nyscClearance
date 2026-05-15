@@ -39,7 +39,7 @@ def is_holiday_for_org(org_user, day: date, country_code: str = "NG") -> Holiday
     return HolidayResult(False, None)
 
 
-def working_days(org_user, start_date: date, end_date: date, country_code: str = "NG") -> list[date]:
+def working_days(org_user, start_date: date, end_date: date, country_code: str = "NG", exclude_weekday: int | None = None) -> list[date]:
     """Return list of working dates excluding weekends and holidays."""
 
     _ensure_year_synced(start_date.year, country_code=country_code)
@@ -55,7 +55,7 @@ def working_days(org_user, start_date: date, end_date: date, country_code: str =
     days: list[date] = []
     d = start_date
     while d <= end_date:
-        if d.weekday() < 5 and d not in national_dates and not manual_hit(d):
+        if d.weekday() < 5 and (exclude_weekday is None or d.weekday() != exclude_weekday) and d not in national_dates and not manual_hit(d):
             days.append(d)
         d = d.fromordinal(d.toordinal() + 1)
     return days

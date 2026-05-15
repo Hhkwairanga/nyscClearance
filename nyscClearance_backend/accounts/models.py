@@ -211,6 +211,7 @@ class CorpMember(models.Model):
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
     state_code = models.CharField(max_length=12)
     passing_out_date = models.DateField()
+    cds_day = models.PositiveSmallIntegerField(blank=True, null=True, help_text='CDS weekday: 0=Mon..4=Fri')
     account = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='corper_profile')
     branch = models.ForeignKey(BranchOffice, on_delete=models.SET_NULL, null=True, blank=True, related_name='corpers')
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='corpers')

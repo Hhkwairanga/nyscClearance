@@ -299,13 +299,14 @@ state_code_validator = RegexValidator(
 class CorpMemberSerializer(serializers.ModelSerializer):
     state_code = serializers.CharField(validators=[state_code_validator])
     email = serializers.EmailField()
+    cds_day = serializers.IntegerField(required=False, allow_null=True)
     organization_id = serializers.IntegerField(source='user_id', read_only=True)
 
     class Meta:
         model = CorpMember
         fields = (
             'id', 'full_name', 'email', 'gender', 'state_code', 'passing_out_date',
-            'branch', 'department', 'unit', 'organization_id', 'face_encoding'
+            'branch', 'department', 'unit', 'cds_day', 'organization_id', 'face_encoding'
         )
         read_only_fields = ('face_encoding',)
 
@@ -316,6 +317,16 @@ class CorpMemberSerializer(serializers.ModelSerializer):
         # Only enforce branch on create; on update we can infer from instance
         if self.instance is None and getattr(user, 'role', None) == 'ORG' and not attrs.get('branch'):
             raise serializers.ValidationError({'branch': 'Branch is required'})
+
+        cds = attrs.get('cds_day')
+        if cds is not None:
+            try:
+                cds_int = int(cds)
+            except Exception:
+                raise serializers.ValidationError({'cds_day': 'Invalid CDS day'})
+            if cds_int < 0 or cds_int > 4:
+                raise serializers.ValidationError({'cds_day': 'CDS day must be Monday–Friday'})
+            attrs['cds_day'] = cds_int
         return attrs
 
     def create(self, validated_data):
