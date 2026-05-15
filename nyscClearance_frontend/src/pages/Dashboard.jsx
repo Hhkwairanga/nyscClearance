@@ -52,6 +52,8 @@ export default function Dashboard(){
   const [leaves, setLeaves] = useState([])
   const [notifications, setNotifications] = useState([])
   const [unreadNotifications, setUnreadNotifications] = useState(0)
+  const [queries, setQueries] = useState([])
+  const [queryReplyDrafts, setQueryReplyDrafts] = useState({})
   const [wallet, setWallet] = useState(null)
   const [announcement, setAnnouncement] = useState(null)
   const [showFund, setShowFund] = useState(false)
@@ -59,6 +61,11 @@ export default function Dashboard(){
   const [clPage, setClPage] = useState(1)
   const [status, setStatus] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
+
+  const [reportStart, setReportStart] = useState('')
+  const [reportEnd, setReportEnd] = useState('')
+  const [reportData, setReportData] = useState(null)
+  const [reportStatus, setReportStatus] = useState(null)
   const [perf, setPerf] = useState(null)
   // Local helpers for enroll form filtering
   const [enrollBranch, setEnrollBranch] = useState('')
@@ -368,7 +375,7 @@ export default function Dashboard(){
 
   async function refreshAll(){
     try{
-      const [m,p,b,d,u,c,s,h,l,n,w,a,cl,ha] = await Promise.all([
+      const [m,p,b,d,u,c,s,h,l,n,w,a,cl,ha,qy] = await Promise.all([
         api.get('/api/auth/me/'),
         api.get('/api/auth/profile/'),
         api.get('/api/auth/branches/'),
@@ -383,6 +390,7 @@ export default function Dashboard(){
         api.get('/api/auth/announcement/').catch(()=>({data:null, status:204})),
         api.get('/api/auth/clearance/status/').catch(()=>({data:[]})),
         api.get('/api/auth/holidays/all/').catch(()=>({data:[]})),
+        api.get('/api/auth/queries/').catch(()=>({data:[]})),
       ])
       setMe(m.data)
       setProfile(p.data)
@@ -395,6 +403,7 @@ export default function Dashboard(){
       setHolidaysAll(Array.isArray(ha.data) ? ha.data : [])
       setLeaves(l.data)
       setNotifications(n.data)
+      setQueries(Array.isArray(qy.data) ? qy.data : [])
       setWallet(w.data)
       setAnnouncement(a.data)
       setClearance(Array.isArray(cl.data)? cl.data : [])
@@ -527,6 +536,8 @@ export default function Dashboard(){
     if(me?.role === 'ORG'){
       add('wallet', 'Wallet', Building2)
       add('clearance', 'Clearance', LayoutGrid)
+      add('query', 'Queries', FileSearch)
+      add('report', 'Reports', BarChart3)
     }
     if(me?.role === 'BRANCH'){
       add('wallet', 'Wallet', Building2)
@@ -734,6 +745,339 @@ export default function Dashboard(){
           </div>
         </div>
       </div>
+    )
+  }
+
+  function QuerySection({ role }){
+    const [showAddQuery, setShowAddQuery] = useState(false)
+    const [qSearchOpen, setQSearchOpen] = useState(false)
+    const [qQuery, setQQuery] = useState('')
+    const [qPage, setQPage] = useState(1)
+    const [qPageSize, setQPageSize] = useState(20)
+    const [qStatus, setQStatus] = useState('all')
+
+    const visibleCorp = role === 'BRANCH'
+      ? corpers
+      : corpers
+
+    const filtered = (() => {
+      const q = qSearchOpen ? qQuery.trim().toLowerCase() : ''
+      let out = Array.isArray(queries) ? queries : []
+      if(q){
+        out = out.filter(x => `${x.title||''} ${x.corper_name||''} ${x.corper_state_code||''} ${x.status||''}`.toLowerCase().includes(q))
+      }
+      if(qStatus !== 'all') out = out.filter(x => (x.status||'').toUpperCase() === qStatus)
+      return out
+    })()
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / qPageSize))
+    const current = Math.min(qPage, totalPages)
+    const start = (current - 1) * qPageSize
+    const rows = filtered.slice(start, start + qPageSize)
+
+    return (
+      <>
+        <h2 className="mb-3 text-olive">Query Management</h2>
+
+        <div className="card shadow-sm dash-card mb-3">
+          <div className="card-body">
+            <div className="dash-card-title mb-2">Auto Queries</div>
+            <div className="small text-muted mb-3">Send queries in bulk for corpers who exceeded attendance thresholds for the previous month.</div>
+            <div className="d-flex flex-wrap gap-2">
+              <button className="btn btn-outline-secondary" type="button" onClick={async()=>{
+                setStatus('pending')
+                try{ await api.post('/api/auth/queries/auto/', { kind: 'LATE' }); await refreshAll(); setStatus('saved:query') }catch(e){ setStatus('error:query') }
+              }}>Send lateness queries</button>
+              <button className="btn btn-outline-secondary" type="button" onClick={async()=>{
+                setStatus('pending')
+                try{ await api.post('/api/auth/queries/auto/', { kind: 'ABSENT' }); await refreshAll(); setStatus('saved:query') }catch(e){ setStatus('error:query') }
+              }}>Send absence queries</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="card shadow-sm dash-card">
+          <div className="card-body">
+            <div className="d-flex justify-content-between align-items-center gap-2">
+              <div className="dash-card-title mb-0">Queries</div>
+              <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddQuery(true)}>New Query</button>
+            </div>
+
+            <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
+              <div className="d-flex align-items-center gap-2 flex-wrap">
+                <button className={`btn btn-sm ${qSearchOpen ? 'btn-olive':'btn-outline-secondary'}`} type="button" onClick={()=>setQSearchOpen(v=>!v)} aria-label="Search">
+                  <Search size={16} />
+                </button>
+                {qSearchOpen && (
+                  <div className="dash-table-search">
+                    <input className="form-control form-control-sm" placeholder="Search…" value={qQuery} onChange={(e)=>{ setQQuery(e.target.value); setQPage(1) }} />
+                  </div>
+                )}
+                <select className="form-select form-select-sm" style={{width:140}} value={qStatus} onChange={(e)=>{ setQStatus(e.target.value); setQPage(1) }}>
+                  <option value="all">All</option>
+                  <option value="OPEN">Open</option>
+                  <option value="RESOLVED">Resolved</option>
+                </select>
+              </div>
+              <div className="d-flex align-items-center gap-2">
+                <span className="small text-muted">Rows</span>
+                <select className="form-select form-select-sm" style={{width:96}} value={qPageSize} onChange={(e)=>{ setQPageSize(Number(e.target.value)); setQPage(1) }}>
+                  {[20,50,100].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="table-responsive mt-2">
+              <table className="table table-sm align-middle dash-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Corper</th>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((x) => (
+                    <tr key={x.id}>
+                      <td className="small">{new Date(x.created_at).toLocaleString()}</td>
+                      <td><div className="text-truncate dash-td-truncate-wide">{x.corper_name} ({x.corper_state_code})</div></td>
+                      <td><div className="text-truncate dash-td-truncate-wide">{x.title}</div></td>
+                      <td>{x.status === 'RESOLVED' ? <span className="badge bg-success">RESOLVED</span> : <span className="badge bg-warning text-dark">OPEN</span>}</td>
+                      <td className="text-end">
+                        <div className="btn-group">
+                          {x.status !== 'RESOLVED' && (
+                            <button className="btn btn-sm btn-outline-secondary" type="button" onClick={async()=>{
+                              try{ await api.post(`/api/auth/queries/${x.id}/resolve/`); await refreshAll(); setStatus('saved:query') }catch(e){ setStatus('error:query') }
+                            }}>Resolve</button>
+                          )}
+                          <button className="btn btn-sm btn-outline-danger" type="button" onClick={async()=>{
+                            if(!confirm('Delete this query?')) return
+                            try{ await api.delete(`/api/auth/queries/${x.id}/`); await refreshAll(); setStatus('saved:query') }catch(e){ setStatus('error:query') }
+                          }}>Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && <tr><td colSpan="5" className="text-muted">No queries found.</td></tr>}
+                  {filtered.length > 0 && totalPages > 1 && (
+                    <tr>
+                      <td colSpan="5">
+                        <div className="d-flex justify-content-between align-items-center">
+                          <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                          <div className="btn-group">
+                            <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setQPage(p=>Math.max(1,p-1))}>Prev</button>
+                            <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setQPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {status==='saved:query' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Saved.</AutoFadeAlert>}
+            {status==='error:query' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Failed.</AutoFadeAlert>}
+          </div>
+        </div>
+
+        {showAddQuery && (
+          <div className="dash-modal" onClick={()=>setShowAddQuery(false)}>
+            <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+              <div className="dash-modal-head">
+                <strong>New Query</strong>
+                <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowAddQuery(false)}>Close</button>
+              </div>
+              <div className="dash-modal-body">
+                <div className="dash-modal-grid">
+                  <div className="dash-modal-help">
+                    <h6>Flow</h6>
+                    <p>Create a query to document an issue and track resolution.</p>
+                  </div>
+                  <div className="dash-modal-form">
+                    <form onSubmit={async (e)=>{
+                      e.preventDefault(); setStatus('pending')
+                      const data = Object.fromEntries(new FormData(e.target))
+                      try{ await api.post('/api/auth/queries/', data); await refreshAll(); setStatus('saved:query'); setShowAddQuery(false) }catch(err){ setStatus('error:query') }
+                    }}>
+                      <label className="form-label">Corper</label>
+                      <select className="form-select mb-2" name="corper" required>
+                        <option value="">Select corper</option>
+                        {visibleCorp.map(c => <option key={c.id} value={c.id}>{c.full_name} ({c.state_code})</option>)}
+                      </select>
+                      <label className="form-label">Title</label>
+                      <input className="form-control mb-2" name="title" placeholder="Subject" required />
+                      <label className="form-label">Message</label>
+                      <textarea className="form-control" name="message" rows="4" placeholder="Details" />
+                      <div className="dash-modal-actions">
+                        <div className="d-grid">
+                          <button className="btn btn-olive" disabled={isSaving}>{isSaving?'Saving…':'Create query'}</button>
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    )
+  }
+
+  function ReportSection(){
+    const qp = []
+    if(reportStart) qp.push(`start=${encodeURIComponent(reportStart)}`)
+    if(reportEnd) qp.push(`end=${encodeURIComponent(reportEnd)}`)
+    const qs = qp.length ? `?${qp.join('&')}` : ''
+    const downloadDaily = `/api/auth/reports/attendance/${qs}${qs ? '&' : '?'}format=csv`
+    const downloadCorpers = `/api/auth/reports/corpers/${qs}${qs ? '&' : '?'}format=csv`
+    const downloadLogs = `/api/auth/reports/attendance/logs/${qs}${qs ? '&' : '?'}format=csv`
+    const downloadExcel = `/api/auth/reports/attendance/export/${qs}`
+
+    async function downloadViaApi(path, fallbackName){
+      try{
+        const res = await api.get(path, { responseType: 'blob' })
+        const blob = new Blob([res.data], { type: res.headers?.['content-type'] || 'application/octet-stream' })
+        let filename = fallbackName
+        const cd = res.headers?.['content-disposition'] || ''
+        const m = cd.match(/filename=\"?([^\";]+)\"?/i)
+        if(m && m[1]) filename = m[1]
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename || fallbackName || 'download'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        window.URL.revokeObjectURL(url)
+      }catch(e){
+        setReportStatus('error')
+      }
+    }
+    return (
+      <>
+        <h2 className="mb-3 text-olive">Reports</h2>
+        <div className="card shadow-sm dash-card">
+          <div className="card-body">
+            <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <div>
+                <div className="dash-card-title mb-0">Attendance Report</div>
+                <div className="small text-muted">Generate check-ins and hours summary for a date range.</div>
+              </div>
+              <div className="d-flex gap-2 flex-wrap">
+                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>downloadViaApi(downloadDaily, 'daily.csv')}>Daily CSV</button>
+                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>downloadViaApi(downloadCorpers, 'corpers.csv')}>Corpers CSV</button>
+                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>downloadViaApi(downloadLogs, 'logs.csv')}>Logs CSV</button>
+                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>downloadViaApi(downloadExcel, 'attendance_report.xlsx')}>Excel</button>
+              </div>
+            </div>
+            <div className="row g-2 mt-3 align-items-end">
+              <div className="col-12 col-md-3">
+                <label className="form-label">Start</label>
+                <input className="form-control" type="date" value={reportStart} onChange={(e)=>setReportStart(e.target.value)} />
+              </div>
+              <div className="col-12 col-md-3">
+                <label className="form-label">End</label>
+                <input className="form-control" type="date" value={reportEnd} onChange={(e)=>setReportEnd(e.target.value)} />
+              </div>
+              <div className="col-12 col-md-2 d-grid">
+                <button className="btn btn-olive" type="button" onClick={async()=>{
+                  setReportStatus('pending')
+                  try{
+                    const [daily, corp, logs] = await Promise.all([
+                      api.get(`/api/auth/reports/attendance/${qs}`),
+                      api.get(`/api/auth/reports/corpers/${qs}`),
+                      api.get(`/api/auth/reports/attendance/logs/${qs}`),
+                    ])
+                    setReportData({ daily: daily.data, corpers: corp.data, logs: logs.data })
+                    setReportStatus('success')
+                    await downloadViaApi(downloadExcel, 'attendance_report.xlsx')
+                  }catch(e){
+                    setReportStatus('error')
+                  }
+                }}>Generate</button>
+              </div>
+            </div>
+
+            {reportStatus==='error' && <AutoFadeAlert type="danger" onClose={()=>setReportStatus(null)}>Failed to generate report.</AutoFadeAlert>}
+
+            {reportData?.daily?.rows && (
+              <div className="table-responsive mt-3">
+                <table className="table table-sm align-middle dash-table">
+                  <thead><tr><th>Date</th><th className="text-end">Check-ins</th><th className="text-end">Hours</th></tr></thead>
+                  <tbody>
+                    {reportData.daily.rows.map(r => (
+                      <tr key={r.date}>
+                        <td>{r.date}</td>
+                        <td className="text-end">{r.checkins}</td>
+                        <td className="text-end">{r.hours}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {reportData?.corpers?.rows && (
+              <div className="table-responsive mt-3">
+                <div className="dash-card-title mb-2">Corpers Report</div>
+                <table className="table table-sm align-middle dash-table">
+                  <thead>
+                    <tr>
+                      <th>Corper</th>
+                      <th>State Code</th>
+                      <th>Branch</th>
+                      <th className="text-end">Working Days</th>
+                      <th className="text-end">Present</th>
+                      <th className="text-end">Absent</th>
+                      <th className="text-end">Late</th>
+                      <th className="text-end">Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportData.corpers.rows.map(r => (
+                      <tr key={r.corper_id}>
+                        <td><div className="text-truncate dash-td-truncate-wide">{r.full_name}</div></td>
+                        <td>{r.state_code}</td>
+                        <td><div className="text-truncate dash-td-truncate">{r.branch || '—'}</div></td>
+                        <td className="text-end">{r.working_days}</td>
+                        <td className="text-end">{r.present_days}</td>
+                        <td className="text-end">{r.absent_days}</td>
+                        <td className="text-end">{r.late_days}</td>
+                        <td className="text-end">{r.hours}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {reportData?.logs?.rows && (
+              <div className="table-responsive mt-3">
+                <div className="dash-card-title mb-2">Row Attendance Logs</div>
+                <table className="table table-sm align-middle dash-table">
+                  <thead><tr><th>Date</th><th>Corper</th><th>State Code</th><th>Branch</th><th>Time in</th><th>Time out</th></tr></thead>
+                  <tbody>
+                    {reportData.logs.rows.map((r, idx) => (
+                      <tr key={`${r.date}-${idx}`}>
+                        <td>{r.date}</td>
+                        <td><div className="text-truncate dash-td-truncate-wide">{r.full_name}</div></td>
+                        <td>{r.state_code}</td>
+                        <td><div className="text-truncate dash-td-truncate">{r.branch || '—'}</div></td>
+                        <td>{r.time_in || '—'}</td>
+                        <td>{r.time_out || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
     )
   }
 
@@ -993,56 +1337,89 @@ export default function Dashboard(){
           {activeTab==='notifications' && (
             <>
               {(me?.role === 'ORG' || me?.role === 'BRANCH') && (
-                <div className="card shadow-sm dash-card mb-3">
-                  <div className="card-body">
-                    <div className="dash-card-title">Send notification</div>
-                    <div className="text-muted small mb-2">
-                      {me?.role === 'ORG'
-                        ? 'Send to all branches or a specific branch.'
-                        : 'Send an update to your branch corpers.'}
-                    </div>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        const data = Object.fromEntries(new FormData(e.target))
-                        ;(async () => {
-                          try {
-                            await api.post('/api/auth/notifications/', data)
-                            await refreshAll()
-                            setStatus('saved:notification')
-                          } catch (err) {
-                            setStatus('error:notification')
-                          }
-                        })()
-                        e.target.reset()
-                      }}
-                    >
-                      <div className="row g-2">
-                        <div className="col-12">
-                          <input className="form-control" name="title" placeholder="Title" required />
-                        </div>
-                        {me?.role === 'ORG' && (
-                          <div className="col-12">
-                            <select className="form-select" name="branch">
-                              <option value="">All branches</option>
-                              {branches.map((b) => (
-                                <option key={b.id} value={b.id}>
-                                  {b.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                        <div className="col-12">
-                          <textarea className="form-control" name="message" rows="3" placeholder="Message" required />
-                        </div>
-                        <div className="col-12 d-grid">
-                          <button className="btn btn-olive">Send</button>
-                        </div>
+                <>
+                  <div className="card shadow-sm dash-card mb-3">
+                    <div className="card-body">
+                      <div className="dash-card-title">Send notification</div>
+                      <div className="text-muted small mb-2">
+                        {me?.role === 'ORG'
+                          ? 'Send to all branches or a specific branch.'
+                          : 'Send an update to your branch corpers.'}
                       </div>
-                    </form>
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault()
+                          const data = Object.fromEntries(new FormData(e.target))
+                          ;(async () => {
+                            try {
+                              await api.post('/api/auth/notifications/', data)
+                              await refreshAll()
+                              setStatus('saved:notification')
+                            } catch (err) {
+                              setStatus('error:notification')
+                            }
+                          })()
+                          e.target.reset()
+                        }}
+                      >
+                        <div className="row g-2">
+                          <div className="col-12">
+                            <input className="form-control" name="title" placeholder="Title" required />
+                          </div>
+                          {me?.role === 'ORG' && (
+                            <div className="col-12">
+                              <select className="form-select" name="branch">
+                                <option value="">All branches</option>
+                                {branches.map((b) => (
+                                  <option key={b.id} value={b.id}>
+                                    {b.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          <div className="col-12">
+                            <textarea className="form-control" name="message" rows="3" placeholder="Message" required />
+                          </div>
+                          <div className="col-12 d-grid">
+                            <button className="btn btn-olive">Send</button>
+                          </div>
+                        </div>
+                      </form>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="card shadow-sm dash-card mb-3">
+                    <div className="card-body">
+                      <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                        <div>
+                          <div className="dash-card-title mb-0">Query replies</div>
+                          <div className="small text-muted">Replies from corpers awaiting resolution.</div>
+                        </div>
+                        <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>setActiveTab('query')}>Open queries</button>
+                      </div>
+                      <div className="dash-feed mt-3">
+                        {queries.filter(q => (q.status === 'OPEN') && q.replied_at).map((q) => (
+                          <div key={q.id} className="dash-feed-item">
+                            <div className="fw-semibold">{q.title}</div>
+                            <div className="small text-muted">
+                              {q.corper_name} ({q.corper_state_code}) · replied {new Date(q.replied_at).toLocaleString()}
+                            </div>
+                            <div className="small mt-2" style={{whiteSpace:'pre-wrap'}}>{q.corper_reply || '—'}</div>
+                            <div className="d-flex gap-2 mt-2">
+                              <button className="btn btn-olive btn-sm" type="button" onClick={async()=>{
+                                try{ await api.post(`/api/auth/queries/${q.id}/resolve/`); await refreshAll(); setStatus('saved:query') }catch(e){ setStatus('error:query') }
+                              }}>Resolve</button>
+                            </div>
+                          </div>
+                        ))}
+                        {queries.filter(q => (q.status === 'OPEN') && q.replied_at).length === 0 && (
+                          <div className="text-muted">No query replies yet.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
 
               {status === 'saved:notification' && (
@@ -1053,21 +1430,63 @@ export default function Dashboard(){
               )}
 
               {me?.role === 'CORPER' && (
-                <div className="card shadow-sm dash-card">
-                  <div className="card-body">
-                    <div className="dash-card-title">All notifications</div>
-                    <div className="dash-feed">
-                      {notifications.map((n) => (
-                        <div key={n.id} className="dash-feed-item">
-                          <div className="fw-semibold">{n.title}</div>
-                          <div className="small text-muted">{new Date(n.created_at).toLocaleString()}</div>
-                          <div className="small mt-1">{n.message}</div>
-                        </div>
-                      ))}
-                      {notifications.length === 0 && <div className="text-muted">No notifications yet.</div>}
+                <>
+                  <div className="card shadow-sm dash-card mb-3">
+                    <div className="card-body">
+                      <div className="dash-card-title">Pending queries</div>
+                      <div className="small text-muted mb-2">Reply to a query to remove it from pending.</div>
+                      <div className="dash-feed">
+                        {queries.filter(q => (q.status === 'OPEN') && !q.replied_at).map((q) => (
+                          <div key={q.id} className="dash-feed-item">
+                            <div className="fw-semibold">{q.title}</div>
+                            <div className="small text-muted">{new Date(q.created_at).toLocaleString()}</div>
+                            {q.message && <div className="small mt-1" style={{whiteSpace:'pre-wrap'}}>{q.message}</div>}
+                            <textarea
+                              className="form-control form-control-sm mt-2"
+                              rows="3"
+                              placeholder="Type your reply…"
+                              value={queryReplyDrafts[q.id] || ''}
+                              onChange={(e)=>setQueryReplyDrafts((m)=>({ ...m, [q.id]: e.target.value }))}
+                            />
+                            <div className="d-flex justify-content-end mt-2">
+                              <button className="btn btn-olive btn-sm" type="button" onClick={async()=>{
+                                const reply = String(queryReplyDrafts[q.id] || '').trim()
+                                if(!reply){ alert('Reply is required'); return }
+                                try{
+                                  await api.post(`/api/auth/queries/${q.id}/reply/`, { reply })
+                                  setQueryReplyDrafts((m)=>{ const x = { ...m }; delete x[q.id]; return x })
+                                  await refreshAll()
+                                  setStatus('saved:query')
+                                }catch(e){
+                                  setStatus('error:query')
+                                }
+                              }}>Send reply</button>
+                            </div>
+                          </div>
+                        ))}
+                        {queries.filter(q => (q.status === 'OPEN') && !q.replied_at).length === 0 && (
+                          <div className="text-muted">No pending queries.</div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
+
+                  <div className="card shadow-sm dash-card">
+                    <div className="card-body">
+                      <div className="dash-card-title">All notifications</div>
+                      <div className="dash-feed">
+                        {notifications.map((n) => (
+                          <div key={n.id} className="dash-feed-item">
+                            <div className="fw-semibold">{n.title}</div>
+                            <div className="small text-muted">{new Date(n.created_at).toLocaleString()}</div>
+                            <div className="small mt-1">{n.message}</div>
+                          </div>
+                        ))}
+                        {notifications.length === 0 && <div className="text-muted">No notifications yet.</div>}
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
             </>
           )}
@@ -3553,17 +3972,19 @@ export default function Dashboard(){
         )}
 
           {activeTab==='query' && me?.role==='BRANCH' && (
-            <>
-              <h2 className="mb-3 text-olive">Query Management</h2>
-              <div className="alert alert-info">Manage queries and disciplinary records here (coming soon).</div>
-            </>
+            <QuerySection role="BRANCH" />
+          )}
+
+          {activeTab==='query' && me?.role==='ORG' && (
+            <QuerySection role="ORG" />
           )}
 
           {activeTab==='report' && me?.role==='BRANCH' && (
-            <>
-              <h2 className="mb-3 text-olive">Reports</h2>
-              <div className="alert alert-info">Download and view branch reports (coming soon).</div>
-            </>
+            <ReportSection role="BRANCH" />
+          )}
+
+          {activeTab==='report' && me?.role==='ORG' && (
+            <ReportSection role="ORG" />
           )}
 
           {activeTab==='performance' && me?.role==='CORPER' && (

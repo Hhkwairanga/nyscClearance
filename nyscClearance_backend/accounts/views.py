@@ -29,6 +29,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
 from django.core.cache import cache
 from django.http import JsonResponse, HttpResponseNotAllowed, HttpResponseNotFound
+from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 import requests
@@ -41,6 +42,9 @@ import shutil
 import uuid
 import traceback
 import face_recognition
+import hmac
+import hashlib
+import json
 
 from .serializers import (
     OrganizationRegisterSerializer,
@@ -53,9 +57,11 @@ from .serializers import (
     PublicHolidaySerializer,
     LeaveRequestSerializer,
     NotificationSerializer,
+    QueryRecordSerializer,
 )
 from .tokens import validate_email_token, generate_email_token
 from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog, WalletAccount, WalletTransaction, ClearanceOverride, TempFaceEncoding
+from .models import QueryRecord
 from .models import NationalHoliday
 from .services.holidays import ensure_national_holidays, is_holiday_for_org, working_days
 from django.db.models import Count
@@ -994,6 +1000,7 @@ class ConfigView(APIView):
         data = {
             'api_base': getattr(settings, 'API_BASE_URL', ''),
             'frontend_base': getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', '')),
+            'paystack_webhook_url': f"{getattr(settings, 'API_BASE_URL', '').rstrip('/')}/api/auth/paystack/webhook/",
             'csrf_cookie_name': getattr(settings, 'CSRF_COOKIE_NAME', 'csrftoken'),
             'session_cookie_name': getattr(settings, 'SESSION_COOKIE_NAME', 'sessionid'),
             'cors_allowed_origins': cors,
@@ -1914,6 +1921,648 @@ class NotificationViewSet(viewsets.ModelViewSet):
         raise PermissionDenied('Not allowed')
 
 
+class QueryRecordViewSet(viewsets.ModelViewSet):
+    serializer_class = QueryRecordSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'ORG':
+            return QueryRecord.objects.filter(org=user).select_related('branch', 'corper', 'created_by').order_by('-created_at')
+        if user.role == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=user).first()
+            if not b:
+                return QueryRecord.objects.none()
+            return QueryRecord.objects.filter(org=b.user, branch=b).select_related('branch', 'corper', 'created_by').order_by('-created_at')
+        if user.role == 'CORPER':
+            try:
+                cm = user.corper_profile
+            except Exception:
+                return QueryRecord.objects.none()
+            return QueryRecord.objects.filter(corper=cm).select_related('branch', 'corper', 'created_by').order_by('-created_at')
+        return QueryRecord.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.role not in ('ORG', 'BRANCH'):
+            raise PermissionDenied('Not allowed')
+
+        corper = serializer.validated_data.get('corper')
+        if not corper:
+            raise PermissionDenied('Corper is required')
+
+        if user.role == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=user).first()
+            if not b:
+                raise PermissionDenied('No branch assigned')
+            if corper.branch_id != b.id:
+                raise PermissionDenied('Corper does not belong to your branch')
+            serializer.save(org=b.user, branch=b, created_by=user)
+            return
+
+        # ORG
+        if corper.user_id != user.id:
+            raise PermissionDenied('Corper does not belong to your organization')
+        serializer.save(org=user, branch=corper.branch, created_by=user)
+
+    @action(detail=True, methods=['post'])
+    def reply(self, request, pk=None):
+        obj = self.get_object()
+        if request.user.role != 'CORPER':
+            raise PermissionDenied('Not allowed')
+        try:
+            cm = request.user.corper_profile
+        except Exception:
+            raise PermissionDenied('No corper profile')
+        if obj.corper_id != cm.id:
+            raise PermissionDenied('Not allowed')
+
+        payload = request.data or {}
+        reply_text = (payload.get('reply') or payload.get('message') or '').strip()
+        if not reply_text:
+            return Response({'detail': 'reply is required'}, status=400)
+
+        obj.corper_reply = reply_text
+        obj.replied_at = timezone.now()
+        obj.replied_by = request.user
+        obj.save(update_fields=['corper_reply', 'replied_at', 'replied_by', 'updated_at'])
+        return Response({'status': 'replied'})
+
+    @action(detail=True, methods=['post'])
+    def resolve(self, request, pk=None):
+        obj = self.get_object()
+        if request.user.role not in ('ORG', 'BRANCH'):
+            raise PermissionDenied('Not allowed')
+        obj.status = 'RESOLVED'
+        obj.resolved_by = request.user
+        obj.save(update_fields=['status', 'resolved_by', 'updated_at'])
+        return Response({'status': 'resolved'})
+
+    @action(detail=False, methods=['post'], url_path='auto')
+    def auto_send(self, request):
+        """Bulk-create queries for excessive lateness/absence.
+
+        Body:
+        - kind: "LATE" | "ABSENT" (required)
+        - year_month: "YYYYMM" (optional, defaults to previous month)
+        """
+
+        user = request.user
+        role = getattr(user, 'role', None)
+        if role not in ('ORG', 'BRANCH'):
+            raise PermissionDenied('Not allowed')
+
+        kind = (request.data or {}).get('kind')
+        kind = (kind or '').upper().strip()
+        if kind not in ('LATE', 'ABSENT'):
+            return Response({'detail': 'kind must be LATE or ABSENT'}, status=400)
+
+        ym = (request.data or {}).get('year_month')
+        if ym and (not str(ym).isdigit() or len(str(ym)) != 6):
+            return Response({'detail': 'year_month must be YYYYMM'}, status=400)
+
+        start, end = _prev_month_bounds()
+        if ym:
+            y = int(str(ym)[:4])
+            m = int(str(ym)[4:])
+            start = timezone.datetime(y, m, 1).date()
+            # end = last day of month
+            nxt = (start.replace(day=28) + timezone.timedelta(days=4)).replace(day=1)
+            end = nxt - timezone.timedelta(days=1)
+        ym = start.strftime('%Y%m')
+
+        # Determine scope
+        org_user = user
+        branch = None
+        if role == 'BRANCH':
+            branch = BranchOffice.objects.filter(admin=user).first()
+            if not branch:
+                return Response({'created': 0, 'skipped': 0, 'detail': 'No branch assigned'})
+            org_user = branch.user
+
+        prof = OrganizationProfile.objects.filter(user=org_user).first()
+        late_time = getattr(prof, 'late_time', None)
+        max_absent = getattr(prof, 'max_days_absent', None)
+        max_late = getattr(prof, 'max_days_late', None)
+
+        qs = CorpMember.objects.filter(user=org_user)
+        if branch:
+            qs = qs.filter(branch=branch)
+
+        # preload logs
+        acc_ids = list(qs.values_list('account_id', flat=True))
+        logs = AttendanceLog.objects.filter(account_id__in=acc_ids, date__gte=start, date__lte=end)
+        logs_by_acc = {}
+        for lg in logs:
+            logs_by_acc.setdefault(lg.account_id, []).append(lg)
+
+        created = 0
+        skipped = 0
+        for cm in qs.select_related('branch'):
+            cm_logs = logs_by_acc.get(getattr(cm, 'account_id', None), [])
+            work_days = _working_days_for_corper(cm, start, end)
+            work_set = set(work_days)
+            all_present_dates = set([lg.date for lg in cm_logs])
+            present_required = len(all_present_dates & work_set)
+
+            cds_day = getattr(cm, 'cds_day', None)
+            present_cds = 0
+            try:
+                cds_int = int(cds_day) if cds_day is not None else None
+            except Exception:
+                cds_int = None
+            if cds_int is not None and 0 <= cds_int <= 4:
+                present_cds = len([d for d in all_present_dates if d.weekday() == cds_int])
+            present = min(len(work_days), present_required + present_cds)
+
+            late = 0
+            if late_time:
+                for lg in cm_logs:
+                    if lg.date in work_set and lg.time_in and lg.time_in > late_time:
+                        late += 1
+            absent = max(0, len(work_days) - present)
+
+            if kind == 'LATE':
+                if max_late is None or late <= (max_late or 0):
+                    skipped += 1
+                    continue
+                title = f'Attendance Query: Excessive lateness ({ym})'
+                message = f'{cm.full_name} ({cm.state_code}) recorded {late} late day(s) in {ym}. Limit: {max_late}.'
+            else:
+                if max_absent is None or absent <= (max_absent or 0):
+                    skipped += 1
+                    continue
+                title = f'Attendance Query: Excessive absence ({ym})'
+                message = f'{cm.full_name} ({cm.state_code}) recorded {absent} absent day(s) in {ym}. Limit: {max_absent}.'
+
+            # avoid duplicates for the month/kind
+            if QueryRecord.objects.filter(org=org_user, corper=cm, title=title).exists():
+                skipped += 1
+                continue
+
+            QueryRecord.objects.create(
+                org=org_user,
+                branch=getattr(cm, 'branch', None),
+                corper=cm,
+                title=title,
+                message=message,
+                status='OPEN',
+                created_by=user,
+            )
+            created += 1
+
+        return Response({'created': created, 'skipped': skipped, 'year_month': ym})
+
+
+class AttendanceReportView(APIView):
+    """Basic attendance report for ORG/BRANCH.
+
+    Returns JSON by default, or CSV when `format=csv`.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        role = getattr(user, 'role', None)
+        if role not in ('ORG', 'BRANCH'):
+            raise PermissionDenied('Not allowed')
+
+        # Determine org scope
+        org_user = user
+        branch = None
+        if role == 'BRANCH':
+            branch = BranchOffice.objects.filter(admin=user).first()
+            if not branch:
+                return Response({'rows': [], 'summary': {}}, status=200)
+            org_user = branch.user
+
+        try:
+            start = timezone.datetime.fromisoformat(request.query_params.get('start')).date() if request.query_params.get('start') else None
+        except Exception:
+            start = None
+        try:
+            end = timezone.datetime.fromisoformat(request.query_params.get('end')).date() if request.query_params.get('end') else None
+        except Exception:
+            end = None
+        if not end:
+            end = timezone.localdate()
+        if not start:
+            start = end - timezone.timedelta(days=29)
+        if start > end:
+            start, end = end, start
+
+        qs = AttendanceLog.objects.filter(org=org_user, date__gte=start, date__lte=end)
+        if branch:
+            # Scope to corpers under this branch (via corp member mapping)
+            acc_ids = list(CorpMember.objects.filter(branch=branch).values_list('account_id', flat=True))
+            qs = qs.filter(account_id__in=acc_ids)
+
+        rows = []
+        total_checkins = 0
+        for i in range((end - start).days + 1):
+            day = start + timezone.timedelta(days=i)
+            day_qs = qs.filter(date=day)
+            count = day_qs.count()
+            total_checkins += count
+            # hours
+            hours = 0.0
+            from datetime import datetime
+            for log in day_qs:
+                if log.time_in and log.time_out:
+                    try:
+                        start_dt = datetime.combine(day, log.time_in)
+                        end_dt = datetime.combine(day, log.time_out)
+                        delta = end_dt - start_dt
+                        if delta.total_seconds() > 0:
+                            hours += delta.total_seconds() / 3600.0
+                    except Exception:
+                        pass
+            rows.append({'date': day.isoformat(), 'checkins': count, 'hours': round(hours, 2)})
+
+        summary = {
+            'start': start.isoformat(),
+            'end': end.isoformat(),
+            'days': len(rows),
+            'total_checkins': total_checkins,
+            'total_hours': round(sum(r['hours'] for r in rows), 2),
+        }
+
+        if request.query_params.get('format') == 'csv':
+            import csv
+            resp = HttpResponse(content_type='text/csv')
+            resp['Content-Disposition'] = f'attachment; filename="attendance_report_{start.isoformat()}_{end.isoformat()}.csv"'
+            w = csv.writer(resp)
+            w.writerow(['date', 'checkins', 'hours'])
+            for r in rows:
+                w.writerow([r['date'], r['checkins'], r['hours']])
+            return resp
+
+        return Response({'summary': summary, 'rows': rows})
+
+
+class CorperAttendanceReportView(APIView):
+    """Per-corper attendance report for ORG/BRANCH."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        role = getattr(user, 'role', None)
+        if role not in ('ORG', 'BRANCH'):
+            raise PermissionDenied('Not allowed')
+
+        org_user = user
+        branch = None
+        if role == 'BRANCH':
+            branch = BranchOffice.objects.filter(admin=user).first()
+            if not branch:
+                return Response({'rows': [], 'summary': {}}, status=200)
+            org_user = branch.user
+
+        try:
+            start = timezone.datetime.fromisoformat(request.query_params.get('start')).date() if request.query_params.get('start') else None
+        except Exception:
+            start = None
+        try:
+            end = timezone.datetime.fromisoformat(request.query_params.get('end')).date() if request.query_params.get('end') else None
+        except Exception:
+            end = None
+        if not end:
+            end = timezone.localdate()
+        if not start:
+            start = end - timezone.timedelta(days=29)
+        if start > end:
+            start, end = end, start
+
+        prof = OrganizationProfile.objects.filter(user=org_user).first()
+        late_time = getattr(prof, 'late_time', None)
+
+        cm_qs = CorpMember.objects.filter(user=org_user).select_related('branch', 'department', 'unit', 'account')
+        if branch:
+            cm_qs = cm_qs.filter(branch=branch)
+
+        acc_ids = list(cm_qs.values_list('account_id', flat=True))
+        logs = AttendanceLog.objects.filter(account_id__in=acc_ids, date__gte=start, date__lte=end)
+        logs_by_acc = {}
+        for lg in logs:
+            logs_by_acc.setdefault(lg.account_id, []).append(lg)
+
+        rows = []
+        for cm in cm_qs:
+            cm_logs = logs_by_acc.get(getattr(cm, 'account_id', None), [])
+            work_days = _working_days_for_corper(cm, start, end)
+            work_set = set(work_days)
+            all_present_dates = set([lg.date for lg in cm_logs])
+            present_required = len(all_present_dates & work_set)
+
+            cds_day = getattr(cm, 'cds_day', None)
+            present_cds = 0
+            try:
+                cds_int = int(cds_day) if cds_day is not None else None
+            except Exception:
+                cds_int = None
+            if cds_int is not None and 0 <= cds_int <= 4:
+                present_cds = len([d for d in all_present_dates if d.weekday() == cds_int])
+            present = min(len(work_days), present_required + present_cds)
+            absent = max(0, len(work_days) - present)
+
+            late = 0
+            if late_time:
+                for lg in cm_logs:
+                    if lg.date in work_set and lg.time_in and lg.time_in > late_time:
+                        late += 1
+
+            hours = 0.0
+            from datetime import datetime
+            for lg in cm_logs:
+                if lg.date in work_set and lg.time_in and lg.time_out:
+                    try:
+                        start_dt = datetime.combine(lg.date, lg.time_in)
+                        end_dt = datetime.combine(lg.date, lg.time_out)
+                        delta = end_dt - start_dt
+                        if delta.total_seconds() > 0:
+                            hours += delta.total_seconds() / 3600.0
+                    except Exception:
+                        pass
+
+            rows.append({
+                'corper_id': cm.id,
+                'full_name': cm.full_name,
+                'state_code': cm.state_code,
+                'email': cm.email,
+                'branch': getattr(cm.branch, 'name', ''),
+                'department': getattr(cm.department, 'name', ''),
+                'unit': getattr(cm.unit, 'name', ''),
+                'working_days': len(work_days),
+                'present_days': present,
+                'absent_days': absent,
+                'late_days': late,
+                'hours': round(hours, 2),
+            })
+
+        summary = {
+            'start': start.isoformat(),
+            'end': end.isoformat(),
+            'count': len(rows),
+        }
+
+        if request.query_params.get('format') == 'csv':
+            import csv
+            resp = HttpResponse(content_type='text/csv')
+            resp['Content-Disposition'] = f'attachment; filename="corper_report_{start.isoformat()}_{end.isoformat()}.csv"'
+            w = csv.writer(resp)
+            w.writerow(['full_name', 'state_code', 'email', 'branch', 'department', 'unit', 'working_days', 'present_days', 'absent_days', 'late_days', 'hours'])
+            for r in rows:
+                w.writerow([r['full_name'], r['state_code'], r['email'], r['branch'], r['department'], r['unit'], r['working_days'], r['present_days'], r['absent_days'], r['late_days'], r['hours']])
+            return resp
+
+        return Response({'summary': summary, 'rows': rows})
+
+
+class AttendanceLogReportView(APIView):
+    """Row-level attendance logs report (ORG/BRANCH)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        role = getattr(user, 'role', None)
+        if role not in ('ORG', 'BRANCH'):
+            raise PermissionDenied('Not allowed')
+
+        org_user = user
+        branch = None
+        if role == 'BRANCH':
+            branch = BranchOffice.objects.filter(admin=user).first()
+            if not branch:
+                return Response({'rows': []}, status=200)
+            org_user = branch.user
+
+        try:
+            start = timezone.datetime.fromisoformat(request.query_params.get('start')).date() if request.query_params.get('start') else None
+        except Exception:
+            start = None
+        try:
+            end = timezone.datetime.fromisoformat(request.query_params.get('end')).date() if request.query_params.get('end') else None
+        except Exception:
+            end = None
+        if not end:
+            end = timezone.localdate()
+        if not start:
+            start = end - timezone.timedelta(days=29)
+        if start > end:
+            start, end = end, start
+
+        cm_qs = CorpMember.objects.filter(user=org_user).select_related('branch', 'account')
+        if branch:
+            cm_qs = cm_qs.filter(branch=branch)
+        acc_ids = list(cm_qs.values_list('account_id', flat=True))
+        qs = AttendanceLog.objects.filter(account_id__in=acc_ids, date__gte=start, date__lte=end).order_by('-date', '-created_at')
+
+        # Map account to corper details
+        cm_by_acc = {cm.account_id: cm for cm in cm_qs}
+        rows = []
+        for lg in qs:
+            cm = cm_by_acc.get(lg.account_id)
+            rows.append({
+                'date': lg.date.isoformat(),
+                'time_in': lg.time_in.isoformat() if lg.time_in else None,
+                'time_out': lg.time_out.isoformat() if lg.time_out else None,
+                'full_name': getattr(cm, 'full_name', lg.name),
+                'state_code': getattr(cm, 'state_code', lg.code),
+                'branch': getattr(getattr(cm, 'branch', None), 'name', ''),
+            })
+
+        if request.query_params.get('format') == 'csv':
+            import csv
+            resp = HttpResponse(content_type='text/csv')
+            resp['Content-Disposition'] = f'attachment; filename="attendance_logs_{start.isoformat()}_{end.isoformat()}.csv"'
+            w = csv.writer(resp)
+            w.writerow(['date', 'time_in', 'time_out', 'full_name', 'state_code', 'branch'])
+            for r in rows:
+                w.writerow([r['date'], r['time_in'], r['time_out'], r['full_name'], r['state_code'], r['branch']])
+            return resp
+
+        return Response({'rows': rows, 'summary': {'start': start.isoformat(), 'end': end.isoformat(), 'count': len(rows)}})
+
+
+class AttendanceExcelExportView(APIView):
+    """Download an Excel workbook with Daily/Corpers/Logs sheets (ORG/BRANCH)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        role = getattr(user, 'role', None)
+        if role not in ('ORG', 'BRANCH'):
+            raise PermissionDenied('Not allowed')
+
+        org_user = user
+        branch = None
+        if role == 'BRANCH':
+            branch = BranchOffice.objects.filter(admin=user).first()
+            if not branch:
+                return Response({'detail': 'No branch assigned'}, status=400)
+            org_user = branch.user
+
+        try:
+            start = timezone.datetime.fromisoformat(request.query_params.get('start')).date() if request.query_params.get('start') else None
+        except Exception:
+            start = None
+        try:
+            end = timezone.datetime.fromisoformat(request.query_params.get('end')).date() if request.query_params.get('end') else None
+        except Exception:
+            end = None
+        if not end:
+            end = timezone.localdate()
+        if not start:
+            start = end - timezone.timedelta(days=29)
+        if start > end:
+            start, end = end, start
+
+        # Daily summary rows
+        daily_qs = AttendanceLog.objects.filter(org=org_user, date__gte=start, date__lte=end)
+        if branch:
+            acc_ids = list(CorpMember.objects.filter(branch=branch).values_list('account_id', flat=True))
+            daily_qs = daily_qs.filter(account_id__in=acc_ids)
+
+        daily_rows = []
+        for i in range((end - start).days + 1):
+            day = start + timezone.timedelta(days=i)
+            day_qs = daily_qs.filter(date=day)
+            count = day_qs.count()
+            hours = 0.0
+            from datetime import datetime
+            for log in day_qs:
+                if log.time_in and log.time_out:
+                    try:
+                        start_dt = datetime.combine(day, log.time_in)
+                        end_dt = datetime.combine(day, log.time_out)
+                        delta = end_dt - start_dt
+                        if delta.total_seconds() > 0:
+                            hours += delta.total_seconds() / 3600.0
+                    except Exception:
+                        pass
+            daily_rows.append({'date': day.isoformat(), 'checkins': count, 'hours': round(hours, 2)})
+
+        # Per-corper rows
+        prof = OrganizationProfile.objects.filter(user=org_user).first()
+        late_time = getattr(prof, 'late_time', None)
+        cm_qs = CorpMember.objects.filter(user=org_user).select_related('branch', 'department', 'unit', 'account')
+        if branch:
+            cm_qs = cm_qs.filter(branch=branch)
+        acc_ids = list(cm_qs.values_list('account_id', flat=True))
+        logs = AttendanceLog.objects.filter(account_id__in=acc_ids, date__gte=start, date__lte=end)
+        logs_by_acc = {}
+        for lg in logs:
+            logs_by_acc.setdefault(lg.account_id, []).append(lg)
+
+        corper_rows = []
+        for cm in cm_qs:
+            cm_logs = logs_by_acc.get(getattr(cm, 'account_id', None), [])
+            work_days = _working_days_for_corper(cm, start, end)
+            work_set = set(work_days)
+            all_present_dates = set([lg.date for lg in cm_logs])
+            present_required = len(all_present_dates & work_set)
+
+            cds_day = getattr(cm, 'cds_day', None)
+            present_cds = 0
+            try:
+                cds_int = int(cds_day) if cds_day is not None else None
+            except Exception:
+                cds_int = None
+            if cds_int is not None and 0 <= cds_int <= 4:
+                present_cds = len([d for d in all_present_dates if d.weekday() == cds_int])
+            present = min(len(work_days), present_required + present_cds)
+            absent = max(0, len(work_days) - present)
+
+            late = 0
+            if late_time:
+                for lg in cm_logs:
+                    if lg.date in work_set and lg.time_in and lg.time_in > late_time:
+                        late += 1
+
+            hours = 0.0
+            from datetime import datetime
+            for lg in cm_logs:
+                if lg.date in work_set and lg.time_in and lg.time_out:
+                    try:
+                        start_dt = datetime.combine(lg.date, lg.time_in)
+                        end_dt = datetime.combine(lg.date, lg.time_out)
+                        delta = end_dt - start_dt
+                        if delta.total_seconds() > 0:
+                            hours += delta.total_seconds() / 3600.0
+                    except Exception:
+                        pass
+
+            corper_rows.append({
+                'full_name': cm.full_name,
+                'state_code': cm.state_code,
+                'email': cm.email,
+                'branch': getattr(cm.branch, 'name', ''),
+                'department': getattr(cm.department, 'name', ''),
+                'unit': getattr(cm.unit, 'name', ''),
+                'working_days': len(work_days),
+                'present_days': present,
+                'absent_days': absent,
+                'late_days': late,
+                'hours': round(hours, 2),
+            })
+
+        # Row-level logs
+        cm_qs2 = CorpMember.objects.filter(user=org_user).select_related('branch', 'account')
+        if branch:
+            cm_qs2 = cm_qs2.filter(branch=branch)
+        acc_ids2 = list(cm_qs2.values_list('account_id', flat=True))
+        logs_qs = AttendanceLog.objects.filter(account_id__in=acc_ids2, date__gte=start, date__lte=end).order_by('-date', '-created_at')
+        cm_by_acc = {cm.account_id: cm for cm in cm_qs2}
+        log_rows = []
+        for lg in logs_qs:
+            cm = cm_by_acc.get(lg.account_id)
+            log_rows.append({
+                'date': lg.date.isoformat(),
+                'time_in': lg.time_in.isoformat() if lg.time_in else None,
+                'time_out': lg.time_out.isoformat() if lg.time_out else None,
+                'full_name': getattr(cm, 'full_name', lg.name),
+                'state_code': getattr(cm, 'state_code', lg.code),
+                'branch': getattr(getattr(cm, 'branch', None), 'name', ''),
+            })
+
+        try:
+            from openpyxl import Workbook
+        except Exception:
+            return Response({'detail': 'Excel export unavailable (missing openpyxl)'}, status=500)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Daily'
+        ws.append(['date', 'checkins', 'hours'])
+        for r in daily_rows:
+            ws.append([r['date'], r['checkins'], r['hours']])
+
+        ws2 = wb.create_sheet('Corpers')
+        ws2.append(['full_name', 'state_code', 'email', 'branch', 'department', 'unit', 'working_days', 'present_days', 'absent_days', 'late_days', 'hours'])
+        for r in corper_rows:
+            ws2.append([r['full_name'], r['state_code'], r['email'], r['branch'], r['department'], r['unit'], r['working_days'], r['present_days'], r['absent_days'], r['late_days'], r['hours']])
+
+        ws3 = wb.create_sheet('Logs')
+        ws3.append(['date', 'time_in', 'time_out', 'full_name', 'state_code', 'branch'])
+        for r in log_rows:
+            ws3.append([r['date'], r['time_in'], r['time_out'], r['full_name'], r['state_code'], r['branch']])
+
+        from io import BytesIO
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        resp['Content-Disposition'] = f'attachment; filename="attendance_report_{start.isoformat()}_{end.isoformat()}.xlsx"'
+        return resp
+
+
 from decimal import Decimal
 
 VAT_RATE = Decimal('0.075')  # 7.5%
@@ -2199,6 +2848,15 @@ class PaystackInitializeView(APIView):
             'email': email,
             'amount': amt_kobo,
         }
+        # Include metadata so webhook can reliably credit the correct user later.
+        try:
+            payload['metadata'] = {
+                'uid': int(getattr(request.user, 'id', 0) or 0),
+                'role': getattr(request.user, 'role', '') or '',
+                'email': getattr(request.user, 'email', '') or '',
+            }
+        except Exception:
+            pass
         cb = data.get('callback_url')
         if cb:
             payload['callback_url'] = cb
@@ -2245,6 +2903,10 @@ class PaystackVerifyView(APIView):
         status_val = data.get('status')
         if status_val != 'success':
             return Response({'status': 'failed'}, status=200)
+        # Idempotency: don't double-credit for the same reference.
+        if WalletTransaction.objects.filter(type='CREDIT', reference=str(ref)[:64]).exists():
+            acct = _ensure_wallet_with_welcome(request.user)
+            return Response({'status': 'success', 'balance': str(acct.balance), 'duplicate': True})
         # Credit wallet on success using customer email and paid amount
         cust = (data.get('customer') or {})
         email = cust.get('email') or getattr(request.user, 'email', None)
@@ -2273,3 +2935,100 @@ class PaystackVerifyView(APIView):
         acct.balance = (acct.balance or Decimal('0.00')) + paid
         acct.save(update_fields=['balance'])
         return Response({'status': 'success', 'balance': str(acct.balance)})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PaystackWebhookView(APIView):
+    """Paystack webhook handler.
+
+    Configure Paystack webhook URL to:
+    - https://api.sahabs.tech/api/auth/paystack/webhook/
+    """
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        # Validate signature (Paystack uses HMAC-SHA512 of raw body with the secret key).
+        sig = request.headers.get('x-paystack-signature') or request.META.get('HTTP_X_PAYSTACK_SIGNATURE')
+        if not sig:
+            return Response({'detail': 'Missing signature'}, status=400)
+
+        try:
+            from .utils import get_paystack_keys
+            keys = get_paystack_keys()
+        except Exception as e:
+            return Response({'detail': str(e)}, status=500)
+
+        key = (keys.get('webhook_secret') or keys.get('secret_key') or '').encode('utf-8')
+        if not key:
+            return Response({'detail': 'Paystack secret missing'}, status=500)
+
+        body = request.body or b''
+        expected = hmac.new(key, body, hashlib.sha512).hexdigest()
+        if not hmac.compare_digest(expected, str(sig).strip()):
+            return Response({'detail': 'Invalid signature'}, status=401)
+
+        try:
+            payload = json.loads(body.decode('utf-8') or '{}')
+        except Exception:
+            return Response({'detail': 'Invalid JSON'}, status=400)
+
+        event = (payload.get('event') or '').strip()
+        data = payload.get('data') or {}
+        if event != 'charge.success':
+            # Acknowledge other events to avoid retries.
+            return Response({'ok': True})
+
+        ref = (data.get('reference') or '').strip()
+        if not ref:
+            return Response({'detail': 'Missing reference'}, status=400)
+
+        # Idempotency: do nothing if already credited.
+        if WalletTransaction.objects.filter(type='CREDIT', reference=str(ref)[:64]).exists():
+            return Response({'ok': True, 'duplicate': True})
+
+        paid_kobo = data.get('amount') or 0
+        try:
+            paid = (Decimal(paid_kobo) / Decimal('100')).quantize(Decimal('0.01'))
+        except Exception:
+            paid = Decimal('0.00')
+        if paid <= 0:
+            return Response({'detail': 'Invalid amount'}, status=400)
+
+        # Resolve target user: prefer metadata uid, else customer email.
+        target_user = None
+        meta = data.get('metadata') or {}
+        uid = meta.get('uid') or meta.get('user_id')
+        try:
+            uid = int(uid)
+        except Exception:
+            uid = 0
+        if uid:
+            try:
+                target_user = User.objects.filter(id=uid).first()
+            except Exception:
+                target_user = None
+        if not target_user:
+            cust = (data.get('customer') or {})
+            email = cust.get('email')
+            if email:
+                target_user = User.objects.filter(email=email).first()
+
+        if not target_user:
+            # Acknowledge to prevent retries; can't map payment to a wallet.
+            return Response({'ok': True, 'unmatched': True})
+
+        acct = _ensure_wallet_with_welcome(target_user)
+        WalletTransaction.objects.create(
+            account=acct,
+            type='CREDIT',
+            amount=paid,
+            vat_amount=Decimal('0.00'),
+            total_amount=paid,
+            description='Wallet funding via Paystack (webhook)',
+            reference=str(ref)[:64]
+        )
+        acct.balance = (acct.balance or Decimal('0.00')) + paid
+        acct.save(update_fields=['balance'])
+        return Response({'ok': True})

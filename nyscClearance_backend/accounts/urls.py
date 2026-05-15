@@ -20,6 +20,7 @@ from .views import (
     PublicHolidayViewSet,
     LeaveRequestViewSet,
     NotificationViewSet,
+    QueryRecordViewSet,
     capture_page,
     capture_process_frame,
     capture_finalize,
@@ -35,9 +36,14 @@ from .views import (
     AnnouncementView,
     PaystackInitializeView,
     PaystackVerifyView,
+    PaystackWebhookView,
     ClearanceStatusView,
     ClearanceApproveView,
     AllHolidaysView,
+    AttendanceReportView,
+    CorperAttendanceReportView,
+    AttendanceLogReportView,
+    AttendanceExcelExportView,
 )
 
 router = DefaultRouter()
@@ -48,6 +54,7 @@ router.register(r'corpers', CorpMemberViewSet, basename='corper')
 router.register(r'holidays', PublicHolidayViewSet, basename='holiday')
 router.register(r'leaves', LeaveRequestViewSet, basename='leave')
 router.register(r'notifications', NotificationViewSet, basename='notification')
+router.register(r'queries', QueryRecordViewSet, basename='query')
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
@@ -63,6 +70,10 @@ urlpatterns = [
     path('profile/', ProfileView.as_view(), name='profile'),
     path('stats/', StatsView.as_view(), name='stats'),
     path('holidays/all/', AllHolidaysView.as_view(), name='holidays-all'),
+    path('reports/attendance/', AttendanceReportView.as_view(), name='report-attendance'),
+    path('reports/corpers/', CorperAttendanceReportView.as_view(), name='report-corpers'),
+    path('reports/attendance/logs/', AttendanceLogReportView.as_view(), name='report-attendance-logs'),
+    path('reports/attendance/export/', AttendanceExcelExportView.as_view(), name='report-attendance-export'),
     # Face capture (HTML page + processing endpoint)
     path('capture/<int:corper_id>/', capture_page, name='capture'),
     path('capture/<int:corper_id>/process/', capture_process_frame, name='capture-process'),
@@ -82,6 +93,7 @@ urlpatterns = [
     # Paystack
     path('wallet/paystack/initialize/', PaystackInitializeView.as_view(), name='paystack-initialize'),
     path('wallet/paystack/verify/', PaystackVerifyView.as_view(), name='paystack-verify'),
+    path('paystack/webhook/', PaystackWebhookView.as_view(), name='paystack-webhook'),
     # Clearance admin
     path('clearance/status/', ClearanceStatusView.as_view(), name='clearance-status'),
     path('clearance/approve/', ClearanceApproveView.as_view(), name='clearance-approve'),

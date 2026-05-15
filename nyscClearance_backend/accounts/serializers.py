@@ -5,6 +5,7 @@ from django.conf import settings
 
 from .tokens import generate_email_token
 from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, WalletAccount, WalletTransaction
+from .models import QueryRecord
 from django.core.validators import RegexValidator
 
 
@@ -453,6 +454,36 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ('id', 'title', 'message', 'branch', 'created_at')
+
+
+class QueryRecordSerializer(serializers.ModelSerializer):
+    corper_name = serializers.CharField(source='corper.full_name', read_only=True)
+    corper_state_code = serializers.CharField(source='corper.state_code', read_only=True)
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True)
+    replied_by_email = serializers.CharField(source='replied_by.email', read_only=True)
+
+    class Meta:
+        model = QueryRecord
+        fields = (
+            'id',
+            'org', 'branch', 'branch_name',
+            'corper', 'corper_name', 'corper_state_code',
+            'title', 'message', 'status',
+            'corper_reply', 'replied_at', 'replied_by', 'replied_by_email',
+            'created_by', 'created_by_email', 'resolved_by',
+            'created_at', 'updated_at',
+        )
+        read_only_fields = (
+            'org',
+            'created_by',
+            'resolved_by',
+            'created_at',
+            'updated_at',
+            'corper_reply',
+            'replied_at',
+            'replied_by',
+        )
 
 
 class WalletTransactionSerializer(serializers.ModelSerializer):

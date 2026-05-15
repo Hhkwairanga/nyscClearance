@@ -183,6 +183,41 @@ class Notification(models.Model):
         return f"{self.title} ({scope})"
 
 
+class QueryRecord(models.Model):
+    """Disciplinary/HR queries issued to a corper."""
+
+    STATUS_CHOICES = (
+        ('OPEN', 'Open'),
+        ('RESOLVED', 'Resolved'),
+    )
+
+    org = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='queries')
+    branch = models.ForeignKey(BranchOffice, on_delete=models.SET_NULL, null=True, blank=True, related_name='queries')
+    corper = models.ForeignKey('accounts.CorpMember', on_delete=models.CASCADE, related_name='queries')
+    title = models.CharField(max_length=255)
+    message = models.TextField(blank=True)
+    corper_reply = models.TextField(blank=True)
+    replied_at = models.DateTimeField(null=True, blank=True)
+    replied_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='query_replies',
+    )
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='OPEN')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='created_queries')
+    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='resolved_queries')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-created_at', '-id')
+
+    def __str__(self):
+        return f"{self.title} ({self.corper.state_code})"
+
+
 class Department(models.Model):
     branch = models.ForeignKey(BranchOffice, on_delete=models.CASCADE, related_name='departments')
     name = models.CharField(max_length=255)
