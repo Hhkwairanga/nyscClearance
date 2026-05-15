@@ -404,6 +404,48 @@ class CorpMemberSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'department': 'Department does not belong to the selected branch'})
         if unit and dept and getattr(unit, 'department_id', None) != getattr(dept, 'id', None):
             raise serializers.ValidationError({'unit': 'Unit does not belong to the selected department'})
+
+        # Handle email change: update the corper login account and force re-activation.
+        new_email = validated_data.get('email')
+        if new_email is not None:
+            new_email = (new_email or '').strip().lower()
+            if not new_email:
+                raise serializers.ValidationError({'email': 'Email is required'})
+
+            account = getattr(instance, 'account', None)
+            if not account:
+                raise serializers.ValidationError({'email': 'Corper account not found'})
+
+            current_email = (getattr(account, 'email', '') or '').lower()
+            if new_email != current_email:
+                # Avoid conflicts with existing users
+                if User.objects.filter(email=new_email).exclude(id=account.id).exists():
+                    raise serializers.ValidationError({'email': 'A user with this email already exists.'})
+
+                account.email = new_email
+                account.is_active = False
+                account.is_email_verified = False
+                account.set_unusable_password()
+                account.save(update_fields=['email', 'is_active', 'is_email_verified', 'password'])
+
+                # Keep CorpMember.email in sync
+                instance.email = new_email
+
+                token = generate_email_token(account.id)
+                verify_url = self._build_verify_url(token)
+                self._send_verification_email(account.email, account.name, verify_url)
+
+                # Prevent DRF from trying to set instance.email again
+                validated_data.pop('email', None)
+
+        # Keep user's display name aligned to full_name (optional)
+        if 'full_name' in validated_data and instance.account:
+            try:
+                instance.account.name = validated_data.get('full_name')
+                instance.account.save(update_fields=['name'])
+            except Exception:
+                pass
+
         return super().update(instance, validated_data)
 
 

@@ -150,6 +150,12 @@ export default function Dashboard(){
       return
     }
     setEditCorperForm({
+      email: editCorper.email || '',
+      full_name: editCorper.full_name || '',
+      state_code: editCorper.state_code || '',
+      gender: editCorper.gender || '',
+      passing_out_date: editCorper.passing_out_date || '',
+      cds_day: editCorper.cds_day ?? '',
       branch: editCorper.branch || '',
       department: editCorper.department || '',
       unit: editCorper.unit || '',
@@ -173,6 +179,8 @@ export default function Dashboard(){
     editBranch ||
     editDepartment ||
     editUnit ||
+    editCorper ||
+    editHoliday ||
     selectedCorper
   )
 
@@ -3107,30 +3115,86 @@ export default function Dashboard(){
                 <div className="dash-modal" onClick={()=>setEditCorper(null)}>
                   <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
                     <div className="dash-modal-head">
-                      <strong>Edit Corper Placement</strong>
+                      <strong>Edit Corper</strong>
                       <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setEditCorper(null)}>Close</button>
                     </div>
                     <div className="dash-modal-body">
                       <div className="dash-modal-grid">
                         <div className="dash-modal-help">
                           <h6>Flow</h6>
-                          <p>Update branch/department/unit placement.</p>
+                          <p>Update corper details and placement. If you change the email, an activation link will be sent so the corper can set a new password.</p>
                         </div>
                         <div className="dash-modal-form">
                           <form onSubmit={async (e)=>{
                             e.preventDefault();
                             setStatus('pending')
                             try{
-                              await api.patch(`/api/auth/corpers/${editCorper.id}/`, {
-                                branch: editCorperForm.branch || null,
+                              const payload = {
+                                email: editCorperForm.email,
+                                full_name: editCorperForm.full_name,
+                                state_code: String(editCorperForm.state_code || '').trim().toUpperCase(),
+                                gender: editCorperForm.gender,
+                                passing_out_date: editCorperForm.passing_out_date,
+                                cds_day: editCorperForm.cds_day === '' ? null : Number(editCorperForm.cds_day),
                                 department: editCorperForm.department || null,
                                 unit: editCorperForm.unit || null,
-                              })
+                              }
+                              if(me?.role === 'ORG') payload.branch = editCorperForm.branch || null
+                              await api.patch(`/api/auth/corpers/${editCorper.id}/`, payload)
                               await refreshAll();
                               setStatus('saved:corper-update');
                               setEditCorper(null)
-                            }catch(err){ setStatus('error:corper-update') }
+                            }catch(err){
+                              const msg = err?.response?.data?.detail
+                                || Object.values(err?.response?.data || {})?.[0]?.[0]
+                                || err.message
+                              setStatus(`error:corper-update:${msg}`)
+                            }
                           }}>
+                            <div className="dash-form-section">
+                              <div className="dash-form-title">Details</div>
+                              <div className="row g-2">
+                                <div className="col-12 col-md-6">
+                                  <label className="form-label">Email</label>
+                                  <input className="form-control" type="email" value={editCorperForm.email} onChange={(e)=>setEditCorperForm(p=>({ ...p, email: e.target.value }))} required />
+                                </div>
+                                <div className="col-12 col-md-6">
+                                  <label className="form-label">Full Name</label>
+                                  <input className="form-control" value={editCorperForm.full_name} onChange={(e)=>setEditCorperForm(p=>({ ...p, full_name: e.target.value }))} required />
+                                </div>
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">Gender</label>
+                                  <select className="form-select" value={editCorperForm.gender} onChange={(e)=>setEditCorperForm(p=>({ ...p, gender: e.target.value }))} required>
+                                    <option value="">Select...</option>
+                                    <option value="M">Male</option>
+                                    <option value="F">Female</option>
+                                    <option value="O">Other</option>
+                                  </select>
+                                </div>
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">State Code</label>
+                                  <input className="form-control" value={editCorperForm.state_code} onChange={(e)=>setEditCorperForm(p=>({ ...p, state_code: e.target.value }))} required />
+                                </div>
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">Passing Out Date</label>
+                                  <input className="form-control" type="date" value={editCorperForm.passing_out_date} onChange={(e)=>setEditCorperForm(p=>({ ...p, passing_out_date: e.target.value }))} required />
+                                </div>
+                                <div className="col-12 col-md-4">
+                                  <label className="form-label">CDS Day</label>
+                                  <select className="form-select" value={editCorperForm.cds_day} onChange={(e)=>setEditCorperForm(p=>({ ...p, cds_day: e.target.value }))}>
+                                    <option value="">—</option>
+                                    <option value="0">Monday</option>
+                                    <option value="1">Tuesday</option>
+                                    <option value="2">Wednesday</option>
+                                    <option value="3">Thursday</option>
+                                    <option value="4">Friday</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="dash-form-section">
+                              <div className="dash-form-title">Placement</div>
                             {me?.role==='ORG' && (
                               <div className="mb-2">
                                 <label className="form-label">Branch</label>
@@ -3159,6 +3223,7 @@ export default function Dashboard(){
                                   return !did || u.department === did
                                 }).map(u=> <option key={u.id} value={u.id}>{u.name}</option>)}
                               </select>
+                            </div>
                             </div>
                             <div className="dash-modal-actions">
                               <div className="d-grid">
@@ -3215,7 +3280,7 @@ export default function Dashboard(){
                           <div className="dash-modal-actions">
                             <div className="d-flex gap-2">
                               <button className="btn btn-outline-secondary" type="button" onClick={()=>{ setEditCorper(selectedCorper); setSelectedCorper(null) }}>
-                                Edit placement
+                                Edit
                               </button>
                               <a className="btn btn-outline-secondary" href={apiHref(`/api/auth/capture/${selectedCorper.id}/`)} target="_blank" rel="noreferrer">
                                 Face capture
@@ -3228,6 +3293,7 @@ export default function Dashboard(){
                   </div>
                 </div>
               )}
+
             </>
           )}
 
