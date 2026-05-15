@@ -300,6 +300,34 @@ export default function Dashboard(){
     setUnreadNotifications(0)
   }, [activeTab, me?.role, me?.email, notifications])
 
+  // Query pending badge should persist until fully resolved (OPEN)
+  const pendingQueriesBadge = useMemo(() => {
+    const list = Array.isArray(queries) ? queries : []
+    if(me?.role === 'CORPER'){
+      return list.filter(q => q.status === 'OPEN').length
+    }
+    if(me?.role === 'BRANCH'){
+      // Branch sees their own branch queries; badge indicates anything still OPEN
+      return list.filter(q => q.status === 'OPEN').length
+    }
+    if(me?.role === 'ORG'){
+      // ORG no longer has a query section, but should still see pending items in Notifications
+      return list.filter(q => q.status === 'OPEN').length
+    }
+    return 0
+  }, [queries, me?.role])
+
+  function formatDateTime(dt){
+    try{
+      if(!dt) return ''
+      const d = new Date(dt)
+      if(Number.isNaN(d.getTime())) return String(dt)
+      return d.toLocaleString(undefined, { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+    }catch(e){
+      return String(dt || '')
+    }
+  }
+
   // Handle result banners and Paystack return
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
@@ -536,7 +564,6 @@ export default function Dashboard(){
     if(me?.role === 'ORG'){
       add('wallet', 'Wallet', Building2)
       add('clearance', 'Clearance', LayoutGrid)
-      add('query', 'Queries', FileSearch)
       add('report', 'Reports', BarChart3)
     }
     if(me?.role === 'BRANCH'){
@@ -553,9 +580,12 @@ export default function Dashboard(){
       add('wallet', 'Wallet', Wallet)
     }
 
-    add('notifications', 'Notifications', Bell, (me?.role === 'CORPER' ? (unreadNotifications || null) : null))
+    const notifBadge = (me?.role === 'CORPER')
+      ? ((unreadNotifications || 0) + (pendingQueriesBadge || 0)) || null
+      : ((pendingQueriesBadge || 0) || null)
+    add('notifications', 'Notifications', Bell, notifBadge)
     return items
-  }, [me?.role, leaves, notifications.length, unreadNotifications])
+  }, [me?.role, leaves, notifications.length, unreadNotifications, pendingQueriesBadge])
 
   const tabTitle = useMemo(() => ({
     overview: 'Overview',
@@ -564,7 +594,6 @@ export default function Dashboard(){
     wallet: 'Wallet',
     clearance: 'Performance Clearance',
     leave: 'Leave Management',
-    query: 'Query Management',
     report: 'Report',
     attendance: 'Attendance',
     performance: 'Performance Clearance',
@@ -755,6 +784,20 @@ export default function Dashboard(){
     const [qPage, setQPage] = useState(1)
     const [qPageSize, setQPageSize] = useState(20)
     const [qStatus, setQStatus] = useState('all')
+    const [qAlert, setQAlert] = useState(null) // { type: 'success'|'danger', msg: string }
+
+    function extractErrMsg(err){
+      const payload = err?.response?.data
+      if(!payload) return err?.message || 'Request failed'
+      if(typeof payload === 'string') return payload
+      if(payload.detail) return String(payload.detail)
+      try{
+        const v = Object.values(payload || {})?.[0]
+        if(Array.isArray(v)) return String(v[0] || 'Request failed')
+        if(v) return String(v)
+      }catch(e){}
+      return 'Request failed'
+    }
 
     const visibleCorp = role === 'BRANCH'
       ? corpers
@@ -786,11 +829,33 @@ export default function Dashboard(){
             <div className="d-flex flex-wrap gap-2">
               <button className="btn btn-outline-secondary" type="button" onClick={async()=>{
                 setStatus('pending')
-                try{ await api.post('/api/auth/queries/auto/', { kind: 'LATE' }); await refreshAll(); setStatus('saved:query') }catch(e){ setStatus('error:query') }
+                try{
+                  const r = await api.post('/api/auth/queries/auto/', { kind: 'LATE' })
+                  await refreshAll()
+                  const created = Number(r?.data?.created ?? 0)
+                  const skipped = Number(r?.data?.skipped ?? 0)
+                  const ym = r?.data?.year_month
+                  setQAlert({ type: 'success', msg: `Sent lateness queries${ym?` (${ym})`:''}: created ${created}, skipped ${skipped}.` })
+                }catch(e){
+                  setQAlert({ type: 'danger', msg: extractErrMsg(e) })
+                }finally{
+                  setStatus(null)
+                }
               }}>Send lateness queries</button>
               <button className="btn btn-outline-secondary" type="button" onClick={async()=>{
                 setStatus('pending')
-                try{ await api.post('/api/auth/queries/auto/', { kind: 'ABSENT' }); await refreshAll(); setStatus('saved:query') }catch(e){ setStatus('error:query') }
+                try{
+                  const r = await api.post('/api/auth/queries/auto/', { kind: 'ABSENT' })
+                  await refreshAll()
+                  const created = Number(r?.data?.created ?? 0)
+                  const skipped = Number(r?.data?.skipped ?? 0)
+                  const ym = r?.data?.year_month
+                  setQAlert({ type: 'success', msg: `Sent absence queries${ym?` (${ym})`:''}: created ${created}, skipped ${skipped}.` })
+                }catch(e){
+                  setQAlert({ type: 'danger', msg: extractErrMsg(e) })
+                }finally{
+                  setStatus(null)
+                }
               }}>Send absence queries</button>
             </div>
           </div>
@@ -849,12 +914,24 @@ export default function Dashboard(){
                         <div className="btn-group">
                           {x.status !== 'RESOLVED' && (
                             <button className="btn btn-sm btn-outline-secondary" type="button" onClick={async()=>{
-                              try{ await api.post(`/api/auth/queries/${x.id}/resolve/`); await refreshAll(); setStatus('saved:query') }catch(e){ setStatus('error:query') }
+                              try{
+                                await api.post(`/api/auth/queries/${x.id}/resolve/`)
+                                await refreshAll()
+                                setQAlert({ type: 'success', msg: 'Query resolved.' })
+                              }catch(e){
+                                setQAlert({ type: 'danger', msg: extractErrMsg(e) })
+                              }
                             }}>Resolve</button>
                           )}
                           <button className="btn btn-sm btn-outline-danger" type="button" onClick={async()=>{
                             if(!confirm('Delete this query?')) return
-                            try{ await api.delete(`/api/auth/queries/${x.id}/`); await refreshAll(); setStatus('saved:query') }catch(e){ setStatus('error:query') }
+                            try{
+                              await api.delete(`/api/auth/queries/${x.id}/`)
+                              await refreshAll()
+                              setQAlert({ type: 'success', msg: 'Query deleted.' })
+                            }catch(e){
+                              setQAlert({ type: 'danger', msg: extractErrMsg(e) })
+                            }
                           }}>Delete</button>
                         </div>
                       </td>
@@ -878,8 +955,9 @@ export default function Dashboard(){
               </table>
             </div>
 
-            {status==='saved:query' && <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Saved.</AutoFadeAlert>}
-            {status==='error:query' && <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Failed.</AutoFadeAlert>}
+            {qAlert?.type && (
+              <AutoFadeAlert type={qAlert.type} onClose={()=>setQAlert(null)}>{qAlert.msg}</AutoFadeAlert>
+            )}
           </div>
         </div>
 
@@ -900,7 +978,19 @@ export default function Dashboard(){
                     <form onSubmit={async (e)=>{
                       e.preventDefault(); setStatus('pending')
                       const data = Object.fromEntries(new FormData(e.target))
-                      try{ await api.post('/api/auth/queries/', data); await refreshAll(); setStatus('saved:query'); setShowAddQuery(false) }catch(err){ setStatus('error:query') }
+                      try{
+                        // Ensure corper is sent as an id (not empty string)
+                        if(data.corper !== undefined) data.corper = String(data.corper || '').trim()
+                        const res = await api.post('/api/auth/queries/', data)
+                        await refreshAll()
+                        const title = res?.data?.title || data.title || 'Query'
+                        setQAlert({ type: 'success', msg: `${title} sent successfully.` })
+                        setShowAddQuery(false)
+                      }catch(err){
+                        setQAlert({ type: 'danger', msg: extractErrMsg(err) })
+                      }finally{
+                        setStatus(null)
+                      }
                     }}>
                       <label className="form-label">Corper</label>
                       <select className="form-select mb-2" name="corper" required>
@@ -1186,6 +1276,18 @@ export default function Dashboard(){
         {status==='error:wallet-fund' && (
           <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Payment verification failed.</AutoFadeAlert>
         )}
+        {status==='saved:query-reply' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Reply sent. Awaiting admin resolution.</AutoFadeAlert>
+        )}
+        {status==='error:query-reply' && (
+          <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Failed to send reply. Please try again.</AutoFadeAlert>
+        )}
+        {status==='saved:query-resolve' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Query resolved.</AutoFadeAlert>
+        )}
+        {status==='error:query-resolve' && (
+          <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Failed to resolve query.</AutoFadeAlert>
+        )}
           {activeTab==='overview' && (
             <>
               <div className="row g-3">
@@ -1394,26 +1496,41 @@ export default function Dashboard(){
                       <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
                         <div>
                           <div className="dash-card-title mb-0">Query replies</div>
-                          <div className="small text-muted">Replies from corpers awaiting resolution.</div>
+                          <div className="small text-muted">Pending queries (remain pending until resolved).</div>
                         </div>
-                        <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>setActiveTab('query')}>Open queries</button>
+                        {me?.role === 'BRANCH' && (
+                          <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>setActiveTab('query')}>Open queries</button>
+                        )}
                       </div>
                       <div className="dash-feed mt-3">
-                        {queries.filter(q => (q.status === 'OPEN') && q.replied_at).map((q) => (
+                        {queries.filter(q => (q.status === 'OPEN')).map((q) => (
                           <div key={q.id} className="dash-feed-item">
-                            <div className="fw-semibold">{q.title}</div>
-                            <div className="small text-muted">
-                              {q.corper_name} ({q.corper_state_code}) · replied {new Date(q.replied_at).toLocaleString()}
+                            <div className="d-flex justify-content-between align-items-start gap-2">
+                              <div className="fw-semibold">{q.title}</div>
+                              <div className="small text-muted">{formatDateTime(q.replied_at || q.created_at)}</div>
                             </div>
-                            <div className="small mt-2" style={{whiteSpace:'pre-wrap'}}>{q.corper_reply || '—'}</div>
+                            <div className="small text-muted">
+                              {q.corper_name} ({q.corper_state_code})
+                              {q.replied_at ? ' · replied' : ' · sent'}
+                            </div>
+                            {q.message && (
+                              <div className="small mt-2" style={{whiteSpace:'pre-wrap'}}>
+                                <span className="text-muted">Query:</span> {q.message}
+                              </div>
+                            )}
+                            {q.replied_at && (
+                              <div className="small mt-2" style={{whiteSpace:'pre-wrap'}}>
+                                <span className="text-muted">Reply:</span> {q.corper_reply || '—'}
+                              </div>
+                            )}
                             <div className="d-flex gap-2 mt-2">
                               <button className="btn btn-olive btn-sm" type="button" onClick={async()=>{
-                                try{ await api.post(`/api/auth/queries/${q.id}/resolve/`); await refreshAll(); setStatus('saved:query') }catch(e){ setStatus('error:query') }
+                                try{ await api.post(`/api/auth/queries/${q.id}/resolve/`); await refreshAll(); setStatus('saved:query-resolve') }catch(e){ setStatus('error:query-resolve') }
                               }}>Resolve</button>
                             </div>
                           </div>
                         ))}
-                        {queries.filter(q => (q.status === 'OPEN') && q.replied_at).length === 0 && (
+                        {queries.filter(q => (q.status === 'OPEN')).length === 0 && (
                           <div className="text-muted">No query replies yet.</div>
                         )}
                       </div>
@@ -1434,37 +1551,53 @@ export default function Dashboard(){
                   <div className="card shadow-sm dash-card mb-3">
                     <div className="card-body">
                       <div className="dash-card-title">Pending queries</div>
-                      <div className="small text-muted mb-2">Reply to a query to remove it from pending.</div>
+                      <div className="small text-muted mb-2">Queries remain pending until resolved by admin.</div>
                       <div className="dash-feed">
-                        {queries.filter(q => (q.status === 'OPEN') && !q.replied_at).map((q) => (
+                        {queries.filter(q => (q.status === 'OPEN')).map((q) => (
                           <div key={q.id} className="dash-feed-item">
-                            <div className="fw-semibold">{q.title}</div>
-                            <div className="small text-muted">{new Date(q.created_at).toLocaleString()}</div>
-                            {q.message && <div className="small mt-1" style={{whiteSpace:'pre-wrap'}}>{q.message}</div>}
-                            <textarea
-                              className="form-control form-control-sm mt-2"
-                              rows="3"
-                              placeholder="Type your reply…"
-                              value={queryReplyDrafts[q.id] || ''}
-                              onChange={(e)=>setQueryReplyDrafts((m)=>({ ...m, [q.id]: e.target.value }))}
-                            />
-                            <div className="d-flex justify-content-end mt-2">
-                              <button className="btn btn-olive btn-sm" type="button" onClick={async()=>{
-                                const reply = String(queryReplyDrafts[q.id] || '').trim()
-                                if(!reply){ alert('Reply is required'); return }
-                                try{
-                                  await api.post(`/api/auth/queries/${q.id}/reply/`, { reply })
-                                  setQueryReplyDrafts((m)=>{ const x = { ...m }; delete x[q.id]; return x })
-                                  await refreshAll()
-                                  setStatus('saved:query')
-                                }catch(e){
-                                  setStatus('error:query')
-                                }
-                              }}>Send reply</button>
+                            <div className="d-flex justify-content-between align-items-start gap-2">
+                              <div className="fw-semibold">{q.title}</div>
+                              <div className="small text-muted">{formatDateTime(q.created_at)}</div>
                             </div>
+                            {q.message && (
+                              <div className="small mt-2" style={{whiteSpace:'pre-wrap'}}>
+                                <span className="text-muted">Query:</span> {q.message}
+                              </div>
+                            )}
+                            {q.replied_at ? (
+                              <div className="small mt-2" style={{whiteSpace:'pre-wrap'}}>
+                                <div className="text-muted">Your reply ({formatDateTime(q.replied_at)}):</div>
+                                <div>{q.corper_reply || '—'}</div>
+                                <div className="text-muted mt-2">Status: awaiting admin resolution.</div>
+                              </div>
+                            ) : (
+                              <>
+                                <textarea
+                                  className="form-control form-control-sm mt-2"
+                                  rows="3"
+                                  placeholder="Type your reply…"
+                                  value={queryReplyDrafts[q.id] || ''}
+                                  onChange={(e)=>setQueryReplyDrafts((m)=>({ ...m, [q.id]: e.target.value }))}
+                                />
+                                <div className="d-flex justify-content-end mt-2">
+                                  <button className="btn btn-olive btn-sm" type="button" onClick={async()=>{
+                                    const reply = String(queryReplyDrafts[q.id] || '').trim()
+                                    if(!reply){ alert('Reply is required'); return }
+                                    try{
+                                      await api.post(`/api/auth/queries/${q.id}/reply/`, { reply })
+                                      setQueryReplyDrafts((m)=>{ const x = { ...m }; delete x[q.id]; return x })
+                                      await refreshAll()
+                                      setStatus('saved:query-reply')
+                                    }catch(e){
+                                      setStatus('error:query-reply')
+                                    }
+                                  }}>Send reply</button>
+                                </div>
+                              </>
+                            )}
                           </div>
                         ))}
-                        {queries.filter(q => (q.status === 'OPEN') && !q.replied_at).length === 0 && (
+                        {queries.filter(q => (q.status === 'OPEN')).length === 0 && (
                           <div className="text-muted">No pending queries.</div>
                         )}
                       </div>
@@ -3973,10 +4106,6 @@ export default function Dashboard(){
 
           {activeTab==='query' && me?.role==='BRANCH' && (
             <QuerySection role="BRANCH" />
-          )}
-
-          {activeTab==='query' && me?.role==='ORG' && (
-            <QuerySection role="ORG" />
           )}
 
           {activeTab==='report' && me?.role==='BRANCH' && (
