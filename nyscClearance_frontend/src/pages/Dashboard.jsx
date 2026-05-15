@@ -18,6 +18,7 @@ import {
   CalendarDays,
   FileCheck2,
   FileSearch,
+  FileSpreadsheet,
   FileText,
   Home,
   Layers3,
@@ -28,6 +29,8 @@ import {
   Trash2,
   Users,
   CalendarCheck2,
+  Download,
+  RefreshCw,
   Wallet,
 } from 'lucide-react'
 import { Chart as ChartJS, CategoryScale, LinearScale, ArcElement, BarElement, LineElement, PointElement, Filler, Tooltip, Legend } from 'chart.js'
@@ -95,7 +98,7 @@ export default function Dashboard(){
   }, [showAddCorper])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [structureTab, setStructureTab] = useState('branches')
+  const [structureTab, setStructureTab] = useState('profile')
 
   const isSaving = status === 'pending'
 
@@ -122,6 +125,27 @@ export default function Dashboard(){
     longitude: '',
   })
   const [editBranchForm, setEditBranchForm] = useState(null)
+  const [forceStructureSetup, setForceStructureSetup] = useState(false)
+  const [structurePrompted, setStructurePrompted] = useState(false)
+
+  // On org login: if no branches, prompt from Organisation Profile before Head Office setup.
+  useEffect(() => {
+    if(me?.role !== 'ORG') return
+    const hasBranches = Array.isArray(branches) && branches.length > 0
+    if(hasBranches){
+      setForceStructureSetup(false)
+      return
+    }
+    setForceStructureSetup(true)
+    if(structurePrompted) return
+    setStructurePrompted(true)
+    setActiveTab('structure')
+    setStructureTab('profile')
+    setNewBranchForm((p) => ({
+      ...p,
+      name: p.name || 'Head Office',
+    }))
+  }, [me?.role, branches, structurePrompted])
 
   useEffect(() => {
     if (!editBranch) {
@@ -261,7 +285,7 @@ export default function Dashboard(){
   useEffect(() => {
     if(activeTab !== 'structure') return
     if(me?.role === 'ORG'){
-      setStructureTab((t) => (t === 'profile' || t === 'branches' || t === 'departments' || t === 'units' || t === 'holidays' ? t : 'profile'))
+      setStructureTab('profile')
     }else if(me?.role === 'BRANCH'){
       setStructureTab((t) => (t === 'branch' || t === 'departments' || t === 'units' || t === 'holidays' ? t : 'branch'))
     }
@@ -1026,6 +1050,51 @@ export default function Dashboard(){
     const downloadCorpers = `/api/auth/reports/corpers/${qs}${qs ? '&' : '?'}format=csv`
     const downloadLogs = `/api/auth/reports/attendance/logs/${qs}${qs ? '&' : '?'}format=csv`
     const downloadExcel = `/api/auth/reports/attendance/export/${qs}`
+    const dailyRows = reportData?.daily?.rows || []
+    const corperRows = reportData?.corpers?.rows || []
+    const logRows = reportData?.logs?.rows || []
+    const hasReport = !!reportData
+    const summary = reportData?.daily?.summary || {}
+    const reportRange = {
+      start: summary.start || reportData?.corpers?.summary?.start || reportStart || '',
+      end: summary.end || reportData?.corpers?.summary?.end || reportEnd || '',
+    }
+    const totalCheckins = Number(summary.total_checkins ?? dailyRows.reduce((sum, r) => sum + Number(r.checkins || 0), 0))
+    const totalHours = Number(summary.total_hours ?? dailyRows.reduce((sum, r) => sum + Number(r.hours || 0), 0))
+    const totalAbsent = corperRows.reduce((sum, r) => sum + Number(r.absent_days || 0), 0)
+    const totalLate = corperRows.reduce((sum, r) => sum + Number(r.late_days || 0), 0)
+
+    function inputDate(date){
+      const pad = (n) => String(n).padStart(2, '0')
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    }
+
+    function displayDate(value){
+      if(!value) return 'Not set'
+      try{
+        const d = new Date(`${value}T00:00:00`)
+        if(Number.isNaN(d.getTime())) return value
+        return d.toLocaleDateString(undefined, { month: 'short', day: '2-digit', year: 'numeric' })
+      }catch(e){
+        return value
+      }
+    }
+
+    function setReportPreset(kind){
+      const end = new Date()
+      const start = new Date(end)
+      if(kind === 'today'){
+        // same day
+      }else if(kind === 'last7'){
+        start.setDate(end.getDate() - 6)
+      }else if(kind === 'month'){
+        start.setDate(1)
+      }else{
+        start.setDate(end.getDate() - 29)
+      }
+      setReportStart(inputDate(start))
+      setReportEnd(inputDate(end))
+    }
 
     async function downloadViaApi(path, fallbackName){
       try{
@@ -1047,24 +1116,68 @@ export default function Dashboard(){
         setReportStatus('error')
       }
     }
+
+    async function generateReport(){
+      setReportStatus('pending')
+      try{
+        const [daily, corp, logs] = await Promise.all([
+          api.get(`/api/auth/reports/attendance/${qs}`),
+          api.get(`/api/auth/reports/corpers/${qs}`),
+          api.get(`/api/auth/reports/attendance/logs/${qs}`),
+        ])
+        setReportData({ daily: daily.data, corpers: corp.data, logs: logs.data })
+        setReportStatus('success')
+        await downloadViaApi(downloadExcel, 'attendance_report.xlsx')
+      }catch(e){
+        setReportStatus('error')
+      }
+    }
+
     return (
       <>
-        <h2 className="mb-3 text-olive">Reports</h2>
-        <div className="card shadow-sm dash-card">
+        <div className="dash-section-head mb-3">
+          <div>
+            <h2 className="mb-1 text-olive">Reports</h2>
+            <div className="text-muted small">Review attendance performance, export clean records, and audit daily logs.</div>
+          </div>
+          {hasReport && (
+            <div className="small text-muted text-md-end">
+              {displayDate(reportRange.start)} - {displayDate(reportRange.end)}
+            </div>
+          )}
+        </div>
+
+        <div className="card shadow-sm dash-card mb-3">
           <div className="card-body">
-            <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+            <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
               <div>
-                <div className="dash-card-title mb-0">Attendance Report</div>
-                <div className="small text-muted">Generate check-ins and hours summary for a date range.</div>
+                <div className="dash-card-title mb-1">Attendance Report</div>
+                <div className="small text-muted">Choose a period, generate the report, then export daily, corper, logs, or full Excel workbook.</div>
               </div>
-              <div className="d-flex gap-2 flex-wrap">
-                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>downloadViaApi(downloadDaily, 'daily.csv')}>Daily CSV</button>
-                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>downloadViaApi(downloadCorpers, 'corpers.csv')}>Corpers CSV</button>
-                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>downloadViaApi(downloadLogs, 'logs.csv')}>Logs CSV</button>
-                <button className="btn btn-outline-secondary btn-sm" type="button" onClick={()=>downloadViaApi(downloadExcel, 'attendance_report.xlsx')}>Excel</button>
+              <div className="d-flex gap-2 flex-wrap justify-content-end">
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadDaily, 'daily.csv')}>
+                  <Download size={15} /> Daily CSV
+                </button>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadCorpers, 'corpers.csv')}>
+                  <Download size={15} /> Corpers CSV
+                </button>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadLogs, 'logs.csv')}>
+                  <Download size={15} /> Logs CSV
+                </button>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadExcel, 'attendance_report.xlsx')}>
+                  <FileSpreadsheet size={15} /> Excel
+                </button>
               </div>
             </div>
-            <div className="row g-2 mt-3 align-items-end">
+
+            <div className="d-flex flex-wrap gap-2 mt-3">
+              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setReportPreset('today')}>Today</button>
+              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setReportPreset('last7')}>Last 7 days</button>
+              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setReportPreset('last30')}>Last 30 days</button>
+              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setReportPreset('month')}>This month</button>
+            </div>
+
+            <div className="row g-2 mt-2 align-items-end">
               <div className="col-12 col-md-3">
                 <label className="form-label">Start</label>
                 <input className="form-control" type="date" value={reportStart} onChange={(e)=>setReportStart(e.target.value)} />
@@ -1073,48 +1186,116 @@ export default function Dashboard(){
                 <label className="form-label">End</label>
                 <input className="form-control" type="date" value={reportEnd} onChange={(e)=>setReportEnd(e.target.value)} />
               </div>
-              <div className="col-12 col-md-2 d-grid">
-                <button className="btn btn-olive" type="button" onClick={async()=>{
-                  setReportStatus('pending')
-                  try{
-                    const [daily, corp, logs] = await Promise.all([
-                      api.get(`/api/auth/reports/attendance/${qs}`),
-                      api.get(`/api/auth/reports/corpers/${qs}`),
-                      api.get(`/api/auth/reports/attendance/logs/${qs}`),
-                    ])
-                    setReportData({ daily: daily.data, corpers: corp.data, logs: logs.data })
-                    setReportStatus('success')
-                    await downloadViaApi(downloadExcel, 'attendance_report.xlsx')
-                  }catch(e){
-                    setReportStatus('error')
-                  }
-                }}>Generate</button>
+              <div className="col-12 col-md-3 d-grid">
+                <button className="btn btn-olive d-inline-flex align-items-center justify-content-center gap-2" type="button" disabled={reportStatus==='pending'} onClick={generateReport}>
+                  {reportStatus==='pending' ? <RefreshCw size={16} className="spin-icon" /> : <FileSpreadsheet size={16} />}
+                  {reportStatus==='pending' ? 'Generating...' : 'Generate Excel'}
+                </button>
               </div>
             </div>
 
             {reportStatus==='error' && <AutoFadeAlert type="danger" onClose={()=>setReportStatus(null)}>Failed to generate report.</AutoFadeAlert>}
+            {reportStatus==='success' && <AutoFadeAlert type="success" onClose={()=>setReportStatus(null)}>Report generated and Excel download started.</AutoFadeAlert>}
+          </div>
+        </div>
 
-            {reportData?.daily?.rows && (
-              <div className="table-responsive mt-3">
-                <table className="table table-sm align-middle dash-table">
-                  <thead><tr><th>Date</th><th className="text-end">Check-ins</th><th className="text-end">Hours</th></tr></thead>
+        {hasReport && (
+          <div className="row g-3 mb-3">
+            <div className="col-6 col-xl-3">
+              <div className="dash-kpi h-100">
+                <div className="dash-kpi-icon"><CalendarCheck2 size={18} /></div>
+                <div>
+                  <div className="dash-kpi-label">Check-ins</div>
+                  <div className="dash-kpi-value">{totalCheckins.toLocaleString()}</div>
+                </div>
+              </div>
+            </div>
+            <div className="col-6 col-xl-3">
+              <div className="dash-kpi h-100">
+                <div className="dash-kpi-icon"><BarChart3 size={18} /></div>
+                <div>
+                  <div className="dash-kpi-label">Hours</div>
+                  <div className="dash-kpi-value">{totalHours.toLocaleString(undefined, { maximumFractionDigits: 1 })}</div>
+                </div>
+              </div>
+            </div>
+            <div className="col-6 col-xl-3">
+              <div className="dash-kpi h-100">
+                <div className="dash-kpi-icon"><Users size={18} /></div>
+                <div>
+                  <div className="dash-kpi-label">Corpers</div>
+                  <div className="dash-kpi-value">{corperRows.length.toLocaleString()}</div>
+                </div>
+              </div>
+            </div>
+            <div className="col-6 col-xl-3">
+              <div className="dash-kpi h-100">
+                <div className="dash-kpi-icon"><FileText size={18} /></div>
+                <div>
+                  <div className="dash-kpi-label">Absence / Late</div>
+                  <div className="dash-kpi-value">{totalAbsent.toLocaleString()} / {totalLate.toLocaleString()}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!hasReport && (
+          <div className="dash-preview-empty" style={{height: 150}}>
+            Generate a report to preview daily totals, corper summaries, and raw attendance logs.
+          </div>
+        )}
+
+        {dailyRows.length > 0 && (
+          <div className="card shadow-sm dash-card mb-3">
+            <div className="card-body">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+                <div>
+                  <div className="dash-card-title mb-0">Daily Summary</div>
+                  <div className="small text-muted">{dailyRows.length} day(s) in range</div>
+                </div>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadDaily, 'daily.csv')}>
+                  <Download size={15} /> Export
+                </button>
+              </div>
+              <div className="table-responsive">
+                <table className="table table-sm align-middle dash-table dash-table-auto mb-0">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th className="text-end">Check-ins</th>
+                      <th className="text-end">Hours</th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    {reportData.daily.rows.map(r => (
+                    {dailyRows.map(r => (
                       <tr key={r.date}>
-                        <td>{r.date}</td>
+                        <td>{displayDate(r.date)}</td>
                         <td className="text-end">{r.checkins}</td>
-                        <td className="text-end">{r.hours}</td>
+                        <td className="text-end">{Number(r.hours || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
+            </div>
+          </div>
+        )}
 
-            {reportData?.corpers?.rows && (
-              <div className="table-responsive mt-3">
-                <div className="dash-card-title mb-2">Corpers Report</div>
-                <table className="table table-sm align-middle dash-table">
+        {corperRows.length > 0 && (
+          <div className="card shadow-sm dash-card mb-3">
+            <div className="card-body">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+                <div>
+                  <div className="dash-card-title mb-0">Corpers Report</div>
+                  <div className="small text-muted">Presence, absence, lateness, and hours by corper</div>
+                </div>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadCorpers, 'corpers.csv')}>
+                  <Download size={15} /> Export
+                </button>
+              </div>
+              <div className="table-responsive">
+                <table className="table table-sm align-middle dash-table dash-table-auto mb-0">
                   <thead>
                     <tr>
                       <th>Corper</th>
@@ -1128,7 +1309,7 @@ export default function Dashboard(){
                     </tr>
                   </thead>
                   <tbody>
-                    {reportData.corpers.rows.map(r => (
+                    {corperRows.map(r => (
                       <tr key={r.corper_id}>
                         <td><div className="text-truncate dash-td-truncate-wide">{r.full_name}</div></td>
                         <td>{r.state_code}</td>
@@ -1137,23 +1318,44 @@ export default function Dashboard(){
                         <td className="text-end">{r.present_days}</td>
                         <td className="text-end">{r.absent_days}</td>
                         <td className="text-end">{r.late_days}</td>
-                        <td className="text-end">{r.hours}</td>
+                        <td className="text-end">{Number(r.hours || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
+            </div>
+          </div>
+        )}
 
-            {reportData?.logs?.rows && (
-              <div className="table-responsive mt-3">
-                <div className="dash-card-title mb-2">Row Attendance Logs</div>
-                <table className="table table-sm align-middle dash-table">
-                  <thead><tr><th>Date</th><th>Corper</th><th>State Code</th><th>Branch</th><th>Time in</th><th>Time out</th></tr></thead>
+        {logRows.length > 0 && (
+          <div className="card shadow-sm dash-card">
+            <div className="card-body">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+                <div>
+                  <div className="dash-card-title mb-0">Attendance Logs</div>
+                  <div className="small text-muted">{logRows.length} raw record(s)</div>
+                </div>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadLogs, 'logs.csv')}>
+                  <Download size={15} /> Export
+                </button>
+              </div>
+              <div className="table-responsive">
+                <table className="table table-sm align-middle dash-table dash-table-auto mb-0">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Corper</th>
+                      <th>State Code</th>
+                      <th>Branch</th>
+                      <th>Time in</th>
+                      <th>Time out</th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    {reportData.logs.rows.map((r, idx) => (
+                    {logRows.map((r, idx) => (
                       <tr key={`${r.date}-${idx}`}>
-                        <td>{r.date}</td>
+                        <td>{displayDate(r.date)}</td>
                         <td><div className="text-truncate dash-td-truncate-wide">{r.full_name}</div></td>
                         <td>{r.state_code}</td>
                         <td><div className="text-truncate dash-td-truncate">{r.branch || '—'}</div></td>
@@ -1164,9 +1366,9 @@ export default function Dashboard(){
                   </tbody>
                 </table>
               </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
       </>
     )
   }
@@ -1627,6 +1829,28 @@ export default function Dashboard(){
           {activeTab==='structure' && me?.role==='ORG' && (
             <>
               <h2 className="mb-3 text-olive">Structure</h2>
+              {forceStructureSetup && (
+                <div className="alert alert-warning">
+                  <div className="fw-semibold">Please complete your organisation setup</div>
+                  <div className="small">
+                    Start with your organisation profile, then create your Head Office and assign an admin for daily attendance operations.
+                  </div>
+                  <div className="small mt-1">
+                    Flow: update profile, create Head Office, assign admin, admin verifies email, then add departments, units, and corpers.
+                  </div>
+                  <div className="mt-2 d-flex gap-2 flex-wrap">
+                    <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowEditProfile(true)}>
+                      Review Profile
+                    </button>
+                    <button className="btn btn-sm btn-olive" type="button" onClick={()=>{
+                      setNewBranchForm((p) => ({ ...p, name: p.name || 'Head Office' }))
+                      setShowAddBranch(true)
+                    }}>
+                      Create Head Office
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="dash-struct-nav mb-3">
                 <button className={`dash-struct-item ${structureTab==='profile'?'active':''}`} type="button" onClick={()=>setStructureTab('profile')}>Organisation Profile</button>
@@ -2138,21 +2362,33 @@ export default function Dashboard(){
               </div>
 
               {showAddBranch && (
-                <div className="dash-modal" onClick={() => setShowAddBranch(false)}>
+                <div
+                  className="dash-modal"
+                  onClick={() => {
+                    setShowAddBranch(false)
+                  }}
+                >
                   <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
                     <div className="dash-modal-head">
-                      <strong>Add Branch</strong>
-                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddBranch(false)}>Close</button>
+                      <strong>{forceStructureSetup ? 'Create Head Office' : 'Add Branch'}</strong>
+                      <button
+                        className="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        onClick={() => setShowAddBranch(false)}
+                      >
+                        Close
+                      </button>
                     </div>
                     <div className="dash-modal-body">
                       <div className="dash-modal-grid">
                         <div className="dash-modal-help">
                           <h6>How it works</h6>
-                          <p>Create a branch office so you can group departments, units, and corps members.</p>
+                          <p>Create your Head Office (HQ) first so you can complete setup and start adding corpers.</p>
                           <ul>
-                            <li>Optionally invite an admin by email.</li>
-                            <li>Set coordinates if you use location-based attendance.</li>
-                            <li>You can edit details later from the table.</li>
+                            <li>Create “Head Office” (or any HQ name you prefer).</li>
+                            <li>Assign an admin by name and email.</li>
+                            <li>Admin verifies email → sets password → manages daily operations.</li>
+                            <li>Set the required coordinates for attendance verification.</li>
                           </ul>
                         </div>
                         <div className="dash-modal-form">
@@ -2169,6 +2405,7 @@ export default function Dashboard(){
                                 await refreshAll()
                                 setStatus('saved:branch')
                                 setShowAddBranch(false)
+                                setForceStructureSetup(false)
                                 setNewBranchForm({
                                   name: '',
                                   address: '',
@@ -2209,7 +2446,8 @@ export default function Dashboard(){
                                   className="form-control"
                                   value={newBranchForm.admin_name}
                                   onChange={(e) => setNewBranchForm((p) => ({ ...p, admin_name: e.target.value }))}
-                                  placeholder="Optional"
+                                  placeholder={forceStructureSetup ? 'Required' : 'Optional'}
+                                  required={forceStructureSetup}
                                 />
                               </div>
                               <div className="col-md-5">
@@ -2219,7 +2457,8 @@ export default function Dashboard(){
                                   type="email"
                                   value={newBranchForm.admin_email}
                                   onChange={(e) => setNewBranchForm((p) => ({ ...p, admin_email: e.target.value }))}
-                                  placeholder="Optional"
+                                  placeholder={forceStructureSetup ? 'Required' : 'Optional'}
+                                  required={forceStructureSetup}
                                 />
                               </div>
                               <div className="col-md-3">
@@ -2471,7 +2710,7 @@ export default function Dashboard(){
                           <ul>
                             <li>Set late/closing times and thresholds.</li>
                             <li>Upload logo/signature used on letters.</li>
-                            <li>Set coordinates for location controls.</li>
+                            <li>Attendance coordinates are completed on Head Office and branch records.</li>
                           </ul>
                         </div>
                         <div className="dash-modal-form">
@@ -3303,7 +3542,7 @@ export default function Dashboard(){
                             <div className="dash-modal-grid">
                               <div className="dash-modal-help">
                                 <h6>Flow</h6>
-                                <p>Admins can update branch coordinates for location-based attendance.</p>
+                                <p>Admins can update the branch coordinates used for attendance verification.</p>
                                 <ul>
                                   <li>Click on the map to set a pin.</li>
                                   <li>Use the 📍 control for current location.</li>
