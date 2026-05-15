@@ -69,6 +69,7 @@ export default function Dashboard(){
   const [reportEnd, setReportEnd] = useState('')
   const [reportData, setReportData] = useState(null)
   const [reportStatus, setReportStatus] = useState(null)
+  const [reportMessage, setReportMessage] = useState('')
   const [perf, setPerf] = useState(null)
   // Local helpers for enroll form filtering
   const [enrollBranch, setEnrollBranch] = useState('')
@@ -332,10 +333,6 @@ export default function Dashboard(){
     }
     if(me?.role === 'BRANCH'){
       // Branch sees their own branch queries; badge indicates anything still OPEN
-      return list.filter(q => q.status === 'OPEN').length
-    }
-    if(me?.role === 'ORG'){
-      // ORG no longer has a query section, but should still see pending items in Notifications
       return list.filter(q => q.status === 'OPEN').length
     }
     return 0
@@ -1046,9 +1043,9 @@ export default function Dashboard(){
     if(reportStart) qp.push(`start=${encodeURIComponent(reportStart)}`)
     if(reportEnd) qp.push(`end=${encodeURIComponent(reportEnd)}`)
     const qs = qp.length ? `?${qp.join('&')}` : ''
-    const downloadDaily = `/api/auth/reports/attendance/${qs}${qs ? '&' : '?'}format=csv`
-    const downloadCorpers = `/api/auth/reports/corpers/${qs}${qs ? '&' : '?'}format=csv`
-    const downloadLogs = `/api/auth/reports/attendance/logs/${qs}${qs ? '&' : '?'}format=csv`
+    const dailyEndpoint = `/api/auth/reports/attendance/${qs}`
+    const corpersEndpoint = `/api/auth/reports/corpers/${qs}`
+    const logsEndpoint = `/api/auth/reports/attendance/logs/${qs}`
     const downloadExcel = `/api/auth/reports/attendance/export/${qs}`
     const dailyRows = reportData?.daily?.rows || []
     const corperRows = reportData?.corpers?.rows || []
@@ -1063,6 +1060,17 @@ export default function Dashboard(){
     const totalHours = Number(summary.total_hours ?? dailyRows.reduce((sum, r) => sum + Number(r.hours || 0), 0))
     const totalAbsent = corperRows.reduce((sum, r) => sum + Number(r.absent_days || 0), 0)
     const totalLate = corperRows.reduce((sum, r) => sum + Number(r.late_days || 0), 0)
+    const reportHasRecords = totalCheckins > 0 || logRows.length > 0
+
+    function reportErrorMessage(err){
+      const payload = err?.response?.data
+      if(typeof payload === 'string') return payload
+      if(payload?.detail) return String(payload.detail)
+      if(err?.response?.status === 403) return 'You do not have permission to generate this report.'
+      if(err?.response?.status === 404) return 'The report endpoint was not found. Please refresh and try again.'
+      if(err?.response?.status >= 500) return 'The server could not generate this report right now. Please try again later.'
+      return err?.message || 'Unable to generate the report. Please try again.'
+    }
 
     function inputDate(date){
       const pad = (n) => String(n).padStart(2, '0')
@@ -1097,6 +1105,7 @@ export default function Dashboard(){
     }
 
     async function downloadViaApi(path, fallbackName){
+      setReportMessage('')
       try{
         const res = await api.get(path, { responseType: 'blob' })
         const blob = new Blob([res.data], { type: res.headers?.['content-type'] || 'application/octet-stream' })
@@ -1114,22 +1123,129 @@ export default function Dashboard(){
         window.URL.revokeObjectURL(url)
       }catch(e){
         setReportStatus('error')
+        setReportMessage(reportErrorMessage(e))
+      }
+    }
+
+    function downloadTextFile(content, filename, type = 'text/csv;charset=utf-8'){
+      const blob = new Blob([content], { type })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    }
+
+    function csvCell(value){
+      const s = value === null || value === undefined ? '' : String(value)
+      return `"${s.replace(/"/g, '""')}"`
+    }
+
+    function csvFromRows(headers, rows){
+      return [
+        headers.map(h => csvCell(h.label)).join(','),
+        ...rows.map(row => headers.map(h => csvCell(row[h.key])).join(',')),
+      ].join('\n')
+    }
+
+    async function getReportRows(kind){
+      if(kind === 'daily'){
+        const existing = reportData?.daily?.rows
+        if(existing) return existing
+        const res = await api.get(dailyEndpoint)
+        return res.data?.rows || []
+      }
+      if(kind === 'corpers'){
+        const existing = reportData?.corpers?.rows
+        if(existing) return existing
+        const res = await api.get(corpersEndpoint)
+        return res.data?.rows || []
+      }
+      const existing = reportData?.logs?.rows
+      if(existing) return existing
+      const res = await api.get(logsEndpoint)
+      return res.data?.rows || []
+    }
+
+    async function downloadCsvReport(kind){
+      setReportMessage('')
+      try{
+        const rows = await getReportRows(kind)
+        if(!rows.length){
+          setReportStatus('empty')
+          setReportMessage('No records were found for this CSV export in the selected period.')
+          return
+        }
+        if(kind === 'daily'){
+          const headers = [
+            { key: 'date', label: 'date' },
+            { key: 'checkins', label: 'checkins' },
+          ]
+          downloadTextFile(csvFromRows(headers, rows), 'daily.csv')
+        }else if(kind === 'corpers'){
+          const headers = [
+            { key: 'full_name', label: 'full_name' },
+            { key: 'state_code', label: 'state_code' },
+            { key: 'email', label: 'email' },
+            { key: 'branch', label: 'branch' },
+            { key: 'department', label: 'department' },
+            { key: 'unit', label: 'unit' },
+            { key: 'working_days', label: 'working_days' },
+            { key: 'present_days', label: 'present_days' },
+            { key: 'absent_days', label: 'absent_days' },
+            { key: 'late_days', label: 'late_days' },
+            { key: 'hours', label: 'hours' },
+          ]
+          downloadTextFile(csvFromRows(headers, rows), 'corpers.csv')
+        }else{
+          const headers = [
+            { key: 'date', label: 'date' },
+            { key: 'time_in', label: 'time_in' },
+            { key: 'time_out', label: 'time_out' },
+            { key: 'full_name', label: 'full_name' },
+            { key: 'state_code', label: 'state_code' },
+            { key: 'branch', label: 'branch' },
+          ]
+          downloadTextFile(csvFromRows(headers, rows), 'logs.csv')
+        }
+        setReportStatus('success')
+        setReportMessage('CSV download started.')
+      }catch(e){
+        setReportStatus('error')
+        setReportMessage(reportErrorMessage(e))
       }
     }
 
     async function generateReport(){
       setReportStatus('pending')
+      setReportMessage('')
       try{
         const [daily, corp, logs] = await Promise.all([
-          api.get(`/api/auth/reports/attendance/${qs}`),
-          api.get(`/api/auth/reports/corpers/${qs}`),
-          api.get(`/api/auth/reports/attendance/logs/${qs}`),
+          api.get(dailyEndpoint),
+          api.get(corpersEndpoint),
+          api.get(logsEndpoint),
         ])
-        setReportData({ daily: daily.data, corpers: corp.data, logs: logs.data })
+        const nextReport = { daily: daily.data, corpers: corp.data, logs: logs.data }
+        const nextDailyRows = nextReport.daily?.rows || []
+        const nextLogRows = nextReport.logs?.rows || []
+        const nextSummary = nextReport.daily?.summary || {}
+        const nextCheckins = Number(nextSummary.total_checkins ?? nextDailyRows.reduce((sum, r) => sum + Number(r.checkins || 0), 0))
+        if(nextCheckins <= 0 && nextLogRows.length === 0){
+          setReportData(nextReport)
+          setReportStatus('empty')
+          setReportMessage('No attendance records were found for the selected period.')
+          return
+        }
+        setReportData(nextReport)
         setReportStatus('success')
+        setReportMessage('Report generated and Excel download started.')
         await downloadViaApi(downloadExcel, 'attendance_report.xlsx')
       }catch(e){
         setReportStatus('error')
+        setReportMessage(reportErrorMessage(e))
       }
     }
 
@@ -1155,13 +1271,13 @@ export default function Dashboard(){
                 <div className="small text-muted">Choose a period, generate the report, then export daily, corper, logs, or full Excel workbook.</div>
               </div>
               <div className="d-flex gap-2 flex-wrap justify-content-end">
-                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadDaily, 'daily.csv')}>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadCsvReport('daily')}>
                   <Download size={15} /> Daily CSV
                 </button>
-                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadCorpers, 'corpers.csv')}>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadCsvReport('corpers')}>
                   <Download size={15} /> Corpers CSV
                 </button>
-                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadLogs, 'logs.csv')}>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadCsvReport('logs')}>
                   <Download size={15} /> Logs CSV
                 </button>
                 <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadExcel, 'attendance_report.xlsx')}>
@@ -1194,12 +1310,19 @@ export default function Dashboard(){
               </div>
             </div>
 
-            {reportStatus==='error' && <AutoFadeAlert type="danger" onClose={()=>setReportStatus(null)}>Failed to generate report.</AutoFadeAlert>}
-            {reportStatus==='success' && <AutoFadeAlert type="success" onClose={()=>setReportStatus(null)}>Report generated and Excel download started.</AutoFadeAlert>}
+            {reportStatus==='error' && (
+              <AutoFadeAlert type="danger" onClose={()=>setReportStatus(null)}>{reportMessage || 'Unable to generate the report. Please try again.'}</AutoFadeAlert>
+            )}
+            {reportStatus==='empty' && (
+              <AutoFadeAlert type="warning" onClose={()=>setReportStatus(null)}>{reportMessage || 'No attendance records were found for the selected period.'}</AutoFadeAlert>
+            )}
+            {reportStatus==='success' && (
+              <AutoFadeAlert type="success" onClose={()=>setReportStatus(null)}>{reportMessage || 'Report generated and Excel download started.'}</AutoFadeAlert>
+            )}
           </div>
         </div>
 
-        {hasReport && (
+        {hasReport && reportHasRecords && (
           <div className="row g-3 mb-3">
             <div className="col-6 col-xl-3">
               <div className="dash-kpi h-100">
@@ -1240,9 +1363,9 @@ export default function Dashboard(){
           </div>
         )}
 
-        {!hasReport && (
+        {(!hasReport || (hasReport && !reportHasRecords)) && (
           <div className="dash-preview-empty" style={{height: 150}}>
-            Generate a report to preview daily totals, corper summaries, and raw attendance logs.
+            {hasReport ? 'No attendance records were found for the selected period.' : 'Generate a report to preview daily totals, corper summaries, and raw attendance logs.'}
           </div>
         )}
 
@@ -1254,7 +1377,7 @@ export default function Dashboard(){
                   <div className="dash-card-title mb-0">Daily Summary</div>
                   <div className="small text-muted">{dailyRows.length} day(s) in range</div>
                 </div>
-                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadDaily, 'daily.csv')}>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadCsvReport('daily')}>
                   <Download size={15} /> Export
                 </button>
               </div>
@@ -1264,7 +1387,6 @@ export default function Dashboard(){
                     <tr>
                       <th>Date</th>
                       <th className="text-end">Check-ins</th>
-                      <th className="text-end">Hours</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1272,7 +1394,6 @@ export default function Dashboard(){
                       <tr key={r.date}>
                         <td>{displayDate(r.date)}</td>
                         <td className="text-end">{r.checkins}</td>
-                        <td className="text-end">{Number(r.hours || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1290,7 +1411,7 @@ export default function Dashboard(){
                   <div className="dash-card-title mb-0">Corpers Report</div>
                   <div className="small text-muted">Presence, absence, lateness, and hours by corper</div>
                 </div>
-                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadCorpers, 'corpers.csv')}>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadCsvReport('corpers')}>
                   <Download size={15} /> Export
                 </button>
               </div>
@@ -1336,7 +1457,7 @@ export default function Dashboard(){
                   <div className="dash-card-title mb-0">Attendance Logs</div>
                   <div className="small text-muted">{logRows.length} raw record(s)</div>
                 </div>
-                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadViaApi(downloadLogs, 'logs.csv')}>
+                <button className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadCsvReport('logs')}>
                   <Download size={15} /> Export
                 </button>
               </div>
@@ -1693,6 +1814,7 @@ export default function Dashboard(){
                     </div>
                   </div>
 
+                  {me?.role === 'BRANCH' && (
                   <div className="card shadow-sm dash-card mb-3">
                     <div className="card-body">
                       <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
@@ -1738,6 +1860,7 @@ export default function Dashboard(){
                       </div>
                     </div>
                   </div>
+                  )}
                 </>
               )}
 
