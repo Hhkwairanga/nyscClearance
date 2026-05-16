@@ -37,7 +37,6 @@ body{ background-color:#f7f9f6; }
   background: rgba(255,255,255,.94);
   box-shadow: 0 24px 70px rgba(19,28,47,.10);
 }
-.app-loading-logo{ height:64px; width:auto; object-fit:contain; }
 .app-loading-title{
   font-size: 1.25rem;
   font-weight: 900;

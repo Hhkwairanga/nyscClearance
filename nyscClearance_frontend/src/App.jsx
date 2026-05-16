@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react'
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf, clearToken } from './api/axios'
+import { RefreshCw } from 'lucide-react'
 
 function AppLoadingScreen(){
   return (
     <div className="app-loading-screen">
       <div className="app-loading-card text-center">
-        <img src="/nyscclearance_logo.svg" alt="NYSC Clearance" className="app-loading-logo" />
+        <div className="dashboard-loading-icon mx-auto" aria-hidden>
+          <RefreshCw size={24} className="spin-icon" />
+        </div>
         <div className="app-loading-title mt-3">Preparing your workspace</div>
         <p className="text-muted small mb-3">Checking your session and loading the latest app version.</p>
         <div className="loading-progress" aria-hidden>

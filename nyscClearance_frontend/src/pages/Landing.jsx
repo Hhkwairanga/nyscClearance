@@ -105,12 +105,7 @@ export default function Landing() {
 
     async function loadPlans(){
       try{
-        const res = await api.get(`/api/auth/subscriptions/plans/?_=${Date.now()}`, {
-          headers: {
-            'Cache-Control': 'no-cache',
-            Pragma: 'no-cache',
-          },
-        })
+        const res = await api.get(`/api/auth/subscriptions/plans/?_=${Date.now()}`)
         const plans = res?.data?.plans
         if(active && Array.isArray(plans) && plans.length){
           setPricingPlans(plans)

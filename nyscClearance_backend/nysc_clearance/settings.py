@@ -183,6 +183,8 @@ CORS_ALLOWED_ORIGINS = FRONTEND_ORIGINS
 CSRF_TRUSTED_ORIGINS = _csv_env('DJANGO_CSRF_TRUSTED_ORIGINS', FRONTEND_ORIGINS)
 CORS_ALLOW_HEADERS = list(default_headers) + [
     'x-csrftoken',
+    'cache-control',
+    'pragma',
 ]
 CORS_ALLOW_CREDENTIALS = True
 

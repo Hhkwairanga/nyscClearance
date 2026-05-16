@@ -19,10 +19,6 @@ async function logoutServerSession(){
       method: 'POST',
       credentials: 'include',
       cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache',
-        Pragma: 'no-cache',
-      },
       signal: controller.signal,
     })
     return true
