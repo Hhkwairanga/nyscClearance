@@ -9,6 +9,9 @@ Core entities:
 - AttendanceLog: per-account daily attendance (time_in, time_out)
 - WalletAccount / WalletTransaction: simple wallet and transaction log
 - SystemSetting: singleton for welcome bonus, clearance fee, discounts, announcements
+- SubscriptionPlanSetting / OrganizationSubscription / SubscriptionPayment:
+  database-managed subscription pricing and billing records
+- ClearanceAccess: tracks monthly clearance access independent of wallet billing
 - PaystackConfig: active Paystack API keys storage (admin-managed)
 
 Conventions:
@@ -378,6 +381,121 @@ class PaystackConfig(models.Model):
 
     def __str__(self):
         return f"Paystack ({'active' if self.is_active else 'inactive'})"
+
+
+class SubscriptionPlanSetting(models.Model):
+    PLAN_CHOICES = (
+        ('STARTER', 'Starter'),
+        ('BASIC', 'Basic'),
+        ('PRO', 'Pro'),
+        ('ENTERPRISE', 'Enterprise'),
+    )
+
+    code = models.CharField(max_length=20, choices=PLAN_CHOICES, unique=True)
+    name = models.CharField(max_length=80)
+    corper_min = models.PositiveIntegerField(default=0)
+    corper_max = models.PositiveIntegerField(null=True, blank=True)
+    monthly_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    yearly_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    discount_enabled = models.BooleanField(default=False)
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('sort_order', 'id')
+        verbose_name = 'Subscription Plan Setting'
+        verbose_name_plural = 'Subscription Plan Settings'
+
+    def __str__(self):
+        return self.name or self.code
+
+
+class OrganizationSubscription(models.Model):
+    STATUS_CHOICES = (
+        ('ACTIVE', 'Active'),
+        ('EXPIRED', 'Expired'),
+        ('CANCELLED', 'Cancelled'),
+    )
+    BILLING_CHOICES = (
+        ('MONTHLY', 'Monthly'),
+        ('YEARLY', 'Yearly'),
+    )
+
+    org = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='subscription')
+    plan = models.ForeignKey(SubscriptionPlanSetting, on_delete=models.PROTECT, related_name='subscriptions')
+    plan_code = models.CharField(max_length=20)
+    plan_name = models.CharField(max_length=80)
+    billing_cycle = models.CharField(max_length=10, choices=BILLING_CHOICES, default='MONTHLY')
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='ACTIVE')
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    starts_at = models.DateTimeField()
+    expires_at = models.DateTimeField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-updated_at',)
+
+    def __str__(self):
+        return f"{self.org.email} - {self.plan_name} ({self.status})"
+
+
+class SubscriptionPayment(models.Model):
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('SUCCESS', 'Success'),
+        ('FAILED', 'Failed'),
+    )
+    BILLING_CHOICES = OrganizationSubscription.BILLING_CHOICES
+
+    org = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='subscription_payments')
+    plan = models.ForeignKey(SubscriptionPlanSetting, on_delete=models.PROTECT, related_name='payments')
+    plan_code = models.CharField(max_length=20)
+    plan_name = models.CharField(max_length=80)
+    billing_cycle = models.CharField(max_length=10, choices=BILLING_CHOICES, default='MONTHLY')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    amount_charged = models.DecimalField(max_digits=12, decimal_places=2)
+    reference = models.CharField(max_length=64, unique=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    raw_response = models.JSONField(default=dict, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-created_at', '-id')
+
+    def __str__(self):
+        return f"{self.plan_name} {self.billing_cycle} {self.reference}"
+
+
+class ClearanceAccess(models.Model):
+    SOURCE_CHOICES = (
+        ('SUBSCRIPTION', 'Subscription'),
+        ('ORG_WALLET', 'Organization Wallet'),
+        ('BRANCH_WALLET', 'Admin Wallet'),
+        ('CORPER_WALLET', 'Corper Wallet'),
+        ('EXISTING_WALLET_CHARGE', 'Existing Wallet Charge'),
+    )
+
+    corper = models.ForeignKey('accounts.CorpMember', on_delete=models.CASCADE, related_name='clearance_accesses')
+    org = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='clearance_accesses')
+    branch = models.ForeignKey(BranchOffice, on_delete=models.SET_NULL, null=True, blank=True, related_name='clearance_accesses')
+    reference = models.CharField(max_length=64, unique=True)
+    year_month = models.CharField(max_length=6, db_index=True)
+    source = models.CharField(max_length=24, choices=SOURCE_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at', '-id')
+        unique_together = ('corper', 'year_month')
+        verbose_name = 'Clearance Access'
+        verbose_name_plural = 'Clearance Accesses'
+
+    def __str__(self):
+        return f"{self.corper.state_code} {self.year_month} via {self.source}"
 
 
 class ClearanceOverride(models.Model):

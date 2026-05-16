@@ -45,6 +45,7 @@ import face_recognition
 import hmac
 import hashlib
 import json
+from datetime import timedelta
 
 from .serializers import (
     OrganizationRegisterSerializer,
@@ -63,6 +64,7 @@ from .tokens import validate_email_token, generate_email_token
 from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog, WalletAccount, WalletTransaction, ClearanceOverride, TempFaceEncoding
 from .models import QueryRecord
 from .models import NationalHoliday
+from .models import SubscriptionPlanSetting, OrganizationSubscription, SubscriptionPayment, ClearanceAccess
 from .services.holidays import ensure_national_holidays, is_holiday_for_org, working_days
 from django.db.models import Count
 from django.db import models
@@ -1669,9 +1671,10 @@ def performance_clearance_page(request):
 
     # Eligibility check: previous month lateness/absence vs org thresholds
     # Skip this check if it's the corper's first clearance (no prior clearance debits found)
-    is_first_clearance = not WalletTransaction.objects.filter(
-        type='DEBIT', reference__startswith=f"NYSC-{cm.state_code}-"
-    ).exists()
+    is_first_clearance = (
+        not _clearance_access_exists(cm) and
+        not WalletTransaction.objects.filter(type='DEBIT', reference__startswith=f"NYSC-{cm.state_code}-").exists()
+    )
     # Also skip penalty if the corper was enrolled after the clearance month started.
     enrolled_after_start = False
     try:
@@ -1728,63 +1731,19 @@ def performance_clearance_page(request):
                 'contact_url': f'{frontend_base}/dashboard',
             }, status=403)
 
-    # Ensure wallet and charge once per corper per month on first view
-    charged = False
+    # Authorize clearance once per corper per month:
+    # subscription coverage first, then org wallet, admin wallet, and corper wallet.
     try:
-        _ensure_wallet_with_welcome(cm.user)
-        def _charge_clearance_if_needed(org_user, reference):
-            # Avoid double-charging: check any of the wallets already charged with this reference
-            exists = WalletTransaction.objects.filter(reference=reference[:64], type='DEBIT').exists()
-            if not exists:
-                # Base amount from System Settings (fallback to constant)
-                try:
-                    from .models import SystemSetting
-                    settings = SystemSetting.current()
-                    amount = settings.clearance_fee or CLEARANCE_FEE
-                except Exception:
-                    amount = CLEARANCE_FEE
-                # Apply discount if enabled in SystemSetting
-                try:
-                    if getattr(settings, 'discount_enabled', False):
-                        pct = Decimal(str(settings.discount_percent or '0'))
-                        if pct > 0:
-                            amount = (amount * (Decimal('100') - pct) / Decimal('100')).quantize(Decimal('0.01'))
-                except Exception:
-                    pass
-                vat = (amount * VAT_RATE).quantize(Decimal('0.01'))
-                total = amount + vat
-                # Attempt in order: org -> branch -> corper
-                branch_user = getattr(cm.branch, 'admin', None)
-                corper_user = request.user
-
-                def try_debit(user, desc):
-                    if not user:
-                        return False
-                    acct = _ensure_wallet_with_welcome(user)
-                    if (acct.balance or Decimal('0.00')) >= total:
-                        WalletTransaction.objects.create(
-                            account=acct,
-                            type='DEBIT',
-                            amount=amount,
-                            vat_amount=vat,
-                            total_amount=total,
-                            description=desc,
-                            reference=reference[:64]
-                        )
-                        acct.balance = acct.balance - total
-                        acct.save(update_fields=['balance'])
-                        return True
-                    return False
-
-                return (
-                    try_debit(org_user, 'Clearance view charge (org)') or
-                    try_debit(branch_user, 'Clearance view charge (branch)') or
-                    try_debit(corper_user, 'Clearance view charge (corper)')
-                )
-            return True
-        charged = _charge_clearance_if_needed(cm.user, ref_number)
+        charged, charge_reason, charge_source = _authorize_clearance_access(
+            cm,
+            request.user,
+            ref_number,
+            debit_label='Clearance view charge',
+        )
     except Exception:
         charged = False
+        charge_reason = 'We could not complete the clearance payment check. Please try again or contact support.'
+        charge_source = None
 
     if not charged:
         # Deny access nicely with a prompt to fund wallet
@@ -1797,7 +1756,8 @@ def performance_clearance_page(request):
         frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
 
         return render(request, 'clearance_payment_required.html', {
-            'reason': 'Insufficient wallet balance across organization, branch, and personal wallets.',
+            'reason': charge_reason,
+            'next_steps': 'Please ask your organization to renew or upgrade its subscription, or fund the organization, admin, or corper wallet and try again.',
             'fund_url': f'{frontend_base}/dashboard?fund=1',
             'dashboard_url': f'{frontend_base}/dashboard',
         }, status=402)
@@ -2674,6 +2634,14 @@ VAT_RATE = Decimal('0.075')  # 7.5%
 CLEARANCE_FEE = Decimal('300.00')
 
 
+def _format_ngn(amount):
+    try:
+        value = Decimal(str(amount or '0')).quantize(Decimal('0.01'))
+    except Exception:
+        value = Decimal('0.00')
+    return f"₦{value:,.2f}"
+
+
 def _ensure_wallet_with_welcome(user):
     acct, created = WalletAccount.objects.get_or_create(user=user)
     # Apply welcome bonus only for organization users
@@ -2696,6 +2664,123 @@ def _ensure_wallet_with_welcome(user):
             acct.balance = (acct.balance or Decimal('0.00')) + total
             acct.save(update_fields=['balance'])
     return acct
+
+
+def _clearance_year_month(reference):
+    ref = str(reference or '')
+    suffix = ref.rsplit('-', 1)[-1]
+    return suffix if len(suffix) == 6 and suffix.isdigit() else timezone.localdate().strftime('%Y%m')
+
+
+def _record_clearance_access(cm, reference, source):
+    return ClearanceAccess.objects.get_or_create(
+        corper=cm,
+        year_month=_clearance_year_month(reference),
+        defaults={
+            'org': cm.user,
+            'branch': cm.branch,
+            'reference': str(reference or '')[:64],
+            'source': source,
+        }
+    )
+
+
+def _clearance_access_exists(cm, reference=None):
+    qs = ClearanceAccess.objects.filter(corper=cm)
+    if reference:
+        return qs.filter(reference=str(reference)[:64]).exists()
+    return qs.exists()
+
+
+def _org_subscription_clearance_status(org_user):
+    subscription = OrganizationSubscription.objects.filter(org=org_user).select_related('plan').first()
+    if not subscription:
+        return False, 'the organization does not have an active subscription'
+    if subscription.status != 'ACTIVE':
+        return False, f"the organization subscription is {subscription.status.lower()}"
+    if subscription.expires_at and subscription.expires_at < timezone.now():
+        subscription.status = 'EXPIRED'
+        subscription.save(update_fields=['status', 'updated_at'])
+        return False, 'the organization subscription has expired'
+    plan = subscription.plan
+    if not plan or not plan.is_active:
+        return False, 'the organization subscription plan is not active'
+    corper_count = CorpMember.objects.filter(user=org_user).count()
+    if plan.corper_max is not None and corper_count > plan.corper_max:
+        return False, (
+            f"the organization has {corper_count} corpers, which exceeds the "
+            f"{plan.name} plan limit of {plan.corper_max}"
+        )
+    return True, f"covered by the active {subscription.plan_name} subscription"
+
+
+def _clearance_charge_amount():
+    from .models import SystemSetting
+    settings_obj = SystemSetting.current()
+    try:
+        amount = settings_obj.clearance_fee or CLEARANCE_FEE
+    except Exception:
+        amount = CLEARANCE_FEE
+    try:
+        if getattr(settings_obj, 'discount_enabled', False):
+            pct = Decimal(str(settings_obj.discount_percent or '0'))
+            if pct > 0:
+                amount = (amount * (Decimal('100') - pct) / Decimal('100')).quantize(Decimal('0.01'))
+    except Exception:
+        pass
+    vat = (amount * VAT_RATE).quantize(Decimal('0.01'))
+    total = amount + vat
+    return amount, vat, total
+
+
+def _authorize_clearance_access(cm, corper_user, reference, debit_label='Clearance download charge'):
+    ref = str(reference or '')[:64]
+    if not ref:
+        return False, 'Clearance reference is missing. Please refresh and try again.', None
+    if _clearance_access_exists(cm, ref):
+        return True, 'Clearance access already recorded.', 'EXISTING'
+    if WalletTransaction.objects.filter(reference=ref, type='DEBIT').exists():
+        _record_clearance_access(cm, ref, 'EXISTING_WALLET_CHARGE')
+        return True, 'Clearance access already paid.', 'EXISTING_WALLET_CHARGE'
+
+    subscription_ok, subscription_reason = _org_subscription_clearance_status(cm.user)
+    if subscription_ok:
+        _record_clearance_access(cm, ref, 'SUBSCRIPTION')
+        return True, subscription_reason, 'SUBSCRIPTION'
+
+    amount, vat, total = _clearance_charge_amount()
+    branch_user = getattr(cm.branch, 'admin', None)
+    debit_order = (
+        (cm.user, 'ORG_WALLET', f'{debit_label} (org)'),
+        (branch_user, 'BRANCH_WALLET', f'{debit_label} (admin)'),
+        (corper_user, 'CORPER_WALLET', f'{debit_label} (corper)'),
+    )
+
+    for user, source, description in debit_order:
+        if not user:
+            continue
+        acct = _ensure_wallet_with_welcome(user)
+        if (acct.balance or Decimal('0.00')) >= total:
+            WalletTransaction.objects.create(
+                account=acct,
+                type='DEBIT',
+                amount=amount,
+                vat_amount=vat,
+                total_amount=total,
+                description=description,
+                reference=ref
+            )
+            acct.balance = acct.balance - total
+            acct.save(update_fields=['balance'])
+            _record_clearance_access(cm, ref, source)
+            return True, f'Charged {description.lower()} successfully.', source
+
+    reason = (
+        f"Clearance is not covered by subscription because {subscription_reason}. "
+        f"Wallet fallback also failed because no organization, admin, or corper wallet "
+        f"has enough available balance for the clearance fee of {_format_ngn(total)}."
+    )
+    return False, reason, None
 
 
 class WalletView(APIView):
@@ -2855,53 +2940,16 @@ def wallet_charge_clearance(request):
     except Exception:
         payload = {}
     ref = payload.get('reference', '')
-
-    # Compute charge amount
-    from .models import SystemSetting
-    settings = SystemSetting.current()
-    try:
-        amount = settings.clearance_fee or CLEARANCE_FEE
-    except Exception:
-        amount = CLEARANCE_FEE
-    if getattr(settings, 'discount_enabled', False):
-        try:
-            pct = Decimal(str(settings.discount_percent or '0'))
-            if pct > 0:
-                amount = (amount * (Decimal('100') - pct) / Decimal('100')).quantize(Decimal('0.01'))
-        except Exception:
-            pass
-    vat = (amount * VAT_RATE).quantize(Decimal('0.01'))
-    total = amount + vat
-
-    # Try charge from ORG -> BRANCH -> CORPER wallet
-    org_user = cm.user
-    branch_user = getattr(cm.branch, 'admin', None)
-    corper_user = request.user
-
-    def try_debit(user, description):
-        if not user:
-            return False
-        acct = _ensure_wallet_with_welcome(user)
-        if (acct.balance or Decimal('0.00')) >= total:
-            WalletTransaction.objects.create(
-                account=acct,
-                type='DEBIT',
-                amount=amount,
-                vat_amount=vat,
-                total_amount=total,
-                description=description,
-                reference=ref[:64]
-            )
-            acct.balance = acct.balance - total
-            acct.save(update_fields=['balance'])
-            return True
-        return False
-
-    if try_debit(org_user, 'Clearance download charge (org)') or \
-       try_debit(branch_user, 'Clearance download charge (branch)') or \
-       try_debit(corper_user, 'Clearance download charge (corper)'):
-        return JsonResponse({'status': 'charged'})
-    return JsonResponse({'status': 'insufficient', 'detail': 'Insufficient funds. Please fund your wallet or contact branch admin.'}, status=402)
+    ok, reason, source = _authorize_clearance_access(
+        cm,
+        request.user,
+        ref,
+        debit_label='Clearance download charge',
+    )
+    if ok:
+        status_value = 'covered' if source == 'SUBSCRIPTION' else 'charged'
+        return JsonResponse({'status': status_value, 'source': source, 'detail': reason})
+    return JsonResponse({'status': 'insufficient', 'detail': reason}, status=402)
 
 
 class AnnouncementView(APIView):
@@ -2987,7 +3035,10 @@ class ClearanceStatusView(APIView):
                     if lg.date in work_set and lg.time_in and lg.time_in > late_time:
                         late += 1
             absent = max(0, len(work_days) - present)
-            is_first = not WalletTransaction.objects.filter(type='DEBIT', reference__startswith=f"NYSC-{cm.state_code}-").exists()
+            is_first = (
+                not _clearance_access_exists(cm) and
+                not WalletTransaction.objects.filter(type='DEBIT', reference__startswith=f"NYSC-{cm.state_code}-").exists()
+            )
             # If corper was enrolled after the clearance month started, do not penalize them for missing days.
             enrolled_after_start = False
             try:
@@ -2999,7 +3050,11 @@ class ClearanceStatusView(APIView):
             exceeded_abs = (max_absent is not None and absent > (max_absent or 0))
             exceeded_late = (max_late is not None and late > (max_late or 0))
             qualified = is_first or override or enrolled_after_start or (not exceeded_abs and not exceeded_late)
-            downloaded = WalletTransaction.objects.filter(type='DEBIT', reference=f"NYSC-{cm.state_code}-{yyyymm}").exists()
+            reference = f"NYSC-{cm.state_code}-{yyyymm}"
+            downloaded = (
+                ClearanceAccess.objects.filter(corper=cm, reference=reference[:64]).exists() or
+                WalletTransaction.objects.filter(type='DEBIT', reference=reference).exists()
+            )
             results.append({
                 'id': cm.id,
                 'full_name': cm.full_name,
@@ -3010,7 +3065,7 @@ class ClearanceStatusView(APIView):
                 'qualified': qualified,
                 'downloaded': downloaded,
                 'override': override,
-                'reference': f"NYSC-{cm.state_code}-{yyyymm}",
+                'reference': reference,
             })
         return Response(results)
 
@@ -3055,6 +3110,331 @@ class WalletFundView(APIView):
         return Response({'detail': 'Use /api/auth/wallet/paystack/initialize and verify'}, status=202)
 
 
+SUBSCRIPTION_PLAN_DEFAULTS = [
+    {
+        'code': 'STARTER',
+        'name': 'Starter',
+        'corper_min': 0,
+        'corper_max': 10,
+        'monthly_price': Decimal('0.00'),
+        'yearly_price': Decimal('0.00'),
+        'sort_order': 1,
+    },
+    {
+        'code': 'BASIC',
+        'name': 'Basic',
+        'corper_min': 10,
+        'corper_max': 50,
+        'monthly_price': Decimal('25000.00'),
+        'yearly_price': Decimal('258000.00'),
+        'sort_order': 2,
+    },
+    {
+        'code': 'PRO',
+        'name': 'Pro',
+        'corper_min': 50,
+        'corper_max': 100,
+        'monthly_price': Decimal('45000.00'),
+        'yearly_price': Decimal('510000.00'),
+        'sort_order': 3,
+    },
+    {
+        'code': 'ENTERPRISE',
+        'name': 'Enterprise',
+        'corper_min': 100,
+        'corper_max': None,
+        'monthly_price': Decimal('95000.00'),
+        'yearly_price': Decimal('999999.00'),
+        'sort_order': 4,
+    },
+]
+
+
+def _ensure_subscription_plans():
+    for cfg in SUBSCRIPTION_PLAN_DEFAULTS:
+        SubscriptionPlanSetting.objects.get_or_create(code=cfg['code'], defaults=cfg)
+
+
+def _money_value(value):
+    try:
+        return Decimal(str(value or '0')).quantize(Decimal('0.01'))
+    except Exception:
+        return Decimal('0.00')
+
+
+def _discounted_subscription_amount(plan, billing_cycle):
+    original = _money_value(plan.yearly_price if billing_cycle == 'YEARLY' else plan.monthly_price)
+    discount_amount = Decimal('0.00')
+    if getattr(plan, 'discount_enabled', False):
+        try:
+            pct = Decimal(str(plan.discount_percent or '0'))
+            if pct > 0:
+                discount_amount = (original * pct / Decimal('100')).quantize(Decimal('0.01'))
+        except Exception:
+            discount_amount = Decimal('0.00')
+    charged = max(Decimal('0.00'), (original - discount_amount).quantize(Decimal('0.01')))
+    return original, discount_amount, charged
+
+
+def _plan_range_label(plan):
+    if plan.corper_max is None:
+        return f"{plan.corper_min}+ corpers"
+    return f"{plan.corper_min}-{plan.corper_max} corpers"
+
+
+def _subscription_plan_payload(plan):
+    monthly_original, monthly_discount, monthly_charged = _discounted_subscription_amount(plan, 'MONTHLY')
+    yearly_original, yearly_discount, yearly_charged = _discounted_subscription_amount(plan, 'YEARLY')
+    return {
+        'id': plan.id,
+        'code': plan.code,
+        'name': plan.name,
+        'corper_min': plan.corper_min,
+        'corper_max': plan.corper_max,
+        'range_label': _plan_range_label(plan),
+        'monthly_price': str(monthly_charged),
+        'yearly_price': str(yearly_charged),
+        'original_monthly_price': str(monthly_original),
+        'original_yearly_price': str(yearly_original),
+        'monthly_discount_amount': str(monthly_discount),
+        'yearly_discount_amount': str(yearly_discount),
+        'discount_enabled': bool(plan.discount_enabled),
+        'discount_percent': str(plan.discount_percent or Decimal('0.00')),
+        'is_active': bool(plan.is_active),
+    }
+
+
+def _subscription_payload(subscription):
+    if not subscription:
+        return None
+    return {
+        'plan_code': subscription.plan_code,
+        'plan_name': subscription.plan_name,
+        'billing_cycle': subscription.billing_cycle,
+        'status': subscription.status,
+        'amount_paid': str(subscription.amount_paid),
+        'starts_at': subscription.starts_at.isoformat() if subscription.starts_at else None,
+        'expires_at': subscription.expires_at.isoformat() if subscription.expires_at else None,
+    }
+
+
+def _subscription_payment_payload(payment):
+    return {
+        'id': payment.id,
+        'plan_code': payment.plan_code,
+        'plan_name': payment.plan_name,
+        'billing_cycle': payment.billing_cycle,
+        'amount': str(payment.amount),
+        'discount_amount': str(payment.discount_amount),
+        'amount_charged': str(payment.amount_charged),
+        'reference': payment.reference,
+        'status': payment.status,
+        'paid_at': payment.paid_at.isoformat() if payment.paid_at else None,
+        'created_at': payment.created_at.isoformat() if payment.created_at else None,
+    }
+
+
+def _activate_subscription(payment, paid_at=None):
+    now = paid_at or timezone.now()
+    duration = timedelta(days=365 if payment.billing_cycle == 'YEARLY' else 30)
+    subscription, _ = OrganizationSubscription.objects.update_or_create(
+        org=payment.org,
+        defaults={
+            'plan': payment.plan,
+            'plan_code': payment.plan_code,
+            'plan_name': payment.plan_name,
+            'billing_cycle': payment.billing_cycle,
+            'status': 'ACTIVE',
+            'amount_paid': payment.amount_charged,
+            'starts_at': now,
+            'expires_at': now + duration,
+        }
+    )
+    return subscription
+
+
+class SubscriptionPlansView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        _ensure_subscription_plans()
+        plans = SubscriptionPlanSetting.objects.filter(is_active=True).order_by('sort_order', 'id')
+        return Response({'plans': [_subscription_plan_payload(plan) for plan in plans]})
+
+
+class SubscriptionStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if getattr(request.user, 'role', None) != 'ORG':
+            raise PermissionDenied('Only organizations can manage subscription')
+        _ensure_subscription_plans()
+        current = OrganizationSubscription.objects.filter(org=request.user).select_related('plan').first()
+        if current and current.status == 'ACTIVE' and current.expires_at and current.expires_at < timezone.now():
+            current.status = 'EXPIRED'
+            current.save(update_fields=['status', 'updated_at'])
+        payments = SubscriptionPayment.objects.filter(org=request.user).select_related('plan')[:50]
+        plans = SubscriptionPlanSetting.objects.filter(is_active=True).order_by('sort_order', 'id')
+        return Response({
+            'current': _subscription_payload(current),
+            'payments': [_subscription_payment_payload(payment) for payment in payments],
+            'plans': [_subscription_plan_payload(plan) for plan in plans],
+        })
+
+
+class SubscriptionInitializeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if getattr(request.user, 'role', None) != 'ORG':
+            raise PermissionDenied('Only organizations can start a subscription')
+        _ensure_subscription_plans()
+        data = request.data or {}
+        plan_code = str(data.get('plan') or '').strip().upper()
+        billing_cycle = str(data.get('billing_cycle') or data.get('cycle') or 'MONTHLY').strip().upper()
+        if billing_cycle not in ('MONTHLY', 'YEARLY'):
+            return Response({'detail': 'billing_cycle must be MONTHLY or YEARLY'}, status=400)
+        plan = SubscriptionPlanSetting.objects.filter(code=plan_code, is_active=True).first()
+        if not plan:
+            return Response({'detail': 'Subscription plan not found'}, status=404)
+
+        original, discount_amount, charged = _discounted_subscription_amount(plan, billing_cycle)
+        reference = f"SUB-{request.user.id}-{uuid.uuid4().hex[:18]}".upper()
+        payment = SubscriptionPayment.objects.create(
+            org=request.user,
+            plan=plan,
+            plan_code=plan.code,
+            plan_name=plan.name,
+            billing_cycle=billing_cycle,
+            amount=original,
+            discount_amount=discount_amount,
+            amount_charged=charged,
+            reference=reference,
+            status='PENDING',
+        )
+        if charged <= 0:
+            payment.status = 'SUCCESS'
+            payment.paid_at = timezone.now()
+            payment.raw_response = {'free_plan': True}
+            payment.save(update_fields=['status', 'paid_at', 'raw_response', 'updated_at'])
+            subscription = _activate_subscription(payment, payment.paid_at)
+            return Response({
+                'status': 'success',
+                'free': True,
+                'reference': payment.reference,
+                'subscription': _subscription_payload(subscription),
+            })
+
+        try:
+            from .utils import get_paystack_keys
+            keys = get_paystack_keys()
+        except Exception as e:
+            payment.status = 'FAILED'
+            payment.raw_response = {'error': str(e)}
+            payment.save(update_fields=['status', 'raw_response', 'updated_at'])
+            return Response({'detail': str(e)}, status=400)
+
+        payload = {
+            'email': getattr(request.user, 'email', ''),
+            'amount': int(charged * Decimal('100')),
+            'reference': payment.reference,
+            'metadata': {
+                'uid': int(getattr(request.user, 'id', 0) or 0),
+                'role': getattr(request.user, 'role', '') or '',
+                'email': getattr(request.user, 'email', '') or '',
+                'purpose': 'subscription',
+                'subscription_payment_id': payment.id,
+                'plan': plan.code,
+                'billing_cycle': billing_cycle,
+            },
+        }
+        cb = data.get('callback_url')
+        if cb:
+            payload['callback_url'] = cb
+        headers = {
+            'Authorization': f"Bearer {keys['secret_key']}",
+            'Content-Type': 'application/json'
+        }
+        try:
+            r = requests.post('https://api.paystack.co/transaction/initialize', json=payload, headers=headers, timeout=20)
+            jr = r.json()
+        except Exception:
+            payment.status = 'FAILED'
+            payment.raw_response = {'error': 'Failed to reach Paystack'}
+            payment.save(update_fields=['status', 'raw_response', 'updated_at'])
+            return Response({'detail': 'Failed to reach Paystack'}, status=502)
+        payment.raw_response = jr
+        payment.save(update_fields=['raw_response', 'updated_at'])
+        if r.status_code != 200 or not jr.get('status'):
+            payment.status = 'FAILED'
+            payment.save(update_fields=['status', 'updated_at'])
+            return Response({'detail': jr.get('message', 'Initialization failed')}, status=400)
+        pdata = jr.get('data') or {}
+        return Response({
+            'authorization_url': pdata.get('authorization_url'),
+            'reference': payment.reference,
+            'amount': str(payment.amount_charged),
+            'plan': _subscription_plan_payload(plan),
+        })
+
+
+class SubscriptionVerifyView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if getattr(request.user, 'role', None) != 'ORG':
+            raise PermissionDenied('Only organizations can verify subscription payments')
+        ref = (request.data or {}).get('reference')
+        if not ref:
+            return Response({'detail': 'reference is required'}, status=400)
+        payment = SubscriptionPayment.objects.filter(reference=str(ref)[:64], org=request.user).select_related('plan').first()
+        if not payment:
+            return Response({'detail': 'Subscription payment not found'}, status=404)
+        if payment.status == 'SUCCESS':
+            subscription = OrganizationSubscription.objects.filter(org=request.user).first()
+            return Response({'status': 'success', 'duplicate': True, 'subscription': _subscription_payload(subscription)})
+
+        try:
+            from .utils import get_paystack_keys
+            keys = get_paystack_keys()
+        except Exception as e:
+            return Response({'detail': str(e)}, status=400)
+
+        headers = {
+            'Authorization': f"Bearer {keys['secret_key']}",
+            'Content-Type': 'application/json'
+        }
+        try:
+            r = requests.get(f'https://api.paystack.co/transaction/verify/{payment.reference}', headers=headers, timeout=20)
+            jr = r.json()
+        except Exception:
+            return Response({'detail': 'Failed to reach Paystack'}, status=502)
+        if r.status_code != 200 or not jr.get('status'):
+            return Response({'detail': jr.get('message', 'Verification failed')}, status=400)
+        data = jr.get('data') or {}
+        if data.get('status') != 'success':
+            payment.status = 'FAILED'
+            payment.raw_response = data
+            payment.save(update_fields=['status', 'raw_response', 'updated_at'])
+            return Response({'status': 'failed'}, status=200)
+
+        paid_kobo = data.get('amount') or 0
+        paid = _money_value(Decimal(paid_kobo) / Decimal('100'))
+        if paid < payment.amount_charged:
+            payment.status = 'FAILED'
+            payment.raw_response = data
+            payment.save(update_fields=['status', 'raw_response', 'updated_at'])
+            return Response({'detail': 'Paid amount is lower than the selected subscription price'}, status=400)
+
+        payment.status = 'SUCCESS'
+        payment.raw_response = data
+        payment.paid_at = timezone.now()
+        payment.save(update_fields=['status', 'raw_response', 'paid_at', 'updated_at'])
+        subscription = _activate_subscription(payment, payment.paid_at)
+        return Response({'status': 'success', 'subscription': _subscription_payload(subscription)})
+
+
 class PaystackInitializeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -3084,6 +3464,7 @@ class PaystackInitializeView(APIView):
                 'uid': int(getattr(request.user, 'id', 0) or 0),
                 'role': getattr(request.user, 'role', '') or '',
                 'email': getattr(request.user, 'email', '') or '',
+                'purpose': 'wallet',
             }
         except Exception:
             pass
@@ -3112,6 +3493,8 @@ class PaystackVerifyView(APIView):
         ref = (request.data or {}).get('reference')
         if not ref:
             return Response({'detail': 'reference is required'}, status=400)
+        if SubscriptionPayment.objects.filter(reference=str(ref)[:64]).exists():
+            return Response({'detail': 'Use the subscription verification endpoint for this reference'}, status=400)
         try:
             from .utils import get_paystack_keys
             keys = get_paystack_keys()
@@ -3214,6 +3597,27 @@ class PaystackWebhookView(APIView):
         if not ref:
             return Response({'detail': 'Missing reference'}, status=400)
 
+        meta = data.get('metadata') or {}
+        subscription_payment = SubscriptionPayment.objects.filter(reference=str(ref)[:64]).select_related('plan', 'org').first()
+        if subscription_payment or str(meta.get('purpose') or '').lower() == 'subscription':
+            if not subscription_payment:
+                return Response({'ok': True, 'subscription_unmatched': True})
+            if subscription_payment.status == 'SUCCESS':
+                return Response({'ok': True, 'subscription_duplicate': True})
+            paid_kobo = data.get('amount') or 0
+            paid = _money_value(Decimal(paid_kobo) / Decimal('100'))
+            if paid < subscription_payment.amount_charged:
+                subscription_payment.status = 'FAILED'
+                subscription_payment.raw_response = data
+                subscription_payment.save(update_fields=['status', 'raw_response', 'updated_at'])
+                return Response({'ok': True, 'subscription_invalid_amount': True})
+            subscription_payment.status = 'SUCCESS'
+            subscription_payment.raw_response = data
+            subscription_payment.paid_at = timezone.now()
+            subscription_payment.save(update_fields=['status', 'raw_response', 'paid_at', 'updated_at'])
+            _activate_subscription(subscription_payment, subscription_payment.paid_at)
+            return Response({'ok': True, 'subscription': True})
+
         # Idempotency: do nothing if already credited.
         if WalletTransaction.objects.filter(type='CREDIT', reference=str(ref)[:64]).exists():
             return Response({'ok': True, 'duplicate': True})
@@ -3228,7 +3632,6 @@ class PaystackWebhookView(APIView):
 
         # Resolve target user: prefer metadata uid, else customer email.
         target_user = None
-        meta = data.get('metadata') or {}
         uid = meta.get('uid') or meta.get('user_id')
         try:
             uid = int(uid)

@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import api from '../api/axios'
 import {
   ArrowRight,
   BadgeCheck,
@@ -16,16 +17,58 @@ import {
   Users,
 } from 'lucide-react'
 
-function PricingCard({ title, price, items, featured }) {
+const DEFAULT_PRICING_PLANS = [
+  { code: 'STARTER', name: 'Starter', range_label: '0-10 corpers', monthly_price: '0.00', yearly_price: '0.00', original_monthly_price: '0.00', original_yearly_price: '0.00', discount_enabled: false, discount_percent: '0.00' },
+  { code: 'BASIC', name: 'Basic', range_label: '10-50 corpers', monthly_price: '25000.00', yearly_price: '258000.00', original_monthly_price: '25000.00', original_yearly_price: '258000.00', discount_enabled: false, discount_percent: '0.00' },
+  { code: 'PRO', name: 'Pro', range_label: '50-100 corpers', monthly_price: '45000.00', yearly_price: '510000.00', original_monthly_price: '45000.00', original_yearly_price: '510000.00', discount_enabled: false, discount_percent: '0.00' },
+  { code: 'ENTERPRISE', name: 'Enterprise', range_label: '100+ corpers', monthly_price: '95000.00', yearly_price: '999999.00', original_monthly_price: '95000.00', original_yearly_price: '999999.00', discount_enabled: false, discount_percent: '0.00' },
+]
+
+function money(value){
+  const n = Number(value || 0)
+  if(!Number.isFinite(n) || n <= 0) return 'Free'
+  return `₦${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+}
+
+function planItems(plan){
+  const code = String(plan.code || '').toUpperCase()
+  const common = ['Face enrollment', 'Geofenced attendance', 'Clearance letter generation']
+  if(code === 'STARTER') return [...common, 'Best for up to 10 corpers']
+  if(code === 'BASIC') return [...common, 'Branch management', 'Email support']
+  if(code === 'PRO') return [...common, 'Leave & holiday management', 'Role-based dashboard', 'Priority support']
+  return [...common, 'Dedicated onboarding', 'Custom support', 'Scale-ready access']
+}
+
+function PriceLine({ label, amount, original }) {
+  const current = Number(amount || 0)
+  const old = Number(original || 0)
+  const discounted = old > current
+  return (
+    <div className="nl-price-line">
+      <span>{label}</span>
+      <strong>{money(amount)}</strong>
+      {discounted && <span className="nl-price-old">{money(original)}</span>}
+    </div>
+  )
+}
+
+function PricingCard({ plan, featured }) {
   return (
     <div className="col-md-6 col-lg-3">
       <div className={`nl-pricing-card p-4 h-100 ${featured ? 'featured' : ''}`}>
         {featured && <span className="nl-save-badge">Most Recommended</span>}
-        <span className="nl-eyebrow">{title}</span>
-        <h2 className="nl-fw-black my-2">{price}</h2>
-        <p className="small opacity-75">Best for growing organisations.</p>
+        <span className="nl-eyebrow">{plan.name}</span>
+        <h2 className="nl-fw-black my-2">{money(plan.monthly_price)}</h2>
+        <p className="small opacity-75 mb-3">{plan.range_label}</p>
+        <div className="nl-price-box">
+          <PriceLine label="Monthly" amount={plan.monthly_price} original={plan.original_monthly_price} />
+          <PriceLine label="Yearly" amount={plan.yearly_price} original={plan.original_yearly_price} />
+        </div>
+        {plan.discount_enabled && Number(plan.discount_percent || 0) > 0 && (
+          <div className="nl-discount-note">{Number(plan.discount_percent).toLocaleString()}% discount applied</div>
+        )}
         <hr />
-        {items.map((item) => (
+        {planItems(plan).map((item) => (
           <p className="small mb-2" key={item}>
             <CheckCircle2 className="nl-check" size={15} aria-hidden /> {''}
             {item}
@@ -43,6 +86,8 @@ function PricingCard({ title, price, items, featured }) {
 }
 
 export default function Landing() {
+  const [pricingPlans, setPricingPlans] = useState(DEFAULT_PRICING_PLANS)
+
   const stats = useMemo(
     () => [
       [Building2, '120+', 'Organizations Onboarded'],
@@ -52,6 +97,19 @@ export default function Landing() {
     ],
     []
   )
+
+  useEffect(() => {
+    let active = true
+    api.get('/api/auth/subscriptions/plans/')
+      .then((res) => {
+        const plans = res?.data?.plans
+        if(active && Array.isArray(plans) && plans.length){
+          setPricingPlans(plans)
+        }
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [])
 
   return (
     <div className="nl-page">
@@ -261,22 +319,15 @@ export default function Landing() {
             <p className="small text-muted">Choose the plan that fits your organisation.</p>
           </div>
           <div className="row g-4 justify-content-center align-items-stretch">
-            <PricingCard
-              title="Starter"
-              price="₦15,000"
-              items={['Face enrollment', 'Geofenced attendance', 'Clearance letter generation', 'Email support']}
-            />
-            <PricingCard
-              featured
-              title="Growth"
-              price="₦42,000"
-              items={['Everything in Starter', 'Branch management', 'Leave & holiday management', 'Role-based dashboard', 'Priority support']}
-            />
-            <PricingCard
-              title="Enterprise"
-              price="Custom"
-              items={['Everything in Growth', 'Custom onboarding', 'Dedicated support manager', 'SLA & API access']}
-            />
+            {pricingPlans.map((plan) => (
+              <PricingCard key={plan.code || plan.name} plan={plan} featured={String(plan.code || '').toUpperCase() === 'PRO'} />
+            ))}
+          </div>
+          <div className="nl-wallet-note mt-4 p-4">
+            <div className="fw-bold mb-1">Custom wallet for pay-as-you-go</div>
+            <p className="small text-muted mb-0">
+              Organizations, admins, and corpers also have wallet access, so essential attendance and clearance actions can continue without interruption when pay-as-you-go billing is preferred.
+            </p>
           </div>
         </div>
       </section>

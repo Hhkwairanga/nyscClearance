@@ -38,6 +38,10 @@ from .views import (
     PaystackInitializeView,
     PaystackVerifyView,
     PaystackWebhookView,
+    SubscriptionPlansView,
+    SubscriptionStatusView,
+    SubscriptionInitializeView,
+    SubscriptionVerifyView,
     ClearanceStatusView,
     ClearanceApproveView,
     AllHolidaysView,
@@ -96,6 +100,11 @@ urlpatterns = [
     path('wallet/paystack/initialize/', PaystackInitializeView.as_view(), name='paystack-initialize'),
     path('wallet/paystack/verify/', PaystackVerifyView.as_view(), name='paystack-verify'),
     path('paystack/webhook/', PaystackWebhookView.as_view(), name='paystack-webhook'),
+    # Subscriptions
+    path('subscriptions/plans/', SubscriptionPlansView.as_view(), name='subscription-plans'),
+    path('subscriptions/status/', SubscriptionStatusView.as_view(), name='subscription-status'),
+    path('subscriptions/initialize/', SubscriptionInitializeView.as_view(), name='subscription-initialize'),
+    path('subscriptions/verify/', SubscriptionVerifyView.as_view(), name='subscription-verify'),
     # Clearance admin
     path('clearance/status/', ClearanceStatusView.as_view(), name='clearance-status'),
     path('clearance/approve/', ClearanceApproveView.as_view(), name='clearance-approve'),

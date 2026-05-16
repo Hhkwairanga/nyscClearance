@@ -5,6 +5,7 @@
 
 .bg-olive{ background-color: var(--olive) !important; }
 .text-olive{ color: var(--olive) !important; }
+.border-olive{ border-color: var(--olive) !important; }
 .btn-olive{ background-color: var(--olive); color:#fff; border-color: var(--olive); }
 .btn-olive:hover{ background-color: #465826; border-color:#465826; }
 
@@ -178,6 +179,12 @@ body{ background-color:#f7f9f6; }
 
 .nl-pricing-card{ position:relative; border:1px solid #edf0ea; }
 .nl-pricing-card.featured{ background: var(--khaki); color:#fff; transform: scale(1.04); }
+.nl-price-box{ display:grid; gap:8px; }
+.nl-price-line{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; }
+.nl-price-old{ text-decoration: line-through; opacity:.62; font-weight:700; }
+.nl-discount-note{ margin-top:10px; font-size:11px; font-weight:800; color: var(--olive); }
+.nl-pricing-card.featured .nl-discount-note{ color:#fff; }
+.nl-wallet-note{ border:1px solid #dfe7d2; background:#fff; border-radius:18px; box-shadow: 0 15px 45px rgba(19,28,47,.06); max-width: 820px; margin-left:auto; margin-right:auto; }
 .nl-save-badge{
   display:inline-block;
   background: var(--nl-green);
@@ -365,6 +372,7 @@ body{ background-color:#f7f9f6; }
 .dash-table-scroll{ -webkit-overflow-scrolling: touch; }
 .dash-table-wallet{ min-width: 920px; }
 .dash-table-clearance{ min-width: 980px; }
+.dash-table-subscription{ min-width: 900px; }
 .dash-action-cell{ min-width: 118px; white-space: nowrap; position: sticky; right: 0; z-index: 2; background: #fff; box-shadow: -8px 0 16px rgba(19,28,47,.04); }
 thead .dash-action-cell{ z-index: 3; background: #fff; }
 .dash-td-truncate-wide{ max-width: clamp(220px, 32vw, 560px); }

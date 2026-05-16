@@ -17,6 +17,10 @@ from .models import (
     WalletTransaction,
     SystemSetting,
     PaystackConfig,
+    SubscriptionPlanSetting,
+    OrganizationSubscription,
+    SubscriptionPayment,
+    ClearanceAccess,
     ClearanceOverride,
 )
 
@@ -172,6 +176,47 @@ class SystemSettingAdmin(admin.ModelAdmin):
 class PaystackConfigAdmin(admin.ModelAdmin):
     list_display = ("public_key", "is_active", "updated_at")
     search_fields = ("public_key",)
+
+
+@admin.register(SubscriptionPlanSetting)
+class SubscriptionPlanSettingAdmin(admin.ModelAdmin):
+    list_display = (
+        "sort_order",
+        "name",
+        "code",
+        "corper_min",
+        "corper_max",
+        "monthly_price",
+        "yearly_price",
+        "discount_enabled",
+        "discount_percent",
+        "is_active",
+    )
+    list_editable = ("monthly_price", "yearly_price", "discount_enabled", "discount_percent", "is_active")
+    list_filter = ("is_active", "discount_enabled")
+    search_fields = ("name", "code")
+
+
+@admin.register(OrganizationSubscription)
+class OrganizationSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ("org", "plan_name", "billing_cycle", "status", "amount_paid", "starts_at", "expires_at")
+    list_filter = ("status", "billing_cycle", "plan_code")
+    search_fields = ("org__email", "org__name", "plan_name")
+
+
+@admin.register(SubscriptionPayment)
+class SubscriptionPaymentAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "org", "plan_name", "billing_cycle", "status", "amount_charged", "reference", "paid_at")
+    list_filter = ("status", "billing_cycle", "plan_code")
+    search_fields = ("org__email", "org__name", "reference", "plan_name")
+    readonly_fields = ("raw_response", "created_at", "updated_at", "paid_at")
+
+
+@admin.register(ClearanceAccess)
+class ClearanceAccessAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "corper", "year_month", "source", "org", "branch", "reference")
+    list_filter = ("source", "year_month", "org")
+    search_fields = ("corper__full_name", "corper__state_code", "reference", "org__email", "branch__name")
 
 
 @admin.register(ClearanceOverride)

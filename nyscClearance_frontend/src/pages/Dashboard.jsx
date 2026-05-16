@@ -29,6 +29,7 @@ import {
   Trash2,
   Users,
   CalendarCheck2,
+  CreditCard,
   Download,
   RefreshCw,
   Wallet,
@@ -58,6 +59,7 @@ export default function Dashboard(){
   const [queries, setQueries] = useState([])
   const [queryReplyDrafts, setQueryReplyDrafts] = useState({})
   const [wallet, setWallet] = useState(null)
+  const [subscriptionInfo, setSubscriptionInfo] = useState(null)
   const [announcement, setAnnouncement] = useState(null)
   const [showFund, setShowFund] = useState(false)
   const [fundAmount, setFundAmount] = useState('')
@@ -349,6 +351,24 @@ export default function Dashboard(){
     }
   }
 
+  function formatMoney(value){
+    const n = Number(value || 0)
+    if(!Number.isFinite(n) || n <= 0) return 'Free'
+    return `₦${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
+  function extractApiMessage(err, fallback = 'Request failed'){
+    const payload = err?.response?.data
+    if(typeof payload === 'string') return payload
+    if(payload?.detail) return String(payload.detail)
+    try{
+      const v = Object.values(payload || {})?.[0]
+      if(Array.isArray(v)) return String(v[0] || fallback)
+      if(v) return String(v)
+    }catch(e){}
+    return err?.message || fallback
+  }
+
   // Handle result banners and Paystack return
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
@@ -401,6 +421,26 @@ export default function Dashboard(){
         window.history.replaceState({}, '', url)
       })()
     }
+    const subscriptionPaystack = sp.get('subscription')
+    if(subscriptionPaystack && reference){
+      (async()=>{
+        try{
+          const vr = await api.post('/api/auth/subscriptions/verify/', { reference })
+          if(vr.data?.status === 'success'){
+            setStatus('saved:subscription')
+            await refreshAll()
+            setActiveTab('subscription')
+          }else{
+            setStatus('error:subscription')
+          }
+        }catch(err){
+          setStatus(`error:subscription:${extractApiMessage(err, 'Subscription verification failed')}`)
+        }
+        const url = new URL(window.location.href)
+        url.searchParams.delete('subscription'); url.searchParams.delete('reference')
+        window.history.replaceState({}, '', url)
+      })()
+    }
   }, [])
 
   useEffect(() => {
@@ -424,7 +464,7 @@ export default function Dashboard(){
 
   async function refreshAll(){
     try{
-      const [m,p,b,d,u,c,s,h,l,n,w,a,cl,ha,qy] = await Promise.all([
+      const [m,p,b,d,u,c,s,h,l,n,w,a,cl,ha,qy,sub] = await Promise.all([
         api.get('/api/auth/me/'),
         api.get('/api/auth/profile/'),
         api.get('/api/auth/branches/'),
@@ -440,6 +480,7 @@ export default function Dashboard(){
         api.get('/api/auth/clearance/status/').catch(()=>({data:[]})),
         api.get('/api/auth/holidays/all/').catch(()=>({data:[]})),
         api.get('/api/auth/queries/').catch(()=>({data:[]})),
+        api.get('/api/auth/subscriptions/status/').catch(()=>({data:null})),
       ])
       setMe(m.data)
       setProfile(p.data)
@@ -454,6 +495,7 @@ export default function Dashboard(){
       setNotifications(n.data)
       setQueries(Array.isArray(qy.data) ? qy.data : [])
       setWallet(w.data)
+      setSubscriptionInfo(sub.data)
       setAnnouncement(a.data)
       setClearance(Array.isArray(cl.data)? cl.data : [])
       if(m.data?.role === 'CORPER'){
@@ -584,6 +626,7 @@ export default function Dashboard(){
     }
     if(me?.role === 'ORG'){
       add('wallet', 'Wallet', Building2)
+      add('subscription', 'Subscription', CreditCard)
       add('clearance', 'Clearance', LayoutGrid)
       add('report', 'Reports', BarChart3)
     }
@@ -613,6 +656,7 @@ export default function Dashboard(){
     structure: 'Structure',
     corpers: 'Corpers',
     wallet: 'Wallet',
+    subscription: 'Subscription',
     clearance: 'Performance Clearance',
     leave: 'Leave Management',
     report: 'Report',
@@ -620,6 +664,20 @@ export default function Dashboard(){
     performance: 'Performance Clearance',
     notifications: 'Notifications',
   }), [])
+
+  const clearanceFiltered = useMemo(() => {
+    const q = clSearchOpen ? clQuery.trim().toLowerCase() : ''
+    const list = Array.isArray(clearance) ? clearance : []
+    return q ? list.filter(r => `${r.full_name} ${r.state_code} ${r.branch}`.toLowerCase().includes(q)) : list
+  }, [clearance, clSearchOpen, clQuery])
+  const clearanceTotalPages = Math.max(1, Math.ceil(clearanceFiltered.length / clPageSize))
+  const clearanceCurrentPage = Math.min(clPage, clearanceTotalPages)
+  const clearanceStart = (clearanceCurrentPage - 1) * clPageSize
+  const clearanceRows = clearanceFiltered.slice(clearanceStart, clearanceStart + clPageSize)
+
+  useEffect(() => {
+    if(clPage > clearanceTotalPages) setClPage(clearanceTotalPages)
+  }, [clPage, clearanceTotalPages])
 
   function fundWallet(){ setShowFund(true); setFundAmount('') }
 
@@ -819,6 +877,179 @@ export default function Dashboard(){
                 </div>
               </div>
             )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function SubscriptionSection(){
+    const [cycle, setCycle] = useState('MONTHLY')
+    const [loadingPlan, setLoadingPlan] = useState('')
+    const plans = Array.isArray(subscriptionInfo?.plans) ? subscriptionInfo.plans : []
+    const current = subscriptionInfo?.current || null
+    const payments = Array.isArray(subscriptionInfo?.payments) ? subscriptionInfo.payments : []
+
+    function planAmount(plan){
+      return cycle === 'YEARLY' ? plan.yearly_price : plan.monthly_price
+    }
+
+    function planOriginal(plan){
+      return cycle === 'YEARLY' ? plan.original_yearly_price : plan.original_monthly_price
+    }
+
+    async function subscribe(plan){
+      setLoadingPlan(plan.code)
+      setStatus(null)
+      try{
+        const callback = `${window.location.origin}/dashboard?subscription=1`
+        const res = await api.post('/api/auth/subscriptions/initialize/', {
+          plan: plan.code,
+          billing_cycle: cycle,
+          callback_url: callback,
+        })
+        if(res.data?.free || res.data?.status === 'success'){
+          await refreshAll()
+          setActiveTab('subscription')
+          setStatus('saved:subscription')
+          return
+        }
+        const { authorization_url } = res.data || {}
+        if(!authorization_url){
+          setStatus('error:subscription')
+          return
+        }
+        window.location.href = authorization_url
+      }catch(err){
+        setStatus(`error:subscription:${extractApiMessage(err, 'Failed to start subscription payment')}`)
+      }finally{
+        setLoadingPlan('')
+      }
+    }
+
+    return (
+      <div className="row g-3">
+        <div className="col-12">
+          <div className="card shadow-sm dash-card">
+            <div className="card-body d-flex flex-wrap gap-3 justify-content-between align-items-start">
+              <div>
+                <div className="dash-card-title mb-1">Current Subscription</div>
+                {current ? (
+                  <>
+                    <div className="h4 mb-1 text-olive">{current.plan_name} · {current.billing_cycle?.toLowerCase()}</div>
+                    <div className="small text-muted">
+                      Active from {formatDateTime(current.starts_at)} to {formatDateTime(current.expires_at)}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="h4 mb-1 text-olive">No active subscription</div>
+                    <div className="small text-muted">Choose a plan below. Subscription payments are separate from wallet balance.</div>
+                  </>
+                )}
+              </div>
+              <div className="btn-group" role="group" aria-label="Billing cycle">
+                <button className={`btn btn-sm ${cycle === 'MONTHLY' ? 'btn-olive' : 'btn-outline-secondary'}`} type="button" onClick={()=>setCycle('MONTHLY')}>Monthly</button>
+                <button className={`btn btn-sm ${cycle === 'YEARLY' ? 'btn-olive' : 'btn-outline-secondary'}`} type="button" onClick={()=>setCycle('YEARLY')}>Yearly</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-12">
+          <div className="row g-3">
+            {plans.map((plan) => {
+              const amount = planAmount(plan)
+              const original = planOriginal(plan)
+              const discounted = Number(original || 0) > Number(amount || 0)
+              const active = current?.plan_code === plan.code && current?.status === 'ACTIVE'
+              return (
+                <div className="col-md-6 col-xl-3" key={plan.code}>
+                  <div className={`card shadow-sm dash-card h-100 ${String(plan.code).toUpperCase() === 'PRO' ? 'border-olive' : ''}`}>
+                    <div className="card-body d-flex flex-column">
+                      <div className="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                          <div className="small text-muted text-uppercase fw-bold">{plan.range_label}</div>
+                          <div className="h5 mb-1">{plan.name}</div>
+                        </div>
+                        {active && <span className="badge bg-success">Active</span>}
+                      </div>
+                      <div className="mt-3">
+                        <div className="display-6 fs-2 fw-bold text-olive mb-0">{formatMoney(amount)}</div>
+                        <div className="small text-muted">{cycle.toLowerCase()}</div>
+                        {discounted && (
+                          <div className="small text-muted">
+                            <span className="text-decoration-line-through">{formatMoney(original)}</span> before discount
+                          </div>
+                        )}
+                      </div>
+                      {plan.discount_enabled && Number(plan.discount_percent || 0) > 0 && (
+                        <div className="badge bg-light text-olive border mt-3 align-self-start">{Number(plan.discount_percent).toLocaleString()}% discount</div>
+                      )}
+                      <ul className="small text-muted mt-3 mb-4 ps-3">
+                        <li>Attendance and clearance tools</li>
+                        <li>Organization and admin access</li>
+                        <li>Separate from wallet funding</li>
+                      </ul>
+                      <button
+                        className="btn btn-olive mt-auto"
+                        type="button"
+                        disabled={loadingPlan === plan.code}
+                        onClick={()=>subscribe(plan)}
+                      >
+                        {loadingPlan === plan.code ? 'Processing…' : Number(amount || 0) <= 0 ? 'Activate Plan' : `Pay ${formatMoney(amount)}`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+            {plans.length === 0 && (
+              <div className="col-12">
+                <div className="text-muted">Subscription plans are not available right now.</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="col-12">
+          <div className="card shadow-sm dash-card">
+            <div className="card-body">
+              <div className="dash-card-title mb-2">Subscription Payments</div>
+              <div className="table-responsive dash-table-scroll">
+                <table className="table table-sm align-middle dash-table dash-table-auto dash-table-subscription mb-0">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Plan</th>
+                      <th>Cycle</th>
+                      <th>Status</th>
+                      <th className="text-end">Discount</th>
+                      <th className="text-end">Paid</th>
+                      <th>Reference</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((payment) => (
+                      <tr key={payment.id || payment.reference}>
+                        <td>{formatDateTime(payment.created_at)}</td>
+                        <td>{payment.plan_name}</td>
+                        <td>{payment.billing_cycle}</td>
+                        <td>
+                          {payment.status === 'SUCCESS' ? <span className="badge bg-success">SUCCESS</span> : payment.status === 'FAILED' ? <span className="badge bg-danger">FAILED</span> : <span className="badge bg-warning text-dark">PENDING</span>}
+                        </td>
+                        <td className="text-end">{formatMoney(payment.discount_amount)}</td>
+                        <td className="text-end">{formatMoney(payment.amount_charged)}</td>
+                        <td><div className="text-truncate dash-td-truncate-wide">{payment.reference}</div></td>
+                      </tr>
+                    ))}
+                    {payments.length === 0 && (
+                      <tr><td colSpan="7" className="text-muted">No subscription payments yet.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -1632,6 +1863,15 @@ export default function Dashboard(){
         )}
         {status==='error:wallet-export' && (
           <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Failed to export wallet statement.</AutoFadeAlert>
+        )}
+        {status==='saved:subscription' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Subscription updated successfully.</AutoFadeAlert>
+        )}
+        {status==='error:subscription' && (
+          <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Subscription payment could not be completed.</AutoFadeAlert>
+        )}
+        {status?.startsWith('error:subscription:') && (
+          <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>{status.split(':').slice(2).join(':')}</AutoFadeAlert>
         )}
         {status==='saved:query-reply' && (
           <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Reply sent. Awaiting admin resolution.</AutoFadeAlert>
@@ -3167,6 +3407,13 @@ export default function Dashboard(){
             </>
           )}
 
+          {activeTab==='subscription' && me?.role==='ORG' && (
+            <>
+              <h2 className="mb-3 text-olive">Subscription</h2>
+              <SubscriptionSection />
+            </>
+          )}
+
           {activeTab==='clearance' && (me?.role==='ORG' || me?.role==='BRANCH') && (
             <>
               <h2 className="mb-3 text-olive">Performance Clearance (Prev. Month)</h2>
@@ -3197,7 +3444,7 @@ export default function Dashboard(){
                     <div className="d-flex align-items-center gap-2">
                       <span className="small text-muted">Rows</span>
                       <select className="form-select form-select-sm" style={{ width: 96 }} value={clPageSize} onChange={(e)=>{ setClPageSize(Number(e.target.value)); setClPage(1) }}>
-                        {[50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+                        {[20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
                     </div>
                   </div>
@@ -3218,19 +3465,9 @@ export default function Dashboard(){
                         </tr>
                       </thead>
                       <tbody>
-                        {(() => {
-                          const pageSize = clPageSize
-                          const q = clSearchOpen ? clQuery.trim().toLowerCase() : ''
-                          const filtered = q ? clearance.filter(r => `${r.full_name} ${r.state_code} ${r.branch}`.toLowerCase().includes(q)) : clearance
-                          const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-                          const current = Math.min(clPage, totalPages)
-                          if(current !== clPage) setClPage(current)
-                          const start = (current - 1) * pageSize
-                          const rows = filtered.slice(start, start + pageSize)
-                          return <>
-                            {rows.map((row, idx) => (
+                            {clearanceRows.map((row, idx) => (
                               <tr key={row.id}>
-                                <td>{start + idx + 1}</td>
+                                <td>{clearanceStart + idx + 1}</td>
                                 <td><div className="text-truncate dash-td-truncate-wide">{row.full_name}</div></td>
                                 <td>{row.state_code}</td>
                                 <td><div className="text-truncate dash-td-truncate-wide">{row.branch || '—'}</div></td>
@@ -3247,31 +3484,21 @@ export default function Dashboard(){
                                 </td>
                               </tr>
                             ))}
-                            {filtered.length===0 && (
+                            {clearanceFiltered.length===0 && (
                               <tr><td colSpan="9" className="text-muted">No corpers found.</td></tr>
                             )}
-                          </>
-                        })()}
                       </tbody>
                     </table>
                   </div>
-                  {(() => {
-                    const pageSize = clPageSize
-                    const q = clSearchOpen ? clQuery.trim().toLowerCase() : ''
-                    const filtered = q ? clearance.filter(r => `${r.full_name} ${r.state_code} ${r.branch}`.toLowerCase().includes(q)) : clearance
-                    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-                    const current = Math.min(clPage, totalPages)
-                    if(totalPages <= 1) return null
-                    return (
-                      <div className="d-flex justify-content-between align-items-center mt-2">
-                        <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
-                        <div className="btn-group">
-                          <button className="btn btn-sm btn-outline-secondary" disabled={current===1} onClick={()=>setClPage(p=>Math.max(1,p-1))}>Prev</button>
-                          <button className="btn btn-sm btn-outline-secondary" disabled={current===totalPages} onClick={()=>setClPage(p=>Math.min(totalPages,p+1))}>Next</button>
-                        </div>
-                      </div>
-                    )
-                  })()}
+                  <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-2">
+                    <div className="small text-muted">Page {clearanceCurrentPage} of {clearanceTotalPages} · {clearanceFiltered.length} result(s)</div>
+                    <div className="btn-group">
+                      <button className="btn btn-sm btn-outline-secondary" disabled={clearanceCurrentPage===1} onClick={()=>setClPage(1)}>First</button>
+                      <button className="btn btn-sm btn-outline-secondary" disabled={clearanceCurrentPage===1} onClick={()=>setClPage(p=>Math.max(1,p-1))}>Prev</button>
+                      <button className="btn btn-sm btn-outline-secondary" disabled={clearanceCurrentPage===clearanceTotalPages} onClick={()=>setClPage(p=>Math.min(clearanceTotalPages,p+1))}>Next</button>
+                      <button className="btn btn-sm btn-outline-secondary" disabled={clearanceCurrentPage===clearanceTotalPages} onClick={()=>setClPage(clearanceTotalPages)}>Last</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </>

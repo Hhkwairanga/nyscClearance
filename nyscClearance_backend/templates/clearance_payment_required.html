@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Payment Required</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .btn-olive{ background:#556B2F; border-color:#556B2F; color:#fff; }
+    .btn-olive:hover{ background:#465826; border-color:#465826; color:#fff; }
+  </style>
 </head>
 <body class="bg-light d-flex align-items-center" style="min-height:100vh;">
   <div class="container">
@@ -12,9 +16,9 @@
       <div class="col-md-8 col-lg-6">
         <div class="card shadow-sm">
           <div class="card-body p-4">
-            <h5 class="card-title">Clearance Payment Needed</h5>
+            <h5 class="card-title">Clearance Access Needs Attention</h5>
             <p class="text-muted">{{ reason }}</p>
-            <p>To view your clearance letter, please fund your wallet. You can fund now or contact your branch admin for assistance.</p>
+            <p>{{ next_steps|default:"Please fund a wallet or contact your branch admin for assistance." }}</p>
             <div class="d-flex gap-2 mt-3">
               <a class="btn btn-olive" href="{{ fund_url }}">Fund Wallet</a>
               <a class="btn btn-outline-secondary" href="{{ dashboard_url }}">Go to Dashboard</a>
