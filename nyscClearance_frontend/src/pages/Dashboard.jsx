@@ -304,7 +304,7 @@ export default function Dashboard(){
 
   // First load: ensure CSRF and fetch all data
   useEffect(() => {
-    let active = true
+    let active = true;
     (async () => {
       setDashboardLoading(true)
       try{
