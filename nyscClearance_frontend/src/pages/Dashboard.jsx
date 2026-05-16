@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
 import { apiHref } from '../api/urls'
+import { CONFIG_REFRESH_MS, fetchAdminConfigVersion } from '../api/configFreshness'
 import MapPicker from '../components/MapPicker'
 import GeofencePicker from '../components/GeofencePicker'
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
@@ -104,6 +105,7 @@ export default function Dashboard(){
   const [structureTab, setStructureTab] = useState('profile')
 
   const isSaving = status === 'pending'
+  const configVersionRef = useRef('')
 
   const [showAddBranch, setShowAddBranch] = useState(false)
   const [showAddDepartment, setShowAddDepartment] = useState(false)
@@ -503,6 +505,34 @@ export default function Dashboard(){
       }
     }catch(e){ setStatus('error:failed to load') }
   }
+
+  useEffect(() => {
+    if(!me?.authenticated) return
+    let active = true
+
+    async function checkForConfigChanges(){
+      try{
+        const version = await fetchAdminConfigVersion()
+        if(!active || !version) return
+        if(!configVersionRef.current){
+          configVersionRef.current = version
+          return
+        }
+        if(version !== configVersionRef.current){
+          configVersionRef.current = version
+          await refreshAll()
+          if(active) setStatus('saved:config-refresh')
+        }
+      }catch(e){}
+    }
+
+    checkForConfigChanges()
+    const timer = window.setInterval(checkForConfigChanges, CONFIG_REFRESH_MS)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [me?.authenticated])
 
   async function saveProfile(e){
     e.preventDefault()
@@ -1863,6 +1893,9 @@ export default function Dashboard(){
         )}
         {status==='error:wallet-export' && (
           <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Failed to export wallet statement.</AutoFadeAlert>
+        )}
+        {status==='saved:config-refresh' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Latest admin settings applied.</AutoFadeAlert>
         )}
         {status==='saved:subscription' && (
           <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Subscription updated successfully.</AutoFadeAlert>

@@ -64,7 +64,7 @@ from .tokens import validate_email_token, generate_email_token
 from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog, WalletAccount, WalletTransaction, ClearanceOverride, TempFaceEncoding
 from .models import QueryRecord
 from .models import NationalHoliday
-from .models import SubscriptionPlanSetting, OrganizationSubscription, SubscriptionPayment, ClearanceAccess
+from .models import SubscriptionPlanSetting, OrganizationSubscription, SubscriptionPayment, ClearanceAccess, SystemSetting, PaystackConfig
 from .services.holidays import ensure_national_holidays, is_holiday_for_org, working_days
 from django.db.models import Count
 from django.db import models
@@ -982,6 +982,32 @@ class CSRFView(APIView):
         return Response({'csrfToken': token})
 
 
+def _admin_config_version():
+    timestamps = []
+    for model_cls in (SystemSetting, SubscriptionPlanSetting, PaystackConfig):
+        try:
+            latest = model_cls.objects.aggregate(latest=models.Max('updated_at')).get('latest')
+            if latest:
+                timestamps.append(latest)
+        except Exception:
+            pass
+    if not timestamps:
+        return '0'
+    latest = max(timestamps)
+    return str(int(latest.timestamp() * 1000))
+
+
+class ConfigVersionView(APIView):
+    permission_classes = []
+    authentication_classes = []
+
+    def get(self, request):
+        return Response({
+            'version': _admin_config_version(),
+            'checked_at': timezone.now().isoformat(),
+        })
+
+
 class ConfigView(APIView):
     """Expose non-sensitive runtime config for the frontend.
 
@@ -1015,6 +1041,7 @@ class ConfigView(APIView):
                 'session': bool(getattr(settings, 'SESSION_COOKIE_SECURE', False)),
                 'csrf': bool(getattr(settings, 'CSRF_COOKIE_SECURE', False)),
             },
+            'settings_version': _admin_config_version(),
             'debug': bool(getattr(settings, 'DEBUG', False)),
         }
         return Response(data)

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../api/axios'
+import { CONFIG_REFRESH_MS, fetchAdminConfigVersion } from '../api/configFreshness'
 import {
   ArrowRight,
   BadgeCheck,
@@ -100,15 +101,45 @@ export default function Landing() {
 
   useEffect(() => {
     let active = true
-    api.get('/api/auth/subscriptions/plans/')
-      .then((res) => {
+    let currentVersion = ''
+
+    async function loadPlans(){
+      try{
+        const res = await api.get(`/api/auth/subscriptions/plans/?_=${Date.now()}`, {
+          headers: {
+            'Cache-Control': 'no-cache',
+            Pragma: 'no-cache',
+          },
+        })
         const plans = res?.data?.plans
         if(active && Array.isArray(plans) && plans.length){
           setPricingPlans(plans)
         }
-      })
-      .catch(() => {})
-    return () => { active = false }
+      }catch(e){}
+    }
+
+    async function checkForConfigChanges(){
+      try{
+        const version = await fetchAdminConfigVersion()
+        if(!active || !version) return
+        if(!currentVersion){
+          currentVersion = version
+          return
+        }
+        if(version !== currentVersion){
+          currentVersion = version
+          await loadPlans()
+        }
+      }catch(e){}
+    }
+
+    loadPlans()
+    checkForConfigChanges()
+    const timer = window.setInterval(checkForConfigChanges, CONFIG_REFRESH_MS)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
   }, [])
 
   return (
