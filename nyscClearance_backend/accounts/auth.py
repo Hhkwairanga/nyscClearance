@@ -7,13 +7,22 @@ from rest_framework import exceptions
 JWT_SALT = 'accounts.jwt'
 
 
+def current_auth_token_version() -> int:
+    """Return the active token version used to invalidate old sessions."""
+    try:
+        from .models import SystemSetting
+        return int(SystemSetting.current().auth_token_version or 1)
+    except Exception:
+        return 1
+
+
 def make_access_token(user_id: int) -> str:
     """Create a signed access token carrying the user id.
 
     Uses Django's signing for HMAC-based tamper-proof tokens.
     Expiry enforced during verification via max_age in loads().
     """
-    return signing.dumps({'uid': int(user_id)}, salt=JWT_SALT)
+    return signing.dumps({'uid': int(user_id), 'ver': current_auth_token_version()}, salt=JWT_SALT)
 
 
 class SignedTokenAuthentication(BaseAuthentication):
@@ -46,10 +55,15 @@ class SignedTokenAuthentication(BaseAuthentication):
         uid = data.get('uid')
         if not uid:
             raise exceptions.AuthenticationFailed('Invalid token payload')
+        try:
+            token_version = int(data.get('ver') or 1)
+        except (TypeError, ValueError):
+            raise exceptions.AuthenticationFailed('Invalid token payload')
+        if token_version != current_auth_token_version():
+            raise exceptions.AuthenticationFailed('Session expired; please login again')
         User = get_user_model()
         try:
             user = User.objects.get(id=uid)
         except User.DoesNotExist:
             raise exceptions.AuthenticationFailed('User not found')
         return (user, None)
-

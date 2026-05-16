@@ -2,6 +2,21 @@ import React, { useEffect, useState } from 'react'
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf, clearToken } from './api/axios'
 
+function AppLoadingScreen(){
+  return (
+    <div className="app-loading-screen">
+      <div className="app-loading-card text-center">
+        <img src="/nyscclearance_logo.svg" alt="NYSC Clearance" className="app-loading-logo" />
+        <div className="app-loading-title mt-3">Preparing your workspace</div>
+        <p className="text-muted small mb-3">Checking your session and loading the latest app version.</p>
+        <div className="loading-progress" aria-hidden>
+          <div className="loading-progress-bar" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function App(){
   const navigate = useNavigate()
   const location = useLocation()
@@ -33,7 +48,9 @@ export default function App(){
     }
   }, [isHome, isAuthed, dashPath, navigate])
 
-  const holdLandingForAuthCheck = isHome && me === null
+  if(me === null){
+    return <AppLoadingScreen />
+  }
 
   return (
     <div className="app-shell">
@@ -58,7 +75,7 @@ export default function App(){
         </div>
       </nav>
       <main className={isHome || isDashboard ? '' : 'container py-4'}>
-        {holdLandingForAuthCheck ? null : <Outlet />}
+        <Outlet />
       </main>
       {/* Footer intentionally only exists on the landing page */}
     </div>

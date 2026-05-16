@@ -38,6 +38,28 @@ import {
 import { Chart as ChartJS, CategoryScale, LinearScale, ArcElement, BarElement, LineElement, PointElement, Filler, Tooltip, Legend } from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, ArcElement, BarElement, LineElement, PointElement, Filler, Tooltip, Legend)
 
+function DashboardLoadingScreen(){
+  return (
+    <div className="dashboard-loading-shell">
+      <div className="dashboard-loading-card text-center">
+        <div className="dashboard-loading-icon mx-auto">
+          <RefreshCw size={24} className="spin-icon" />
+        </div>
+        <h1 className="h4 text-olive mt-3 mb-2">Loading dashboard</h1>
+        <p className="text-muted mb-3">Fetching profile, attendance, wallet, subscription, reports, and permissions.</p>
+        <div className="loading-progress" aria-hidden>
+          <div className="loading-progress-bar" />
+        </div>
+        <div className="dashboard-loading-steps mt-3">
+          <span>Secure session</span>
+          <span>Fresh data</span>
+          <span>Ready workspace</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard(){
   const navigate = useNavigate()
   const location = useLocation()
@@ -66,6 +88,7 @@ export default function Dashboard(){
   const [fundAmount, setFundAmount] = useState('')
   const [clPage, setClPage] = useState(1)
   const [status, setStatus] = useState(null)
+  const [dashboardLoading, setDashboardLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
 
   const [reportStart, setReportStart] = useState('')
@@ -281,10 +304,19 @@ export default function Dashboard(){
 
   // First load: ensure CSRF and fetch all data
   useEffect(() => {
+    let active = true
     (async () => {
-      await ensureCsrf()
-      await refreshAll()
+      setDashboardLoading(true)
+      try{
+        await ensureCsrf()
+        await refreshAll()
+      }finally{
+        if(active) setDashboardLoading(false)
+      }
     })()
+    return () => {
+      active = false
+    }
   }, [])
 
   useEffect(() => {
@@ -1781,6 +1813,10 @@ export default function Dashboard(){
         )}
       </>
     )
+  }
+
+  if(dashboardLoading){
+    return <DashboardLoadingScreen />
   }
 
   return (

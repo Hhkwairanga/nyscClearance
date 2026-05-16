@@ -83,6 +83,9 @@ function isStaleAuthError(error){
   const detail = String(error?.response?.data?.detail || '').toLowerCase()
   return (
     detail.includes('token') ||
+    detail.includes('expired') ||
+    detail.includes('session') ||
+    detail.includes('login again') ||
     detail.includes('credential') ||
     detail.includes('authentication') ||
     detail.includes('not authenticated') ||

@@ -16,6 +16,77 @@ body{ background-color:#f7f9f6; }
 
 .min-w-0{ min-width: 0 !important; }
 
+.app-loading-screen,
+.dashboard-loading-shell{
+  min-height: 100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 28px;
+  background: radial-gradient(1100px 560px at 12% 12%, rgba(189,183,107,0.20), transparent),
+              radial-gradient(900px 460px at 88% 20%, rgba(85,107,47,0.14), transparent),
+              #f7f9f6;
+}
+.dashboard-loading-shell{ min-height: calc(100vh - 76px); }
+.app-loading-card,
+.dashboard-loading-card{
+  width:min(440px, 100%);
+  padding: 30px;
+  border-radius: 22px;
+  border: 1px solid #edf0ea;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 24px 70px rgba(19,28,47,.10);
+}
+.app-loading-logo{ height:64px; width:auto; object-fit:contain; }
+.app-loading-title{
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: var(--olive);
+  letter-spacing: -.03em;
+}
+.dashboard-loading-icon{
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: var(--olive);
+  color:#fff;
+  box-shadow: 0 15px 35px rgba(85,107,47,.22);
+}
+.dashboard-loading-steps{
+  display:flex;
+  justify-content:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.dashboard-loading-steps span{
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--olive);
+  background:#eef4e7;
+  border-radius:999px;
+  padding: 7px 10px;
+}
+.loading-progress{
+  height: 7px;
+  overflow:hidden;
+  border-radius:999px;
+  background:#e4eadf;
+}
+.loading-progress-bar{
+  width: 42%;
+  height:100%;
+  border-radius:inherit;
+  background: linear-gradient(90deg, var(--olive), var(--khaki));
+  animation: loadingProgressBar 1.2s ease-in-out infinite;
+}
+@keyframes loadingProgressBar{
+  0%{ transform: translateX(-120%); }
+  100%{ transform: translateX(250%); }
+}
+
 /* Auth pages (Signup/Login) */
 .auth-page{
   min-height: calc(100vh - 76px);

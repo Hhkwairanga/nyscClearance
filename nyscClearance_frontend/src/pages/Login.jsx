@@ -146,6 +146,14 @@ export default function Login() {
                     {status === 'pending' ? 'Signing in…' : 'Login'}
                   </button>
                 </div>
+                {status === 'pending' && (
+                  <div className="mt-3">
+                    <div className="loading-progress" aria-hidden>
+                      <div className="loading-progress-bar" />
+                    </div>
+                    <div className="small text-muted mt-2 text-center">Please wait while we prepare your dashboard.</div>
+                  </div>
+                )}
               </form>
 
               {status?.startsWith('error') && <div className="alert alert-danger mt-3">{status.split(':')[1]}</div>}

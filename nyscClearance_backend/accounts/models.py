@@ -342,6 +342,7 @@ class SystemSetting(models.Model):
     - welcome_bonus: amount credited when an organization wallet is created
     - discount_enabled/percent: apply percentage discount to charges when enabled
     - notify_*: optional scheduled announcement for organization dashboard
+    - auth_token_version: increment to invalidate all previously issued access tokens
     """
     welcome_bonus = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('10000.00'))
     clearance_fee = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('300.00'))
@@ -352,6 +353,7 @@ class SystemSetting(models.Model):
     notify_message = models.TextField(blank=True)
     notify_start = models.DateTimeField(null=True, blank=True)
     notify_end = models.DateTimeField(null=True, blank=True)
+    auth_token_version = models.PositiveIntegerField(default=1)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

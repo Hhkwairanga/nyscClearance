@@ -147,7 +147,7 @@ class WalletTransactionAdmin(admin.ModelAdmin):
 
 @admin.register(SystemSetting)
 class SystemSettingAdmin(admin.ModelAdmin):
-    list_display = ('welcome_bonus', 'clearance_fee', 'discount_enabled', 'discount_percent', 'notify_enabled', 'updated_at')
+    list_display = ('welcome_bonus', 'clearance_fee', 'discount_enabled', 'discount_percent', 'notify_enabled', 'auth_token_version', 'updated_at')
     fieldsets = (
         ('Wallet', {
             'fields': ('welcome_bonus', 'clearance_fee')
@@ -157,6 +157,10 @@ class SystemSettingAdmin(admin.ModelAdmin):
         }),
         ('Announcement', {
             'fields': ('notify_enabled', 'notify_title', 'notify_message', 'notify_start', 'notify_end')
+        }),
+        ('Security', {
+            'fields': ('auth_token_version',),
+            'description': 'Increment this value to invalidate all existing bearer tokens. Use the force_logout management command for full session logout.',
         }),
     )
 

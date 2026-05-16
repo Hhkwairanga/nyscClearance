@@ -155,9 +155,11 @@ Deployment
 - Set secure `DJANGO_SECRET_KEY`, proper `ALLOWED_HOSTS`, and SMTP credentials if used.
 - Create System Settings and Paystack Config in admin.
 - Configure CORS/CSRF to allow your frontend domain(s).
-- Run migrations, then optionally force a major deployment logout/expired session cleanup:
+- Run migrations, then optionally force a major deployment logout:
 
-    python manage.py clearsessions
+    python manage.py force_logout
+
+  `clearsessions` only removes expired Django sessions; use `force_logout` when you need every active user to sign in again after a major deployment. It clears active session rows and increments the System Settings auth token version so previously issued bearer tokens are rejected.
 
 - Production cookie/security defaults are enabled when `DJANGO_DEBUG=false`:
   - `SESSION_COOKIE_SECURE=true`, `CSRF_COOKIE_SECURE=true`
@@ -166,7 +168,7 @@ Deployment
   - For cross-subdomain deployments, keep HTTPS and set cookie/domain env vars only when needed.
 - The React app performs a deployment refresh on startup:
   - Compares `VITE_APP_VERSION` (or build timestamp fallback) with `localStorage.app_version`.
-  - On version change, clears browser storage, unregisters service workers, saves the new version, and reloads once.
+  - On version change, logs out the server session, clears browser storage, unregisters service workers, saves the new version, and reloads once.
   - Stale API auth (`401`, or auth-related `403`) clears the token and redirects to `/login`.
 
 Nginx SPA caching recommendation:
