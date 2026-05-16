@@ -2745,13 +2745,14 @@ class WalletStatementExportView(APIView):
         try:
             from openpyxl import Workbook
             from openpyxl.styles import Font
+            from openpyxl.worksheet.table import Table, TableStyleInfo
         except Exception:
             return Response({'detail': 'Excel export unavailable (missing openpyxl)'}, status=500)
 
         wb = Workbook()
         ws = wb.active
         ws.title = 'Wallet Statement'
-        _excel_style_header(ws, 'Wallet Statement', profile, merge_to='H1')
+        _excel_style_header(ws, 'Wallet Statement', profile, merge_to='I1')
 
         generated_at = timezone.localtime().strftime('%Y-%m-%d %H:%M')
         account_details = [
@@ -2774,24 +2775,51 @@ class WalletStatementExportView(APIView):
             ('Current balance', float(acct.balance or Decimal('0.00'))),
             ('Total credit', float(total_credit)),
             ('Total debit', float(total_debit)),
-            ('Transactions', len(txs)),
         ]
-        for offset, (label, value) in enumerate(summary_rows, 15):
-            _excel_label_value(ws, offset, label, value)
+        ws['A15'] = 'Metric'
+        ws['B15'] = 'Currency'
+        ws['C15'] = 'Amount'
+        for cell in ws[15]:
+            cell.font = Font(bold=True)
+        for offset, (label, value) in enumerate(summary_rows, 16):
+            ws.cell(row=offset, column=1, value=label)
+            ws.cell(row=offset, column=2, value='NGN')
+            amount_cell = ws.cell(row=offset, column=3, value=value)
+            amount_cell.number_format = '#,##0.00'
+        ws.cell(row=19, column=1, value='Transactions')
+        ws.cell(row=19, column=3, value=len(txs)).number_format = '#,##0'
 
         start_row = 21
-        _excel_table_header(ws, start_row, ['date', 'description', 'type', 'amount', 'vat', 'total', 'reference'])
+        _excel_table_header(ws, start_row, ['date', 'description', 'type', 'currency', 'amount', 'vat', 'total', 'reference'])
         for t in txs:
             ws.append([
                 timezone.localtime(t.created_at).strftime('%Y-%m-%d %H:%M') if t.created_at else '',
                 t.description,
                 t.type,
+                'NGN',
                 float(t.amount or Decimal('0.00')),
                 float(t.vat_amount or Decimal('0.00')),
                 float(t.total_amount or Decimal('0.00')),
                 t.reference,
             ])
-        ws.freeze_panes = f'A{start_row + 1}'
+        if txs:
+            for row in ws.iter_rows(min_row=start_row + 1, max_row=start_row + len(txs), min_col=5, max_col=7):
+                for cell in row:
+                    cell.number_format = '#,##0.00'
+            table = Table(displayName='WalletTransactions', ref=f'A{start_row}:H{start_row + len(txs)}')
+            table.tableStyleInfo = TableStyleInfo(
+                name='TableStyleMedium4',
+                showFirstColumn=False,
+                showLastColumn=False,
+                showRowStripes=True,
+                showColumnStripes=False,
+            )
+            ws.add_table(table)
+        protection_password = 'nysc-statement-readonly'
+        ws.protection.set_password(protection_password)
+        ws.protection.enable()
+        wb.security.lockStructure = True
+        wb.security.set_workbook_password(protection_password)
         _excel_autofit(ws)
 
         from io import BytesIO
