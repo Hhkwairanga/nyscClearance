@@ -9,6 +9,7 @@ export default function Login() {
   const location = useLocation()
   const [form, setForm] = useState({ email: '', password: '' })
   const [role, setRole] = useState('ORG')
+  const [remember, setRemember] = useState(true)
   const [status, setStatus] = useState(null)
 
   useEffect(() => {
@@ -42,8 +43,11 @@ export default function Login() {
     try {
       await ensureCsrf()
       const { data } = await api.post('/api/auth/login/', { ...form, role })
-      if (data?.token) setToken(data.token)
-      const path = role === 'ORG' ? '/dashboard/org' : role === 'BRANCH' ? '/dashboard/branch' : '/dashboard/corper'
+      if (data?.token) setToken(data.token, remember)
+      const params = new URLSearchParams(location.search)
+      const next = params.get('next') || ''
+      const fallbackPath = role === 'ORG' ? '/dashboard/org' : role === 'BRANCH' ? '/dashboard/branch' : '/dashboard/corper'
+      const path = next.startsWith('/') && !next.startsWith('//') ? next : fallbackPath
       navigate(path)
     } catch (err) {
       setStatus('error:' + (err?.response?.data?.detail || 'Login failed'))
@@ -120,10 +124,21 @@ export default function Login() {
                 </div>
 
                 <div className="d-flex justify-content-between align-items-center mt-3">
+                  <div className="form-check">
+                    <input
+                      className="form-check-input"
+                      id="remember-login"
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                    />
+                    <label className="form-check-label small text-muted" htmlFor="remember-login">
+                      Remember me
+                    </label>
+                  </div>
                   <Link to="/forgot-password" className="small auth-link">
                     Forgot password?
                   </Link>
-                  <span className="small text-muted">{roleMeta.label}</span>
                 </div>
 
                 <div className="d-grid mt-4">

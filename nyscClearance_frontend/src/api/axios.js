@@ -12,9 +12,41 @@ const api = axios.create({
 
 // Simple token storage
 const TOKEN_KEY = 'nysc.token'
-export function getToken(){ try{ return localStorage.getItem(TOKEN_KEY) || '' }catch{ return '' } }
-export function setToken(t){ try{ if(t){ localStorage.setItem(TOKEN_KEY, t); api.defaults.headers.common['Authorization'] = `Bearer ${t}` } }catch{} }
-export function clearToken(){ try{ localStorage.removeItem(TOKEN_KEY); delete api.defaults.headers.common['Authorization'] }catch{} }
+const REMEMBER_KEY = 'nysc.remember'
+
+function readToken(storage){
+  try{ return storage.getItem(TOKEN_KEY) || '' }catch{ return '' }
+}
+
+export function getToken(){
+  return readToken(localStorage) || readToken(sessionStorage)
+}
+
+export function setToken(t, remember = true){
+  try{
+    localStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(TOKEN_KEY)
+    localStorage.setItem(REMEMBER_KEY, remember ? '1' : '0')
+    if(t){
+      const target = remember ? localStorage : sessionStorage
+      target.setItem(TOKEN_KEY, t)
+      api.defaults.headers.common['Authorization'] = `Bearer ${t}`
+    }
+  }catch{
+    try{
+      if(t){
+        sessionStorage.setItem(TOKEN_KEY, t)
+        api.defaults.headers.common['Authorization'] = `Bearer ${t}`
+      }
+    }catch{}
+  }
+}
+
+export function clearToken(){
+  try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(REMEMBER_KEY) }catch{}
+  try{ sessionStorage.removeItem(TOKEN_KEY) }catch{}
+  try{ delete api.defaults.headers.common['Authorization'] }catch{}
+}
 
 // Initialize Authorization header from any existing token
 { const t = getToken(); if(t){ api.defaults.headers.common['Authorization'] = `Bearer ${t}` } }

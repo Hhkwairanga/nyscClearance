@@ -26,6 +26,15 @@ export default function App(){
   }
   const isAuthed = !!me?.authenticated
   const dashPath = !isAuthed ? '/' : (me?.role==='ORG' ? '/dashboard/org' : me?.role==='BRANCH' ? '/dashboard/branch' : '/dashboard/corper')
+
+  useEffect(() => {
+    if(isHome && isAuthed){
+      navigate(dashPath, { replace: true })
+    }
+  }, [isHome, isAuthed, dashPath, navigate])
+
+  const holdLandingForAuthCheck = isHome && me === null
+
   return (
     <div className="app-shell">
       <nav className="navbar navbar-expand-lg navbar-dark bg-olive">
@@ -49,7 +58,7 @@ export default function App(){
         </div>
       </nav>
       <main className={isHome || isDashboard ? '' : 'container py-4'}>
-        <Outlet />
+        {holdLandingForAuthCheck ? null : <Outlet />}
       </main>
       {/* Footer intentionally only exists on the landing page */}
     </div>
