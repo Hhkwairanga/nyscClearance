@@ -59,6 +59,7 @@ Configuration (URLs)
   - Set `VITE_API_BASE` (e.g., `https://api.example.com`) for production.
   - Leave it empty in local dev to use the Vite proxy.
   - All API calls and anchor links use helpers in `src/api/urls.js` to resolve against this base.
+  - Set `VITE_APP_VERSION` for each production release. If omitted, the Vite build timestamp is used.
 
 - Backend → Frontend origins:
   - `FRONTEND_ORIGINS` (comma-separated) for CORS/CSRF allowlist.
@@ -154,4 +155,36 @@ Deployment
 - Set secure `DJANGO_SECRET_KEY`, proper `ALLOWED_HOSTS`, and SMTP credentials if used.
 - Create System Settings and Paystack Config in admin.
 - Configure CORS/CSRF to allow your frontend domain(s).
-- HTTPS recommended for production.
+- Run migrations, then optionally force a major deployment logout/expired session cleanup:
+
+    python manage.py clearsessions
+
+- Production cookie/security defaults are enabled when `DJANGO_DEBUG=false`:
+  - `SESSION_COOKIE_SECURE=true`, `CSRF_COOKIE_SECURE=true`
+  - `SESSION_COOKIE_HTTPONLY=true`
+  - HSTS, SSL redirect, `X_FRAME_OPTIONS=DENY`, and `Referrer-Policy: same-origin`
+  - For cross-subdomain deployments, keep HTTPS and set cookie/domain env vars only when needed.
+- The React app performs a deployment refresh on startup:
+  - Compares `VITE_APP_VERSION` (or build timestamp fallback) with `localStorage.app_version`.
+  - On version change, clears browser storage, unregisters service workers, saves the new version, and reloads once.
+  - Stale API auth (`401`, or auth-related `403`) clears the token and redirects to `/login`.
+
+Nginx SPA caching recommendation:
+
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+        try_files $uri =404;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://django_backend;
+    }

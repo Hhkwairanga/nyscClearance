@@ -6,6 +6,9 @@ export default defineConfig(({ mode }) => {
   const apiTarget = (env.VITE_API_BASE || 'http://localhost:8000').replace(/\/$/, '')
   return {
     plugins: [react()],
+    define: {
+      __APP_BUILD_TIMESTAMP__: JSON.stringify(new Date().toISOString()),
+    },
     server: {
       host: '0.0.0.0',
       port: 5173,
