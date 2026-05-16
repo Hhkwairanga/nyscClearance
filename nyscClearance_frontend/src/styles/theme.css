@@ -362,6 +362,11 @@ body{ background-color:#f7f9f6; }
 .dash-table{ table-layout: fixed; }
 .dash-td-truncate{ max-width: 260px; }
 .dash-table-auto{ table-layout: auto; }
+.dash-table-scroll{ -webkit-overflow-scrolling: touch; }
+.dash-table-wallet{ min-width: 920px; }
+.dash-table-clearance{ min-width: 980px; }
+.dash-action-cell{ min-width: 118px; white-space: nowrap; position: sticky; right: 0; z-index: 2; background: #fff; box-shadow: -8px 0 16px rgba(19,28,47,.04); }
+thead .dash-action-cell{ z-index: 3; background: #fff; }
 .dash-td-truncate-wide{ max-width: clamp(220px, 32vw, 560px); }
 .dash-table-search{ width: min(360px, 100%); }
 

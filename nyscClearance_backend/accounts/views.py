@@ -2386,6 +2386,68 @@ class AttendanceLogReportView(APIView):
         return Response({'rows': rows, 'summary': {'start': start.isoformat(), 'end': end.isoformat(), 'count': len(rows)}})
 
 
+def _excel_logo_path(profile):
+    try:
+        if profile and getattr(profile, 'logo', None) and profile.logo.name and os.path.exists(profile.logo.path):
+            return profile.logo.path
+    except Exception:
+        pass
+    return None
+
+
+def _excel_autofit(ws, max_width=42):
+    try:
+        from openpyxl.utils import get_column_letter
+        for idx, col in enumerate(ws.columns, 1):
+            width = 10
+            for cell in col:
+                value = cell.value
+                if value is not None:
+                    width = max(width, min(len(str(value)) + 2, max_width))
+            ws.column_dimensions[get_column_letter(idx)].width = width
+    except Exception:
+        pass
+
+
+def _excel_style_header(ws, title, profile=None, merge_to='K1'):
+    from openpyxl.styles import Font, PatternFill, Alignment
+    ws.merge_cells(f'A1:{merge_to}')
+    ws['A1'] = title
+    ws['A1'].font = Font(size=16, bold=True, color='FFFFFF')
+    ws['A1'].fill = PatternFill('solid', fgColor='556B2F')
+    ws['A1'].alignment = Alignment(vertical='center')
+    ws.row_dimensions[1].height = 28
+    logo_path = _excel_logo_path(profile)
+    if logo_path:
+        try:
+            from openpyxl.drawing.image import Image as XLImage
+            img = XLImage(logo_path)
+            img.height = 52
+            img.width = 90
+            ws.add_image(img, 'J2')
+        except Exception:
+            pass
+
+
+def _excel_label_value(ws, row, label, value):
+    from openpyxl.styles import Font, PatternFill, Alignment
+    ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+    ws.cell(row=row, column=1).fill = PatternFill('solid', fgColor='EEF2E8')
+    ws.cell(row=row, column=2, value=value or '—')
+    ws.cell(row=row, column=2).alignment = Alignment(wrap_text=True)
+
+
+def _excel_table_header(ws, row, headers):
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    border = Border(bottom=Side(style='thin', color='D9E1D2'))
+    for idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=idx, value=header)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='556B2F')
+        cell.alignment = Alignment(horizontal='center')
+        cell.border = border
+
+
 class AttendanceExcelExportView(APIView):
     """Download an Excel workbook with Daily/Corpers/Logs sheets (ORG/BRANCH)."""
 
@@ -2530,25 +2592,68 @@ class AttendanceExcelExportView(APIView):
 
         try:
             from openpyxl import Workbook
+            from openpyxl.styles import Font
         except Exception:
             return Response({'detail': 'Excel export unavailable (missing openpyxl)'}, status=500)
 
         wb = Workbook()
         ws = wb.active
-        ws.title = 'Daily'
-        ws.append(['date', 'checkins', 'hours'])
+        ws.title = 'Summary'
+
+        scope_name = getattr(branch, 'name', '') if branch else 'All branches'
+        generated_at = timezone.localtime().strftime('%Y-%m-%d %H:%M')
+        total_checkins = sum(int(r.get('checkins') or 0) for r in daily_rows)
+        total_hours = sum(Decimal(str(r.get('hours') or 0)) for r in daily_rows)
+        total_absent = sum(int(r.get('absent_days') or 0) for r in corper_rows)
+        total_late = sum(int(r.get('late_days') or 0) for r in corper_rows)
+
+        _excel_style_header(ws, 'Attendance Report', prof)
+        details = [
+            ('Organization', getattr(org_user, 'name', '') or getattr(org_user, 'email', '')),
+            ('Email', getattr(org_user, 'email', '')),
+            ('Phone', getattr(org_user, 'phone_number', '')),
+            ('Address', getattr(org_user, 'address', '')),
+            ('Scope', scope_name),
+            ('Period', f'{start.isoformat()} to {end.isoformat()}'),
+            ('Generated', generated_at),
+        ]
+        for offset, (label, value) in enumerate(details, 3):
+            _excel_label_value(ws, offset, label, value)
+        ws['A12'] = 'Summary'
+        ws['A12'].font = Font(bold=True, size=13)
+        summary_items = [
+            ('Days in range', len(daily_rows)),
+            ('Total check-ins', total_checkins),
+            ('Total hours', float(total_hours)),
+            ('Corpers listed', len(corper_rows)),
+            ('Attendance log rows', len(log_rows)),
+            ('Total absent days', total_absent),
+            ('Total late days', total_late),
+        ]
+        for idx, (label, value) in enumerate(summary_items, 13):
+            _excel_label_value(ws, idx, label, value)
+        _excel_autofit(ws)
+
+        ws_daily = wb.create_sheet('Daily Check-ins')
+        _excel_table_header(ws_daily, 1, ['date', 'checkins'])
         for r in daily_rows:
-            ws.append([r['date'], r['checkins'], r['hours']])
+            ws_daily.append([r['date'], r['checkins']])
+        ws_daily.freeze_panes = 'A2'
+        _excel_autofit(ws_daily)
 
         ws2 = wb.create_sheet('Corpers')
-        ws2.append(['full_name', 'state_code', 'email', 'branch', 'department', 'unit', 'working_days', 'present_days', 'absent_days', 'late_days', 'hours'])
+        _excel_table_header(ws2, 1, ['full_name', 'state_code', 'email', 'branch', 'department', 'unit', 'working_days', 'present_days', 'absent_days', 'late_days', 'hours'])
         for r in corper_rows:
             ws2.append([r['full_name'], r['state_code'], r['email'], r['branch'], r['department'], r['unit'], r['working_days'], r['present_days'], r['absent_days'], r['late_days'], r['hours']])
+        ws2.freeze_panes = 'A2'
+        _excel_autofit(ws2)
 
         ws3 = wb.create_sheet('Logs')
-        ws3.append(['date', 'time_in', 'time_out', 'full_name', 'state_code', 'branch'])
+        _excel_table_header(ws3, 1, ['date', 'time_in', 'time_out', 'full_name', 'state_code', 'branch'])
         for r in log_rows:
             ws3.append([r['date'], r['time_in'], r['time_out'], r['full_name'], r['state_code'], r['branch']])
+        ws3.freeze_panes = 'A2'
+        _excel_autofit(ws3)
 
         from io import BytesIO
         buf = BytesIO()
@@ -2603,6 +2708,103 @@ class WalletView(APIView):
         from .serializers import WalletAccountSerializer
         data = WalletAccountSerializer(acct).data
         return Response(data)
+
+
+class WalletStatementExportView(APIView):
+    """Download the authenticated user's complete wallet statement as Excel."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if getattr(user, 'role', None) not in ('ORG', 'BRANCH', 'CORPER'):
+            raise PermissionDenied('Not allowed')
+
+        acct = _ensure_wallet_with_welcome(user)
+        txs = list(acct.transactions.all().order_by('created_at', 'id'))
+        total_credit = sum((t.total_amount or Decimal('0.00')) for t in txs if t.type == 'CREDIT')
+        total_debit = sum((t.total_amount or Decimal('0.00')) for t in txs if t.type == 'DEBIT')
+
+        org_user = user
+        branch_name = ''
+        try:
+            if getattr(user, 'role', None) == 'BRANCH':
+                branch = BranchOffice.objects.filter(admin=user).select_related('user').first()
+                if branch:
+                    org_user = branch.user
+                    branch_name = branch.name
+            elif getattr(user, 'role', None) == 'CORPER':
+                cm = getattr(user, 'corper_profile', None)
+                if cm:
+                    org_user = cm.user
+                    branch_name = getattr(cm.branch, 'name', '') if cm.branch else ''
+        except Exception:
+            pass
+        profile = OrganizationProfile.objects.filter(user=org_user).first()
+
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font
+        except Exception:
+            return Response({'detail': 'Excel export unavailable (missing openpyxl)'}, status=500)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Wallet Statement'
+        _excel_style_header(ws, 'Wallet Statement', profile, merge_to='H1')
+
+        generated_at = timezone.localtime().strftime('%Y-%m-%d %H:%M')
+        account_details = [
+            ('Organization', getattr(org_user, 'name', '') or getattr(org_user, 'email', '')),
+            ('Organization Email', getattr(org_user, 'email', '')),
+            ('Organization Phone', getattr(org_user, 'phone_number', '')),
+            ('Organization Address', getattr(org_user, 'address', '')),
+            ('Statement Account', getattr(user, 'name', '') or getattr(user, 'email', '')),
+            ('Account Email', getattr(user, 'email', '')),
+            ('Role', getattr(user, 'role', '')),
+            ('Branch', branch_name),
+            ('Generated', generated_at),
+        ]
+        for offset, (label, value) in enumerate(account_details, 3):
+            _excel_label_value(ws, offset, label, value)
+
+        ws['A14'] = 'Summary'
+        ws['A14'].font = Font(bold=True, size=13)
+        summary_rows = [
+            ('Current balance', float(acct.balance or Decimal('0.00'))),
+            ('Total credit', float(total_credit)),
+            ('Total debit', float(total_debit)),
+            ('Transactions', len(txs)),
+        ]
+        for offset, (label, value) in enumerate(summary_rows, 15):
+            _excel_label_value(ws, offset, label, value)
+
+        start_row = 21
+        _excel_table_header(ws, start_row, ['date', 'description', 'type', 'amount', 'vat', 'total', 'reference'])
+        for t in txs:
+            ws.append([
+                timezone.localtime(t.created_at).strftime('%Y-%m-%d %H:%M') if t.created_at else '',
+                t.description,
+                t.type,
+                float(t.amount or Decimal('0.00')),
+                float(t.vat_amount or Decimal('0.00')),
+                float(t.total_amount or Decimal('0.00')),
+                t.reference,
+            ])
+        ws.freeze_panes = f'A{start_row + 1}'
+        _excel_autofit(ws)
+
+        from io import BytesIO
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        resp['Content-Disposition'] = f'attachment; filename="wallet_statement_{timezone.localdate().isoformat()}.xlsx"'
+        return resp
 
 
 def wallet_charge_clearance(request):

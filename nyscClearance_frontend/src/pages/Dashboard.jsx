@@ -679,6 +679,29 @@ export default function Dashboard(){
     const txTotalPages = Math.max(1, Math.ceil(filteredTxs.length / txPageSize))
     const txStart = (txPage - 1) * txPageSize
     const pageTxs = filteredTxs.slice(txStart, txStart + txPageSize)
+
+    async function downloadWalletStatement(){
+      try{
+        const res = await api.get('/api/auth/wallet/export/', { responseType: 'blob' })
+        const blob = new Blob([res.data], { type: res.headers?.['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+        let filename = 'wallet_statement.xlsx'
+        const cd = res.headers?.['content-disposition'] || ''
+        const m = cd.match(/filename=\"?([^\";]+)\"?/i)
+        if(m && m[1]) filename = m[1]
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        window.URL.revokeObjectURL(url)
+        setStatus('saved:wallet-export')
+      }catch(e){
+        setStatus('error:wallet-export')
+      }
+    }
+
     return (
       <div className="row g-3">
         <div className="col-12 col-xxl-4">
@@ -701,7 +724,12 @@ export default function Dashboard(){
                   </div>
                 </div>
               </div>
-              <button className="btn btn-olive mt-3 w-100" onClick={fundWallet}>Fund Wallet</button>
+              <div className="d-grid gap-2 mt-3">
+                <button className="btn btn-olive" onClick={fundWallet}>Fund Wallet</button>
+                <button className="btn btn-outline-secondary d-inline-flex align-items-center justify-content-center gap-2" type="button" onClick={downloadWalletStatement}>
+                  <FileSpreadsheet size={16} /> Export Statement
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -751,8 +779,8 @@ export default function Dashboard(){
                 </div>
               </div>
 
-              <div className="table-responsive mt-2">
-              <table className="table table-sm align-middle dash-table">
+              <div className="table-responsive mt-2 dash-table-scroll">
+              <table className="table table-sm align-middle dash-table dash-table-auto dash-table-wallet mb-0">
                 <thead>
                   <tr>
                     <th>S/N</th>
@@ -1598,6 +1626,12 @@ export default function Dashboard(){
         )}
         {status==='error:wallet-fund' && (
           <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Payment verification failed.</AutoFadeAlert>
+        )}
+        {status==='saved:wallet-export' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Wallet statement download started.</AutoFadeAlert>
+        )}
+        {status==='error:wallet-export' && (
+          <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Failed to export wallet statement.</AutoFadeAlert>
         )}
         {status==='saved:query-reply' && (
           <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Reply sent. Awaiting admin resolution.</AutoFadeAlert>
@@ -3168,8 +3202,8 @@ export default function Dashboard(){
                     </div>
                   </div>
 
-                  <div className="table-responsive mt-2">
-                    <table className="table table-sm align-middle dash-table dash-table-auto">
+                  <div className="table-responsive mt-2 dash-table-scroll">
+                    <table className="table table-sm align-middle dash-table dash-table-auto dash-table-clearance mb-0">
                       <thead>
                         <tr>
                           <th>S/N</th>
@@ -3180,7 +3214,7 @@ export default function Dashboard(){
                           <th className="text-end">Late</th>
                           <th>Qualified</th>
                           <th>Downloaded</th>
-                          <th></th>
+                          <th className="dash-action-cell"></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3204,7 +3238,7 @@ export default function Dashboard(){
                                 <td className="text-end">{row.late}</td>
                                 <td>{row.qualified ? <span className="badge bg-success">Yes</span> : <span className="badge bg-danger">No</span>}</td>
                                 <td>{row.downloaded ? <span className="badge bg-primary">Yes</span> : 'No'}</td>
-                                <td className="text-end">
+                                <td className="text-end dash-action-cell">
                                   {!row.qualified && !row.override && !row.downloaded && (
                                     <button className="btn btn-sm btn-outline-secondary" onClick={async()=>{
                                       try{ await api.post('/api/auth/clearance/approve/', { corper: row.id }); await refreshAll() }catch(e){}
