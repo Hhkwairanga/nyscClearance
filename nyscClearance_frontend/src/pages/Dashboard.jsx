@@ -2923,12 +2923,16 @@ export default function Dashboard(){
                       {structureTab==='structure' ? 'Structure' : structureTab==='holidays' ? 'Holidays' : 'Organisation Profile'}
                     </div>
 	                    <div className="d-flex gap-2 flex-wrap justify-content-end">
-	                      <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadImportTemplate('structure')}>
-	                        <Download size={15} /> Template
-	                      </button>
-	                      <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>setShowStructureImport(true)}>
-	                        <FileSpreadsheet size={15} /> Import
-	                      </button>
+                        {structureTab==='structure' && (
+                          <>
+	                          <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadImportTemplate('structure')}>
+	                            <Download size={15} /> Template
+	                          </button>
+	                          <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>setShowStructureImport(true)}>
+	                            <FileSpreadsheet size={15} /> Import
+	                          </button>
+                          </>
+                        )}
 	                      {structureTab==='structure' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddBranch(true)}>Add Branch</button>}
 	                      {structureTab==='structure' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddDepartment(true)}>Add Department</button>}
 	                      {structureTab==='structure' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddUnit(true)}>Add Unit</button>}
