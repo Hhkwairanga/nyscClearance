@@ -1253,13 +1253,12 @@ def _read_structure_import(upload):
         data = upload.read()
         wb = load_workbook(BytesIO(data), read_only=True, data_only=True)
         sheets = set(wb.sheetnames or [])
-        multi = {'Branches', 'Departments', 'Department Offices', 'Units'}
+        multi = {'Branches', 'Departments', 'Units'}
         if multi.issubset(sheets):
             return {
                 'mode': 'multi',
                 'branches': _read_xlsx_sheet_rows(wb, 'Branches'),
                 'departments': _read_xlsx_sheet_rows(wb, 'Departments'),
-                'dept_offices': _read_xlsx_sheet_rows(wb, 'Department Offices'),
                 'units': _read_xlsx_sheet_rows(wb, 'Units'),
             }
         # Legacy: read active sheet rows
@@ -1401,20 +1400,11 @@ class StructureImportTemplateView(APIView):
                     ],
                 },
                 {
-                    'name': 'Department Offices',
-                    'columns': ['department_name', 'branch_name'],
-                    'rows': [
-                        ['Human Resources', 'Head Office'],
-                        ['Human Resources', 'Lagos Branch'],
-                        ['Finance', 'Head Office'],
-                    ],
-                },
-                {
                     'name': 'Units',
-                    'columns': ['department_name', 'unit_name'],
+                    'columns': ['unit_name'],
                     'rows': [
-                        ['Human Resources', 'Recruitment'],
-                        ['Finance', 'Payroll'],
+                        ['Recruitment'],
+                        ['Payroll'],
                     ],
                 },
             ],
@@ -1462,11 +1452,10 @@ class StructureImportView(APIView):
     def _preview(self, user, data):
         branches = { _name_key(b.name): b for b in BranchOffice.objects.filter(user=user) }
         departments = { _name_key(d.name): d for d in Department.objects.filter(user=user) }
-        units = { (d_key, _name_key(u.name)): u for d_key, d in departments.items() for u in Unit.objects.filter(department=d) }
+        existing_units = { _name_key(u.name) for u in Unit.objects.filter(user=user) }
         file_branches = set()
         file_departments = set()
         file_units = set()
-        file_dept_offices = set()
         preview_rows = []
 
         mode = data.get('mode')
@@ -1482,21 +1471,17 @@ class StructureImportView(APIView):
                 unit_key = _name_key(unit_name)
                 if not branch_key:
                     messages.append('branch_name is required')
-                if unit_key and not department_key:
-                    messages.append('department_name is required when unit_name is provided')
                 if row.get('admin_email') and '@' not in row.get('admin_email'):
                     messages.append('admin_email is not valid')
                 branch_exists = branch_key in branches or branch_key in file_branches
                 department_exists = not department_key or department_key in departments or department_key in file_departments
-                unit_exists = not unit_key or (department_key, unit_key) in units or (department_key, unit_key) in file_units
+                unit_exists = not unit_key or unit_key in existing_units or unit_key in file_units
                 if branch_key:
                     file_branches.add(branch_key)
                 if department_key:
                     file_departments.add(department_key)
-                if branch_key and department_key:
-                    file_dept_offices.add((department_key, branch_key))
-                if department_key and unit_key:
-                    file_units.add((department_key, unit_key))
+                if unit_key:
+                    file_units.add(unit_key)
                 preview_rows.append({
                     'row': row.get('_row'),
                     'branch_name': branch_name,
@@ -1554,53 +1539,19 @@ class StructureImportView(APIView):
                     'unit_action': '',
                 })
 
-            for row in (data.get('dept_offices') or []):
-                messages = []
-                branch_name = row.get('branch_name', '')
-                department_name = row.get('department_name', '')
-                branch_key = _name_key(branch_name)
-                department_key = _name_key(department_name)
-                if not department_key:
-                    messages.append('department_name is required')
-                if not branch_key:
-                    messages.append('branch_name is required')
-                if branch_key and branch_key not in branches and branch_key not in file_branches:
-                    messages.append('branch_name was not found (add it in Branches sheet)')
-                if department_key and department_key not in departments and department_key not in file_departments:
-                    messages.append('department_name was not found (add it in Departments sheet)')
-                if branch_key and department_key:
-                    file_dept_offices.add((department_key, branch_key))
-                preview_rows.append({
-                    'row': row.get('_row'),
-                    'branch_name': branch_name,
-                    'department_name': department_name,
-                    'unit_name': '',
-                    'status': 'error' if messages else 'ok',
-                    'messages': messages,
-                    'branch_action': '',
-                    'department_action': '',
-                    'unit_action': '',
-                })
-
             for row in (data.get('units') or []):
                 messages = []
-                department_name = row.get('department_name', '')
                 unit_name = row.get('unit_name', '')
-                department_key = _name_key(department_name)
                 unit_key = _name_key(unit_name)
-                if not department_key:
-                    messages.append('department_name is required')
                 if not unit_key:
                     messages.append('unit_name is required')
-                if department_key and department_key not in departments and department_key not in file_departments:
-                    messages.append('department_name was not found (add it in Departments sheet)')
-                unit_exists = not unit_key or (department_key, unit_key) in units or (department_key, unit_key) in file_units
-                if department_key and unit_key:
-                    file_units.add((department_key, unit_key))
+                if unit_key:
+                    unit_exists = unit_key in existing_units or unit_key in file_units
+                    file_units.add(unit_key)
                 preview_rows.append({
                     'row': row.get('_row'),
                     'branch_name': '',
-                    'department_name': department_name,
+                    'department_name': '',
                     'unit_name': unit_name,
                     'status': 'error' if messages else 'ok',
                     'messages': messages,
@@ -1617,8 +1568,7 @@ class StructureImportView(APIView):
                 'rows': len(preview_rows),
                 'branches_to_create': sum(1 for key in file_branches if key not in branches),
                 'departments_to_create': sum(1 for key in file_departments if key not in departments),
-                'units_to_create': sum(1 for key in file_units if key not in units),
-                'department_offices': len(file_dept_offices),
+                'units_to_create': sum(1 for key in file_units if key not in existing_units),
             },
             'rows': preview_rows[:200],
         }
@@ -1629,18 +1579,16 @@ class StructureImportView(APIView):
         created = {'branches': 0, 'departments': 0, 'units': 0}
         branches = { _name_key(b.name): b for b in BranchOffice.objects.select_for_update().filter(user=user) }
         departments = { _name_key(d.name): d for d in Department.objects.select_for_update().filter(user=user) }
-        units = { (d_key, _name_key(u.name)): u for d_key, d in departments.items() for u in Unit.objects.filter(department=d) }
+        existing_units = { _name_key(u.name) for u in Unit.objects.select_for_update().filter(user=user) }
 
         if data.get('mode') == 'legacy':
             legacy_rows = data.get('rows') or []
             branch_rows = legacy_rows
             dept_rows = legacy_rows
-            dept_office_rows = legacy_rows
             unit_rows = legacy_rows
         else:
             branch_rows = data.get('branches') or []
             dept_rows = data.get('departments') or []
-            dept_office_rows = data.get('dept_offices') or []
             unit_rows = data.get('units') or []
 
         # Branches
@@ -1684,36 +1632,16 @@ class StructureImportView(APIView):
                 departments[department_key] = department
                 created['departments'] += 1
 
-        # Department offices mapping
-        for row in dept_office_rows:
-            branch_key = _name_key(row.get('branch_name'))
-            dept_key = _name_key(row.get('department_name'))
-            if data.get('mode') == 'legacy':
-                # legacy row carries both names
-                branch_key = _name_key(row.get('branch_name'))
-                dept_key = _name_key(row.get('department_name'))
-            if not branch_key or not dept_key:
-                continue
-            branch = branches.get(branch_key)
-            dept = departments.get(dept_key)
-            if branch and dept and not dept.branches.filter(id=branch.id).exists():
-                dept.branches.add(branch)
-
         # Units
         for row in unit_rows:
-            dept_key = _name_key(row.get('department_name'))
             unit_key = _name_key(row.get('unit_name'))
             if data.get('mode') == 'legacy':
-                dept_key = _name_key(row.get('department_name'))
                 unit_key = _name_key(row.get('unit_name'))
-            if not dept_key or not unit_key:
+            if not unit_key:
                 continue
-            dept = departments.get(dept_key)
-            if not dept:
-                continue
-            lookup = (dept_key, unit_key)
-            if lookup not in units:
-                units[lookup] = Unit.objects.create(department=dept, name=row.get('unit_name'))
+            if unit_key not in existing_units:
+                Unit.objects.create(user=user, name=row.get('unit_name'))
+                existing_units.add(unit_key)
                 created['units'] += 1
         return created
 
@@ -1756,7 +1684,7 @@ class CorperImportView(APIView):
         org_user, default_branch, branch_qs = self._scope(user)
         branches = { _name_key(b.name): b for b in branch_qs }
         departments = { _name_key(d.name): d for d in Department.objects.filter(user=org_user) } if org_user else {}
-        units = { (d_key, _name_key(u.name)): u for d_key, d in departments.items() for u in Unit.objects.filter(department=d) }
+        units = { _name_key(u.name): u for u in Unit.objects.filter(user=org_user) } if org_user else {}
         emails = {_name_key(r.get('email')) for r in rows if _name_key(r.get('email'))}
         state_codes = {_clean_cell(r.get('state_code')).upper() for r in rows if _clean_cell(r.get('state_code'))}
         existing_emails = {_name_key(email) for email in User.objects.filter(email__in=emails).values_list('email', flat=True)}
@@ -1803,14 +1731,10 @@ class CorperImportView(APIView):
                 messages.append('branch_name was not found')
             department = departments.get(department_key) if department_key else None
             if department_key and not department:
-                messages.append('department_name was not found in this branch')
-            if department and branch and not department.branches.filter(id=branch.id).exists():
-                messages.append('department_name is not assigned to this branch')
-            unit = units.get((department_key, unit_key)) if unit_key else None
-            if unit_key and not department_key:
-                messages.append('department_name is required when unit_name is provided')
-            elif unit_key and not unit:
-                messages.append('unit_name was not found in this department')
+                messages.append('department_name was not found in this organisation')
+            unit = units.get(unit_key) if unit_key else None
+            if unit_key and not unit:
+                messages.append('unit_name was not found in this organisation')
             cds_day = _clean_cell(row.get('cds_day', ''))
             cds_int = None
             if cds_day != '':
@@ -1904,47 +1828,11 @@ class BranchOfficeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def clone_structure(self, request, pk=None):
-        """Attach departments from a source branch into this branch.
+        """No-op for org-wide departments/units.
 
         Body: { "source": <branch_id> }
-        - Departments are organisation-level and can be assigned to many branches.
-        - Units always live under a department, so no unit copy is required.
         """
-        try:
-            target = BranchOffice.objects.get(pk=pk)
-        except BranchOffice.DoesNotExist:
-            return Response({ 'detail': 'Target branch not found' }, status=status.HTTP_404_NOT_FOUND)
-
-        source_id = request.data.get('source') or request.data.get('source_branch')
-        if not source_id:
-            return Response({ 'detail': 'source is required' }, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            source = BranchOffice.objects.get(pk=source_id)
-        except BranchOffice.DoesNotExist:
-            return Response({ 'detail': 'Source branch not found' }, status=status.HTTP_404_NOT_FOUND)
-
-        # Authorization: ensure both branches belong to the same organization for the requester
-        user = request.user
-        if getattr(user, 'role', None) == 'ORG':
-            if target.user_id != user.id or source.user_id != user.id:
-                raise PermissionDenied('Branches must belong to your organization')
-        elif getattr(user, 'role', None) == 'BRANCH':
-            # Branch admin can clone into their own branch only, and only from within same org
-            if target.admin_id != user.id:
-                raise PermissionDenied('Not allowed for this target branch')
-            if source.user_id != target.user_id:
-                raise PermissionDenied('Source must belong to the same organization')
-        else:
-            raise PermissionDenied('Not allowed')
-
-        from .models import Department
-        attached = 0
-        for d in Department.objects.filter(user=target.user, branches=source).distinct():
-            if not d.branches.filter(id=target.id).exists():
-                d.branches.add(target)
-                attached += 1
-
-        return Response({ 'attached_departments': attached })
+        return Response({'detail': 'clone_structure is not required for organisation-wide departments and units.'})
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -1952,14 +1840,15 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if getattr(user, 'role', None) == 'ORG':
-            return Department.objects.filter(user=user).prefetch_related('branches')
+            return Department.objects.filter(user=user)
         if getattr(user, 'role', None) == 'BRANCH':
-            return Department.objects.filter(branches__admin=user).distinct().prefetch_related('branches')
+            b = BranchOffice.objects.filter(admin=user).first()
+            org_user = b.user if b else None
+            return Department.objects.filter(user=org_user) if org_user else Department.objects.none()
         if getattr(user, 'role', None) == 'CORPER':
             try:
-                br = user.corper_profile.branch
                 org_user = user.corper_profile.user
-                return Department.objects.filter(user=org_user, branches=br).distinct().prefetch_related('branches')
+                return Department.objects.filter(user=org_user)
             except Exception:
                 return Department.objects.none()
         return Department.objects.none()
@@ -1976,30 +1865,29 @@ class UnitViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if getattr(user, 'role', None) == 'ORG':
-            return Unit.objects.filter(department__user=user)
+            return Unit.objects.filter(user=user)
         if getattr(user, 'role', None) == 'BRANCH':
-            return Unit.objects.filter(department__branches__admin=user).distinct()
+            b = BranchOffice.objects.filter(admin=user).first()
+            org_user = b.user if b else None
+            return Unit.objects.filter(user=org_user) if org_user else Unit.objects.none()
         if getattr(user, 'role', None) == 'CORPER':
             try:
-                br = user.corper_profile.branch
                 org_user = user.corper_profile.user
-                return Unit.objects.filter(department__user=org_user, department__branches=br).distinct()
+                return Unit.objects.filter(user=org_user)
             except Exception:
                 return Unit.objects.none()
         return Unit.objects.none()
 
     def perform_create(self, serializer):
-        dept = serializer.validated_data.get('department')
         user = self.request.user
         if getattr(user, 'role', None) == 'ORG':
-            if dept.user_id != user.id:
-                raise PermissionDenied('Invalid department')
+            serializer.save()
+            return
         elif getattr(user, 'role', None) == 'BRANCH':
-            if not dept.branches.filter(admin=user).exists():
-                raise PermissionDenied('Invalid department for this admin')
+            serializer.save()
+            return
         else:
             raise PermissionDenied('Not allowed')
-        serializer.save()
 
 
 class CorpMemberViewSet(viewsets.ModelViewSet):
@@ -2038,13 +1926,14 @@ class CorpMemberViewSet(viewsets.ModelViewSet):
             new_branch = data.get('branch') or instance.branch
             if new_branch and not admin_branch.filter(id=new_branch.id).exists():
                 raise PermissionDenied('Cannot move corper outside your branch')
-            # Validate department/unit consistency if provided
+            # Validate department/unit belong to the organisation (not nested, not office-scoped)
             dept = data.get('department')
             unit = data.get('unit')
-            if dept and new_branch and getattr(dept, 'branch_id', None) != getattr(new_branch, 'id', None):
-                raise PermissionDenied('Department does not belong to your branch')
-            if unit and dept and getattr(unit, 'department_id', None) != getattr(dept, 'id', None):
-                raise PermissionDenied('Unit does not belong to the selected department')
+            org_user = instance.user
+            if dept and getattr(dept, 'user_id', None) != getattr(org_user, 'id', None):
+                raise PermissionDenied('Invalid department for this organisation')
+            if unit and getattr(unit, 'user_id', None) != getattr(org_user, 'id', None):
+                raise PermissionDenied('Invalid unit for this organisation')
         serializer.save()
 
 
@@ -2187,15 +2076,16 @@ class StatsView(APIView):
         if getattr(user, 'role', None) == 'BRANCH':
             branch_qs = BranchOffice.objects.filter(admin=user)
             corpers_qs = CorpMember.objects.filter(branch__in=branch_qs)
-            departments_qs = Department.objects.filter(branches__in=branch_qs).distinct()
-            units_qs = Unit.objects.filter(department__branches__in=branch_qs).distinct()
+            org_user = branch_qs.first().user if branch_qs.exists() else None
+            departments_qs = Department.objects.filter(user=org_user) if org_user else Department.objects.none()
+            units_qs = Unit.objects.filter(user=org_user) if org_user else Unit.objects.none()
             # Attendance logs for accounts under these branches
             att_qs = AttendanceLog.objects.filter(account__corper_profile__branch__in=branch_qs)
         else:
             branch_qs = BranchOffice.objects.filter(user=user)
             corpers_qs = CorpMember.objects.filter(user=user)
             departments_qs = Department.objects.filter(user=user)
-            units_qs = Unit.objects.filter(department__user=user)
+            units_qs = Unit.objects.filter(user=user)
             # Attendance logs for this organization
             if getattr(user, 'role', None) == 'CORPER':
                 att_qs = AttendanceLog.objects.filter(account=user)

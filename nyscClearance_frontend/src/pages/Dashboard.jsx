@@ -239,6 +239,9 @@ export default function Dashboard(){
   }, [editCorper])
   const [structQuery, setStructQuery] = useState('')
   const [structPage, setStructPage] = useState(1)
+  const [structBranchesPage, setStructBranchesPage] = useState(1)
+  const [structDepartmentsPage, setStructDepartmentsPage] = useState(1)
+  const [structUnitsPage, setStructUnitsPage] = useState(1)
   const [structPageSize, setStructPageSize] = useState(20)
   const [structSearchOpen, setStructSearchOpen] = useState(false)
   const [structSortKey, setStructSortKey] = useState('name')
@@ -476,7 +479,7 @@ export default function Dashboard(){
         key: 'structure',
         label: 'Create Head Office / branches',
         done: hasBranches,
-        action: () => { setActiveTab('structure'); setStructureTab('branches'); setShowAddBranch(true) }
+        action: () => { setActiveTab('structure'); setStructureTab('structure'); setShowAddBranch(true) }
       },
       {
         key: 'corpers',
@@ -754,8 +757,6 @@ export default function Dashboard(){
     e.preventDefault(); setStatus('pending')
     const form = new FormData(e.target)
     const data = Object.fromEntries(form)
-    const branchesIds = form.getAll('branches').filter(Boolean)
-    if(branchesIds.length) data.branches = branchesIds
     try{ await api.post('/api/auth/departments/', data); await refreshAll(); setStatus('saved:department'); return true }catch(e){ setStatus('error:department') }
     return false
   }
@@ -763,7 +764,8 @@ export default function Dashboard(){
   async function createUnit(e){
     e.preventDefault(); setStatus('pending')
     const form = new FormData(e.target)
-    try{ await api.post('/api/auth/units/', Object.fromEntries(form)); await refreshAll(); setStatus('saved:unit'); return true }catch(e){ setStatus('error:unit') }
+    const data = Object.fromEntries(form)
+    try{ await api.post('/api/auth/units/', data); await refreshAll(); setStatus('saved:unit'); return true }catch(e){ setStatus('error:unit') }
     return false
   }
 
@@ -883,26 +885,10 @@ export default function Dashboard(){
   }
 
   function enrollDeptOptions(){
-    const bid = Number(enrollBranch || 0)
-    if(!bid){
-      if(me?.role === 'BRANCH'){
-        const b = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
-        const targetId = b?.id
-        return deps.filter(d => Array.isArray(d.branches) && d.branches.includes(targetId))
-      }
-      return deps
-    }
-    return deps.filter(d => Array.isArray(d.branches) && d.branches.includes(bid))
+    return deps
   }
 
   function enrollUnitOptions(){
-    const did = Number(enrollDept || 0)
-    if(did){ return units.filter(u => u.department === did) }
-    const bid = Number(enrollBranch || 0)
-    if(bid){
-      const deptIds = deps.filter(d => Array.isArray(d.branches) && d.branches.includes(bid)).map(d => d.id)
-      return units.filter(u => deptIds.includes(u.department))
-    }
     return units
   }
 
@@ -2721,9 +2707,7 @@ export default function Dashboard(){
 
               <div className="dash-struct-nav mb-3">
                 <button className={`dash-struct-item ${structureTab==='profile'?'active':''}`} type="button" onClick={()=>setStructureTab('profile')}>Organisation Profile</button>
-                <button className={`dash-struct-item ${structureTab==='branches'?'active':''}`} type="button" onClick={()=>setStructureTab('branches')}>Branches</button>
-                <button className={`dash-struct-item ${structureTab==='departments'?'active':''}`} type="button" onClick={()=>setStructureTab('departments')}>Departments</button>
-                <button className={`dash-struct-item ${structureTab==='units'?'active':''}`} type="button" onClick={()=>setStructureTab('units')}>Units</button>
+                <button className={`dash-struct-item ${structureTab==='structure'?'active':''}`} type="button" onClick={()=>setStructureTab('structure')}>Structure</button>
                 <button className={`dash-struct-item ${structureTab==='holidays'?'active':''}`} type="button" onClick={()=>setStructureTab('holidays')}>Holidays</button>
               </div>
 
@@ -2731,7 +2715,7 @@ export default function Dashboard(){
                 <div className="card-body">
                   <div className="d-flex justify-content-between align-items-center gap-2">
                     <div className="dash-card-title mb-0">
-                      {structureTab==='branches' ? 'Branches' : structureTab==='departments' ? 'Departments' : structureTab==='units' ? 'Units' : structureTab==='holidays' ? 'Holidays' : 'Organisation Profile'}
+                      {structureTab==='structure' ? 'Structure' : structureTab==='holidays' ? 'Holidays' : 'Organisation Profile'}
                     </div>
 	                    <div className="d-flex gap-2 flex-wrap justify-content-end">
 	                      <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadImportTemplate('structure')}>
@@ -2740,9 +2724,9 @@ export default function Dashboard(){
 	                      <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>setShowStructureImport(true)}>
 	                        <FileSpreadsheet size={15} /> Import
 	                      </button>
-	                      {structureTab==='branches' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddBranch(true)}>Add Branch</button>}
-	                      {structureTab==='departments' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddDepartment(true)}>Add Department</button>}
-	                      {structureTab==='units' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddUnit(true)}>Add Unit</button>}
+	                      {structureTab==='structure' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddBranch(true)}>Add Branch</button>}
+	                      {structureTab==='structure' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddDepartment(true)}>Add Department</button>}
+	                      {structureTab==='structure' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddUnit(true)}>Add Unit</button>}
                       {structureTab==='holidays' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddHoliday(true)}>Add Holiday</button>}
                       {structureTab==='profile' && <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowEditProfile(true)}>Edit Profile</button>}
                     </div>
@@ -2768,6 +2752,9 @@ export default function Dashboard(){
                             onChange={(e) => {
                               setStructQuery(e.target.value)
                               setStructPage(1)
+                              setStructBranchesPage(1)
+                              setStructDepartmentsPage(1)
+                              setStructUnitsPage(1)
                             }}
                           />
                         </div>
@@ -2797,25 +2784,16 @@ export default function Dashboard(){
                         onChange={(e) => {
                           setStructSortKey(e.target.value)
                           setStructPage(1)
+                          setStructBranchesPage(1)
+                          setStructDepartmentsPage(1)
+                          setStructUnitsPage(1)
                         }}
                         aria-label="Sort by"
                       >
-                        {structureTab === 'branches' && (
+                        {structureTab === 'structure' && (
                           <>
                             <option value="name">Sort: Name</option>
                             <option value="address">Sort: Address</option>
-                          </>
-                        )}
-                        {structureTab === 'departments' && (
-                          <>
-                            <option value="name">Sort: Name</option>
-                            <option value="branch">Sort: Branch</option>
-                          </>
-                        )}
-                        {structureTab === 'units' && (
-                          <>
-                            <option value="name">Sort: Name</option>
-                            <option value="department">Sort: Department</option>
                           </>
                         )}
                         {structureTab === 'holidays' && (
@@ -2835,6 +2813,9 @@ export default function Dashboard(){
                         onChange={(e) => {
                           setStructSortDir(e.target.value)
                           setStructPage(1)
+                          setStructBranchesPage(1)
+                          setStructDepartmentsPage(1)
+                          setStructUnitsPage(1)
                         }}
                         aria-label="Sort direction"
                       >
@@ -2851,6 +2832,9 @@ export default function Dashboard(){
                         onChange={(e) => {
                           setStructPageSize(Number(e.target.value))
                           setStructPage(1)
+                          setStructBranchesPage(1)
+                          setStructDepartmentsPage(1)
+                          setStructUnitsPage(1)
                         }}
                       >
                         {[20, 50, 100].map((n) => (
@@ -2859,230 +2843,232 @@ export default function Dashboard(){
                           </option>
                         ))}
                       </select>
-                      <span className="small text-muted">Page {structPage}</span>
+                      {structureTab === 'holidays' && <span className="small text-muted">Page {structPage}</span>}
                     </div>
                   </div>
                   )}
 
-                  <div className={structureTab === 'profile' ? 'mt-3' : 'table-responsive mt-2'}>
-                    {structureTab==='branches' && (
-                      <table className="table table-sm align-middle dash-table">
-                        <thead><tr><th>Name</th><th>Address</th><th>Admin Email</th><th></th></tr></thead>
-                        <tbody>
-                          {(() => {
-                            const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
-                            let filtered = q
-                              ? branches.filter((b) => `${b.name} ${b.address || ''} ${b.admin_info?.email || ''}`.toLowerCase().includes(q))
-                              : branches
-                            const cmp = (a, b) => {
-                              const dir = structSortDir === 'desc' ? -1 : 1
-                              const av = (structSortKey === 'address' ? (a.address || '') : a.name || '').toLowerCase()
-                              const bv = (structSortKey === 'address' ? (b.address || '') : b.name || '').toLowerCase()
-                              return av.localeCompare(bv) * dir
-                            }
-                            filtered = [...filtered].sort(cmp)
-                            const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
-                            const current = Math.min(structPage, totalPages)
-                            if (current !== structPage) setStructPage(current)
-                            const start = (current - 1) * structPageSize
-                            const rows = filtered.slice(start, start + structPageSize)
+                  <div className={structureTab === 'profile' ? 'mt-3' : 'mt-2'}>
+                    {structureTab==='structure' && (
+                      <>
+                        <div className="mb-4">
+                          <div className="fw-semibold mb-2">Branches</div>
+                          <div className="table-responsive">
+                            <table className="table table-sm align-middle dash-table">
+                              <thead><tr><th>Name</th><th>Address</th><th>Admin Email</th><th></th></tr></thead>
+                              <tbody>
+                                {(() => {
+                                  const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
+                                  let filtered = q
+                                    ? branches.filter((b) => `${b.name} ${b.address || ''} ${b.admin_info?.email || ''}`.toLowerCase().includes(q))
+                                    : branches
+                                  const cmp = (a, b) => {
+                                    const dir = structSortDir === 'desc' ? -1 : 1
+                                    const av = (structSortKey === 'address' ? (a.address || '') : a.name || '').toLowerCase()
+                                    const bv = (structSortKey === 'address' ? (b.address || '') : b.name || '').toLowerCase()
+                                    return av.localeCompare(bv) * dir
+                                  }
+                                  filtered = [...filtered].sort(cmp)
+                                  const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
+                                  const current = Math.min(structBranchesPage, totalPages)
+                                  if (current !== structBranchesPage) setStructBranchesPage(current)
+                                  const start = (current - 1) * structPageSize
+                                  const rows = filtered.slice(start, start + structPageSize)
 
-                            return (
-                              <>
-                                {rows.map((b) => (
-                            <tr key={b.id}>
-                              <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{b.name}</div></td>
-                              <td><div className="text-truncate dash-td-truncate">{b.address || '—'}</div></td>
-                              <td><div className="text-truncate dash-td-truncate">{b.admin_info?.email || '—'}</div></td>
-                              <td className="text-end">
-                                <div className="btn-group">
-                                  <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditBranch(b)} aria-label="Edit branch">
-                                    <Pencil size={16} />
-                                  </button>
-                                  <button
-                                    className="btn btn-sm btn-outline-danger"
-                                    type="button"
-                                    onClick={async () => {
-                                      if (!confirm(`Delete branch "${b.name}"? This may remove related departments/units.`)) return
-                                      try {
-                                        await api.delete(`/api/auth/branches/${b.id}/`)
-                                        await refreshAll()
-                                      } catch (e) {}
-                                    }}
-                                    aria-label="Delete branch"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                                {filtered.length===0 && <tr><td colSpan="4" className="text-muted">No branches found.</td></tr>}
-                                {filtered.length>0 && (
-                                  <tr>
-                                    <td colSpan="4">
-                                      <div className="d-flex justify-content-between align-items-center">
-                                        <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
-                                        <div className="btn-group">
-                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
-                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </>
-                            )
-                          })()}
-                        </tbody>
-                      </table>
-                    )}
+                                  return (
+                                    <>
+                                      {rows.map((b) => (
+                                        <tr key={b.id}>
+                                          <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{b.name}</div></td>
+                                          <td><div className="text-truncate dash-td-truncate">{b.address || '—'}</div></td>
+                                          <td><div className="text-truncate dash-td-truncate">{b.admin_info?.email || '—'}</div></td>
+                                          <td className="text-end">
+                                            <div className="btn-group">
+                                              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditBranch(b)} aria-label="Edit branch">
+                                                <Pencil size={16} />
+                                              </button>
+                                              <button
+                                                className="btn btn-sm btn-outline-danger"
+                                                type="button"
+                                                onClick={async () => {
+                                                  if (!confirm(`Delete branch "${b.name}"? Corps members in this branch may be affected.`)) return
+                                                  try {
+                                                    await api.delete(`/api/auth/branches/${b.id}/`)
+                                                    await refreshAll()
+                                                  } catch (e) {}
+                                                }}
+                                                aria-label="Delete branch"
+                                              >
+                                                <Trash2 size={16} />
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                      {filtered.length===0 && <tr><td colSpan="4" className="text-muted">No branches found.</td></tr>}
+                                      {filtered.length>0 && (
+                                        <tr>
+                                          <td colSpan="4">
+                                            <div className="d-flex justify-content-between align-items-center">
+                                              <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                              <div className="btn-group">
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructBranchesPage(p=>Math.max(1,p-1))}>Prev</button>
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructBranchesPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </>
+                                  )
+                                })()}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
 
-                    {structureTab==='departments' && (
-                      <table className="table table-sm align-middle dash-table">
-                        <thead><tr><th>Name</th><th>Branch</th><th></th></tr></thead>
-                        <tbody>
-                          {(() => {
-                            const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
-                            let filtered = q
-	                              ? deps.filter((d) => {
-	                                const bnames = (d.branches || []).map((id) => branches.find((b)=>b.id===id)?.name || '').join(' ')
-	                                return `${d.name} ${bnames}`.toLowerCase().includes(q)
-	                              })
-	                              : deps
-	                            const cmp = (a, b) => {
-	                              const dir = structSortDir === 'desc' ? -1 : 1
-	                              const aBranch = (a.branches || []).map((id) => branches.find((x)=>x.id===id)?.name || '').join(', ')
-	                              const bBranch = (b.branches || []).map((id) => branches.find((x)=>x.id===id)?.name || '').join(', ')
-	                              const av = (structSortKey === 'branch' ? aBranch : a.name || '').toLowerCase()
-	                              const bv = (structSortKey === 'branch' ? bBranch : b.name || '').toLowerCase()
-	                              return av.localeCompare(bv) * dir
-	                            }
-                            filtered = [...filtered].sort(cmp)
-                            const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
-                            const current = Math.min(structPage, totalPages)
-                            if (current !== structPage) setStructPage(current)
-                            const start = (current - 1) * structPageSize
-                            const rows = filtered.slice(start, start + structPageSize)
-                            return (
-                              <>
-                                {rows.map((d) => (
-                            <tr key={d.id}>
-                              <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{d.name}</div></td>
-	                              <td><div className="text-truncate dash-td-truncate">{(d.branches || []).map((id)=>branches.find((b)=>b.id===id)?.name).filter(Boolean).join(', ') || '—'}</div></td>
-                              <td className="text-end">
-                                <div className="btn-group">
-                                  <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditDepartment(d)} aria-label="Edit department">
-                                    <Pencil size={16} />
-                                  </button>
-                                  <button
-                                    className="btn btn-sm btn-outline-danger"
-                                    type="button"
-                                    onClick={async () => {
-                                      if (!confirm(`Delete department "${d.name}"? This may remove related units.`)) return
-                                      try {
-                                        await api.delete(`/api/auth/departments/${d.id}/`)
-                                        await refreshAll()
-                                      } catch (e) {}
-                                    }}
-                                    aria-label="Delete department"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                                {filtered.length===0 && <tr><td colSpan="3" className="text-muted">No departments found.</td></tr>}
-                                {filtered.length>0 && (
-                                  <tr>
-                                    <td colSpan="3">
-                                      <div className="d-flex justify-content-between align-items-center">
-                                        <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
-                                        <div className="btn-group">
-                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
-                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </>
-                            )
-                          })()}
-                        </tbody>
-                      </table>
-                    )}
+                        <div className="mb-4">
+                          <div className="fw-semibold mb-2">Departments</div>
+                          <div className="table-responsive">
+                            <table className="table table-sm align-middle dash-table">
+                              <thead><tr><th>Name</th><th></th></tr></thead>
+                              <tbody>
+                                {(() => {
+                                  const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
+                                  let filtered = q ? deps.filter((d) => `${d.name}`.toLowerCase().includes(q)) : deps
+                                  const cmp = (a, b) => {
+                                    const dir = structSortDir === 'desc' ? -1 : 1
+                                    const av = (a.name || '').toLowerCase()
+                                    const bv = (b.name || '').toLowerCase()
+                                    return av.localeCompare(bv) * dir
+                                  }
+                                  filtered = [...filtered].sort(cmp)
+                                  const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
+                                  const current = Math.min(structDepartmentsPage, totalPages)
+                                  if (current !== structDepartmentsPage) setStructDepartmentsPage(current)
+                                  const start = (current - 1) * structPageSize
+                                  const rows = filtered.slice(start, start + structPageSize)
+                                  return (
+                                    <>
+                                      {rows.map((d) => (
+                                        <tr key={d.id}>
+                                          <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{d.name}</div></td>
+                                          <td className="text-end">
+                                            <div className="btn-group">
+                                              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditDepartment(d)} aria-label="Edit department">
+                                                <Pencil size={16} />
+                                              </button>
+                                              <button
+                                                className="btn btn-sm btn-outline-danger"
+                                                type="button"
+                                                onClick={async () => {
+                                                  if (!confirm(`Delete department "${d.name}"?`)) return
+                                                  try {
+                                                    await api.delete(`/api/auth/departments/${d.id}/`)
+                                                    await refreshAll()
+                                                  } catch (e) {}
+                                                }}
+                                                aria-label="Delete department"
+                                              >
+                                                <Trash2 size={16} />
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                      {filtered.length===0 && <tr><td colSpan="2" className="text-muted">No departments found.</td></tr>}
+                                      {filtered.length>0 && (
+                                        <tr>
+                                          <td colSpan="2">
+                                            <div className="d-flex justify-content-between align-items-center">
+                                              <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                              <div className="btn-group">
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructDepartmentsPage(p=>Math.max(1,p-1))}>Prev</button>
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructDepartmentsPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </>
+                                  )
+                                })()}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
 
-                    {structureTab==='units' && (
-                      <table className="table table-sm align-middle dash-table">
-                        <thead><tr><th>Name</th><th>Department</th><th></th></tr></thead>
-                        <tbody>
-                          {(() => {
-                            const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
-                            let filtered = q
-                              ? units.filter((u) => `${u.name} ${deps.find(d=>d.id===u.department)?.name || ''}`.toLowerCase().includes(q))
-                              : units
-                            const cmp = (a, b) => {
-                              const dir = structSortDir === 'desc' ? -1 : 1
-                              const av = (structSortKey === 'department' ? (deps.find(x=>x.id===a.department)?.name || '') : a.name || '').toLowerCase()
-                              const bv = (structSortKey === 'department' ? (deps.find(x=>x.id===b.department)?.name || '') : b.name || '').toLowerCase()
-                              return av.localeCompare(bv) * dir
-                            }
-                            filtered = [...filtered].sort(cmp)
-                            const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
-                            const current = Math.min(structPage, totalPages)
-                            if (current !== structPage) setStructPage(current)
-                            const start = (current - 1) * structPageSize
-                            const rows = filtered.slice(start, start + structPageSize)
-                            return (
-                              <>
-                                {rows.map((u) => (
-                            <tr key={u.id}>
-                              <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{u.name}</div></td>
-                              <td><div className="text-truncate dash-td-truncate">{deps.find(d=>d.id===u.department)?.name || '—'}</div></td>
-                              <td className="text-end">
-                                <div className="btn-group">
-                                  <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditUnit(u)} aria-label="Edit unit">
-                                    <Pencil size={16} />
-                                  </button>
-                                  <button
-                                    className="btn btn-sm btn-outline-danger"
-                                    type="button"
-                                    onClick={async () => {
-                                      if (!confirm(`Delete unit "${u.name}"?`)) return
-                                      try {
-                                        await api.delete(`/api/auth/units/${u.id}/`)
-                                        await refreshAll()
-                                      } catch (e) {}
-                                    }}
-                                    aria-label="Delete unit"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                                {filtered.length===0 && <tr><td colSpan="3" className="text-muted">No units found.</td></tr>}
-                                {filtered.length>0 && (
-                                  <tr>
-                                    <td colSpan="3">
-                                      <div className="d-flex justify-content-between align-items-center">
-                                        <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
-                                        <div className="btn-group">
-                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
-                                          <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </>
-                            )
-                          })()}
-                        </tbody>
-                      </table>
+                        <div className="mb-2">
+                          <div className="fw-semibold mb-2">Units</div>
+                          <div className="table-responsive">
+                            <table className="table table-sm align-middle dash-table">
+                              <thead><tr><th>Name</th><th></th></tr></thead>
+                              <tbody>
+                                {(() => {
+                                  const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
+                                  let filtered = q ? units.filter((u) => `${u.name}`.toLowerCase().includes(q)) : units
+                                  const cmp = (a, b) => {
+                                    const dir = structSortDir === 'desc' ? -1 : 1
+                                    const av = (a.name || '').toLowerCase()
+                                    const bv = (b.name || '').toLowerCase()
+                                    return av.localeCompare(bv) * dir
+                                  }
+                                  filtered = [...filtered].sort(cmp)
+                                  const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
+                                  const current = Math.min(structUnitsPage, totalPages)
+                                  if (current !== structUnitsPage) setStructUnitsPage(current)
+                                  const start = (current - 1) * structPageSize
+                                  const rows = filtered.slice(start, start + structPageSize)
+                                  return (
+                                    <>
+                                      {rows.map((u) => (
+                                        <tr key={u.id}>
+                                          <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{u.name}</div></td>
+                                          <td className="text-end">
+                                            <div className="btn-group">
+                                              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditUnit(u)} aria-label="Edit unit">
+                                                <Pencil size={16} />
+                                              </button>
+                                              <button
+                                                className="btn btn-sm btn-outline-danger"
+                                                type="button"
+                                                onClick={async () => {
+                                                  if (!confirm(`Delete unit "${u.name}"?`)) return
+                                                  try {
+                                                    await api.delete(`/api/auth/units/${u.id}/`)
+                                                    await refreshAll()
+                                                  } catch (e) {}
+                                                }}
+                                                aria-label="Delete unit"
+                                              >
+                                                <Trash2 size={16} />
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                      {filtered.length===0 && <tr><td colSpan="2" className="text-muted">No units found.</td></tr>}
+                                      {filtered.length>0 && (
+                                        <tr>
+                                          <td colSpan="2">
+                                            <div className="d-flex justify-content-between align-items-center">
+                                              <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
+                                              <div className="btn-group">
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructUnitsPage(p=>Math.max(1,p-1))}>Prev</button>
+                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructUnitsPage(p=>Math.min(totalPages,p+1))}>Next</button>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </>
+                                  )
+                                })()}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </>
                     )}
 
                     {structureTab==='holidays' && (
@@ -3376,26 +3362,16 @@ export default function Dashboard(){
                       <div className="dash-modal-grid">
                         <div className="dash-modal-help">
                           <h6>Flow</h6>
-	                          <p>Departments can be assigned to one or more offices. Units are created under a department.</p>
+	                          <p>Create departments once per organisation. You can assign corps members during enrolment.</p>
                           <ul>
-                            <li>Select the branch first.</li>
                             <li>Enter a department name.</li>
-                            <li>Use Units to add sub-teams.</li>
+                            <li>Manage units separately if you use them.</li>
                           </ul>
                         </div>
 	                        <div className="dash-modal-form">
 	                          <form onSubmit={async (e)=>{ const ok = await createDepartment(e); if(ok) setShowAddDepartment(false) }}>
 	                            <label className="form-label">Department name</label>
 	                            <input className="form-control mb-3" name="name" placeholder="e.g., HR" required/>
-	                            {me?.role === 'ORG' && (
-	                              <>
-	                                <label className="form-label">Assign to offices (optional)</label>
-	                                <select className="form-select mb-3" name="branches" multiple>
-	                                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-	                                </select>
-	                                <div className="form-text mb-2">You can assign a department to more offices later.</div>
-	                              </>
-	                            )}
 	                            <div className="d-grid">
 	                              <button className="btn btn-olive" disabled={isSaving}>
 	                                {isSaving ? 'Adding…' : 'Add Department'}
@@ -3420,20 +3396,14 @@ export default function Dashboard(){
                       <div className="dash-modal-grid">
                         <div className="dash-modal-help">
                           <h6>Flow</h6>
-                          <p>Units are optional sub-groups under a department.</p>
+                          <p>Units are optional groups you can assign during enrolment.</p>
                           <ul>
-                            <li>Select a department.</li>
                             <li>Enter a unit name.</li>
                             <li>Assign corps members later during enrolment.</li>
                           </ul>
                         </div>
                         <div className="dash-modal-form">
                           <form onSubmit={async (e)=>{ const ok = await createUnit(e); if(ok) setShowAddUnit(false) }}>
-                            <label className="form-label">Department</label>
-                            <select className="form-select mb-2" name="department" required>
-                              <option value="">Select Department</option>
-                              {deps.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                            </select>
                             <label className="form-label">Unit name</label>
                             <input className="form-control mb-3" name="name" placeholder="e.g., Recruitment" required/>
                             <div className="d-grid">
@@ -3460,7 +3430,7 @@ export default function Dashboard(){
 	                      <div className="dash-modal-grid">
 	                        <div className="dash-modal-help">
 	                          <h6>Bulk setup</h6>
-	                          <p>Upload branches, departments, and units in one file. Departments are organisation-wide and can be assigned to multiple offices; units stay under departments.</p>
+	                          <p>Upload branches, departments, and units in one file. Departments and units are organisation-wide.</p>
 	                          <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadImportTemplate('structure')}>
 	                            <Download size={15} /> Download template
 	                          </button>
@@ -3879,10 +3849,9 @@ export default function Dashboard(){
                       <div className="dash-modal-grid">
 	                        <div className="dash-modal-help">
 	                          <h6>Edit flow</h6>
-	                          <p>Departments can be assigned to one or more offices and group units.</p>
+	                          <p>Update the department name. Departments are organisation-wide.</p>
 	                          <ul>
-	                            <li>Update the name or change assigned offices.</li>
-	                            <li>Deleting a department may remove its units.</li>
+	                            <li>Deleting a department can affect corps members assigned to it.</li>
 	                          </ul>
 	                        </div>
 	                        <div className="dash-modal-form">
@@ -3892,13 +3861,10 @@ export default function Dashboard(){
 	                              setStatus('pending')
 	                              const fd = new FormData(e.target)
 	                              const payload = Object.fromEntries(fd)
-	                              const branchesIds = fd.getAll('branches').filter(Boolean)
-	                              if(branchesIds.length) payload.branches = branchesIds
 	                              ;(async () => {
 	                                try {
 	                                  await api.put(`/api/auth/departments/${editDepartment.id}/`, {
 	                                    name: payload.name,
-	                                    branches: payload.branches,
 	                                  })
 	                                  await refreshAll()
 	                                  setEditDepartment(null)
@@ -3909,14 +3875,6 @@ export default function Dashboard(){
 	                          >
 	                            <label className="form-label">Department name</label>
 	                            <input className="form-control" name="name" defaultValue={editDepartment.name} required />
-	                            <label className="form-label mt-2">Assigned offices</label>
-	                            <select className="form-select" name="branches" multiple defaultValue={(editDepartment.branches || []).map(String)}>
-	                              {branches.map((b) => (
-	                                <option key={b.id} value={b.id}>
-	                                  {b.name}
-	                                </option>
-	                              ))}
-	                            </select>
 	                            <div className="d-grid mt-3">
 	                              <button className="btn btn-olive" disabled={isSaving}>
 	                                {isSaving ? 'Saving…' : 'Save changes'}
@@ -3943,10 +3901,9 @@ export default function Dashboard(){
                       <div className="dash-modal-grid">
                         <div className="dash-modal-help">
                           <h6>Edit flow</h6>
-                          <p>Units are optional sub-groups under departments.</p>
+                          <p>Update the unit name. Units are organisation-wide.</p>
                           <ul>
                             <li>Update the unit name.</li>
-                            <li>Move the unit to another department if needed.</li>
                           </ul>
                         </div>
                         <div className="dash-modal-form">
@@ -3960,7 +3917,6 @@ export default function Dashboard(){
                                 try {
                                   await api.put(`/api/auth/units/${editUnit.id}/`, {
                                     name: payload.name,
-                                    department: Number(payload.department),
                                   })
                                   await refreshAll()
                                   setEditUnit(null)
@@ -3969,14 +3925,6 @@ export default function Dashboard(){
                               })()
                             }}
                           >
-                            <label className="form-label">Department</label>
-                            <select className="form-select mb-2" name="department" defaultValue={String(editUnit.department)} required>
-                              {deps.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.name}
-                                </option>
-                              ))}
-                            </select>
                             <label className="form-label">Unit name</label>
                             <input className="form-control" name="name" defaultValue={editUnit.name} required />
                             <div className="d-grid mt-3">
@@ -4105,8 +4053,8 @@ export default function Dashboard(){
               {(() => {
                 const myBranch = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
                 if(!myBranch){ return (<div className="text-muted">No branch assigned.</div>) }
-	                const myDeps = deps.filter(d => Array.isArray(d.branches) && d.branches.includes(myBranch.id))
-                const myUnits = units.filter(u => myDeps.some(d => d.id === u.department))
+	                const myDeps = deps
+                const myUnits = units
 
                 return (
                   <>
@@ -4311,12 +4259,12 @@ export default function Dashboard(){
 
                           {structureTab==='units' && (
                             <table className="table table-sm align-middle dash-table">
-                              <thead><tr><th>Name</th><th>Department</th><th></th></tr></thead>
+                              <thead><tr><th>Name</th><th></th></tr></thead>
                               <tbody>
                                 {(() => {
                                   const q = structQuery.trim().toLowerCase()
                                   const filtered = q
-                                    ? myUnits.filter((u) => `${u.name} ${myDeps.find(d=>d.id===u.department)?.name||''}`.toLowerCase().includes(q))
+                                    ? myUnits.filter((u) => `${u.name}`.toLowerCase().includes(q))
                                     : myUnits
                                   const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
                                   const current = Math.min(structPage, totalPages)
@@ -4328,7 +4276,6 @@ export default function Dashboard(){
                                       {rows.map((u) => (
                                   <tr key={u.id}>
                                     <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{u.name}</div></td>
-                                    <td><div className="text-truncate dash-td-truncate">{myDeps.find(d=>d.id===u.department)?.name || '—'}</div></td>
                                     <td className="text-end">
                                       <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => {
                                         const newUnitName = prompt('Edit unit name (leave empty to delete)', u.name)
@@ -4339,16 +4286,16 @@ export default function Dashboard(){
                                             ;(async()=>{ try{ await api.delete(`/api/auth/units/${u.id}/`); await refreshAll() }catch(e){} })()
                                           }
                                         }else{
-                                          ;(async()=>{ try{ await api.put(`/api/auth/units/${u.id}/`, { name: trimmed, department: u.department }); await refreshAll() }catch(e){} })()
+                                          ;(async()=>{ try{ await api.put(`/api/auth/units/${u.id}/`, { name: trimmed }); await refreshAll() }catch(e){} })()
                                         }
                                       }}>Edit</button>
                                     </td>
                                   </tr>
                                       ))}
-                                      {filtered.length===0 && <tr><td colSpan="3" className="text-muted">No units found.</td></tr>}
+                                      {filtered.length===0 && <tr><td colSpan="2" className="text-muted">No units found.</td></tr>}
                                       {filtered.length>0 && (
                                         <tr>
-                                          <td colSpan="3">
+                                          <td colSpan="2">
                                             <div className="d-flex justify-content-between align-items-center">
                                               <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
                                               <div className="btn-group">
@@ -4489,18 +4436,13 @@ export default function Dashboard(){
                               setStatus('pending')
                               const f=new FormData(e.target)
                               const name=f.get('name')
-                              const department=Number(f.get('department'))
                               try{
-                                await api.post('/api/auth/units/', { name, department })
+                                await api.post('/api/auth/units/', { name })
                                 await refreshAll()
                                 setStatus('saved:unit')
                                 setShowAddUnit(false)
                               }catch(err){ setStatus('error:unit') }
                             }}>
-                              <select className="form-select mb-2" name="department" required>
-                                <option value="">Select Department</option>
-                                {myDeps.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                              </select>
                               <input className="form-control mb-3" name="name" placeholder="Unit name" required/>
                               <div className="d-grid"><button className="btn btn-olive">Add Unit</button></div>
                             </form>
@@ -5025,20 +4967,14 @@ export default function Dashboard(){
                               <label className="form-label">Department</label>
                               <select className="form-select" value={editCorperForm.department} onChange={(e)=>setEditCorperForm(p=>({ ...p, department: e.target.value, unit:'' }))}>
                                 <option value="">—</option>
-                                {deps.filter(d=>{
-                                  const bid = Number(editCorperForm.branch || editCorper.branch)
-                                  return !bid || (Array.isArray(d.branches) && d.branches.includes(bid))
-                                }).map(d=> <option key={d.id} value={d.id}>{d.name}</option>)}
+                                {deps.map(d=> <option key={d.id} value={d.id}>{d.name}</option>)}
                               </select>
                             </div>
                             <div className="mb-2">
                               <label className="form-label">Unit</label>
                               <select className="form-select" value={editCorperForm.unit} onChange={(e)=>setEditCorperForm(p=>({ ...p, unit: e.target.value }))}>
                                 <option value="">—</option>
-                                {units.filter(u=>{
-                                  const did = Number(editCorperForm.department || editCorper.department)
-                                  return !did || u.department === did
-                                }).map(u=> <option key={u.id} value={u.id}>{u.name}</option>)}
+                                {units.map(u=> <option key={u.id} value={u.id}>{u.name}</option>)}
                               </select>
                             </div>
                             </div>

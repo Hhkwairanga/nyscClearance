@@ -59,13 +59,13 @@ class BranchOfficeAdmin(admin.ModelAdmin):
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
     list_display = ('name', 'user')
-    search_fields = ('name', 'user__email', 'branches__name')
+    search_fields = ('name', 'user__email')
 
 
 @admin.register(Unit)
 class UnitAdmin(admin.ModelAdmin):
-    list_display = ('name', 'department')
-    search_fields = ('name', 'department__name')
+    list_display = ('name', 'user')
+    search_fields = ('name', 'user__email')
 
 
 @admin.register(CorpMember)
