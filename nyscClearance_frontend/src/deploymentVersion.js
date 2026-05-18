@@ -43,8 +43,33 @@ async function unregisterServiceWorkers(){
   }catch(e){}
 }
 
+async function fetchBackendDeploymentVersion(){
+  let timeout
+  try{
+    const controller = new AbortController()
+    timeout = setTimeout(() => controller.abort(), 2500)
+    const res = await fetch(apiUrl(`/api/auth/config/version/?_=${Date.now()}`), {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' },
+    })
+    if(!res.ok) return ''
+    const data = await res.json()
+    return String(data?.deployment || '').trim()
+  }catch(e){
+    return ''
+  }finally{
+    if(timeout) clearTimeout(timeout)
+  }
+}
+
 export async function refreshForDeploymentVersion(){
   if(typeof window === 'undefined' || !APP_VERSION) return false
+
+  const backendDeployment = await fetchBackendDeploymentVersion()
+  const effectiveVersion = backendDeployment ? `${APP_VERSION}:${backendDeployment}` : APP_VERSION
 
   let previousVersion = ''
   let guardedVersion = ''
@@ -57,8 +82,8 @@ export async function refreshForDeploymentVersion(){
     return false
   }
 
-  if(previousVersion === APP_VERSION){
-    if(logoutPendingVersion === APP_VERSION){
+  if(previousVersion === effectiveVersion){
+    if(logoutPendingVersion === effectiveVersion){
       const loggedOut = await logoutServerSession()
       if(loggedOut){
         expireReadableAuthCookies()
@@ -69,8 +94,8 @@ export async function refreshForDeploymentVersion(){
     return false
   }
 
-  if(guardedVersion === APP_VERSION){
-    if(logoutPendingVersion === APP_VERSION){
+  if(guardedVersion === effectiveVersion){
+    if(logoutPendingVersion === effectiveVersion){
       const loggedOut = await logoutServerSession()
       if(loggedOut){
         expireReadableAuthCookies()
@@ -78,7 +103,7 @@ export async function refreshForDeploymentVersion(){
       }
     }
     try{
-      localStorage.setItem(VERSION_KEY, APP_VERSION)
+      localStorage.setItem(VERSION_KEY, effectiveVersion)
       sessionStorage.removeItem(RELOAD_GUARD_KEY)
     }catch(e){}
     return false
@@ -90,10 +115,10 @@ export async function refreshForDeploymentVersion(){
 
   let canReload = false
   try{
-    localStorage.setItem(VERSION_KEY, APP_VERSION)
-    sessionStorage.setItem(RELOAD_GUARD_KEY, APP_VERSION)
-    sessionStorage.setItem(LOGOUT_PENDING_KEY, APP_VERSION)
-    canReload = localStorage.getItem(VERSION_KEY) === APP_VERSION
+    localStorage.setItem(VERSION_KEY, effectiveVersion)
+    sessionStorage.setItem(RELOAD_GUARD_KEY, effectiveVersion)
+    sessionStorage.setItem(LOGOUT_PENDING_KEY, effectiveVersion)
+    canReload = localStorage.getItem(VERSION_KEY) === effectiveVersion
   }catch(e){
     canReload = false
   }

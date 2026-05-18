@@ -1007,6 +1007,7 @@ class ConfigVersionView(APIView):
     def get(self, request):
         return Response({
             'version': _admin_config_version(),
+            'deployment': getattr(settings, 'DEPLOYMENT_VERSION', '') or '',
             'checked_at': timezone.now().isoformat(),
         })
 

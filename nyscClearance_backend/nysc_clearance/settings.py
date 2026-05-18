@@ -63,6 +63,10 @@ def _bool_env(name, default=False):
 # Core envs
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
+
+# Bump this on each backend deploy (recommended) to force frontend deployment refresh/logout.
+# Example: export DEPLOYMENT_VERSION="$(date -u +%Y%m%d%H%M%S)" or your git SHA/tag.
+DEPLOYMENT_VERSION = os.getenv('DEPLOYMENT_VERSION', '').strip()
 ALLOWED_HOSTS = _csv_env('DJANGO_ALLOWED_HOSTS', ['*'] if DEBUG else [])
 # If still empty in development (e.g., empty env var), use standard dev hosts
 if DEBUG and not ALLOWED_HOSTS:
