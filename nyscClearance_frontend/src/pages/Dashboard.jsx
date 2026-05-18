@@ -149,6 +149,7 @@ export default function Dashboard(){
   const [showBranchLocation, setShowBranchLocation] = useState(false)
   const [branchLocationPos, setBranchLocationPos] = useState(null)
   const [branchLocationAddress, setBranchLocationAddress] = useState('')
+  const [branchLocationAddressTouched, setBranchLocationAddressTouched] = useState(false)
   const [showBranchGeoTour, setShowBranchGeoTour] = useState(false)
   const [showCorperTour, setShowCorperTour] = useState(false)
   const [editBranch, setEditBranch] = useState(null)
@@ -224,6 +225,29 @@ export default function Dashboard(){
       }
     }catch(e){}
   }, [me, branches])
+
+  // When branch admin uses the map to update coordinates, refresh the prefilled address (unless user typed a custom one).
+  useEffect(() => {
+    if(!showBranchLocation) return
+    const lat = branchLocationPos?.lat
+    const lng = branchLocationPos?.lng
+    if(typeof lat !== 'number' || typeof lng !== 'number') return
+    if(branchLocationAddressTouched) return
+
+    const ctrl = new AbortController()
+    const t = setTimeout(async () => {
+      try{
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`
+        const res = await fetch(url, { signal: ctrl.signal, headers: { 'Accept': 'application/json' } })
+        if(!res.ok) return
+        const data = await res.json()
+        const label = String(data?.display_name || '').trim()
+        if(label) setBranchLocationAddress(label)
+      }catch(e){}
+    }, 500)
+
+    return () => { clearTimeout(t); ctrl.abort() }
+  }, [showBranchLocation, branchLocationPos?.lat, branchLocationPos?.lng, branchLocationAddressTouched])
 
   useEffect(() => {
     if (!editBranch) {
@@ -2206,6 +2230,7 @@ export default function Dashboard(){
                         setStructureTab('branch')
                         setBranchLocationPos(myBranch?.latitude && myBranch?.longitude ? { lat: myBranch.latitude, lng: myBranch.longitude } : null)
                         setBranchLocationAddress(myBranch?.address || '')
+                        setBranchLocationAddressTouched(false)
                         setShowBranchGeoTour(false)
                         setShowBranchLocation(true)
                       }}>Update location now</button>
@@ -4164,6 +4189,7 @@ export default function Dashboard(){
                             <button className="btn btn-sm btn-olive" type="button" onClick={() => {
                               setBranchLocationPos(myBranch.latitude && myBranch.longitude ? { lat: myBranch.latitude, lng: myBranch.longitude } : null)
                               setBranchLocationAddress(myBranch.address || '')
+                              setBranchLocationAddressTouched(false)
                               setShowBranchLocation(true)
                             }}>Update location</button>
                           </div>
@@ -4213,7 +4239,7 @@ export default function Dashboard(){
                                 <input
                                   className="form-control mb-2"
                                   value={branchLocationAddress}
-                                  onChange={(e)=>setBranchLocationAddress(e.target.value)}
+                                  onChange={(e)=>{ setBranchLocationAddressTouched(true); setBranchLocationAddress(e.target.value) }}
                                   placeholder="e.g., 12 Marina, Lagos"
                                 />
                                 <MapPicker
