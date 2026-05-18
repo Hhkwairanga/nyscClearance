@@ -222,11 +222,12 @@ class QueryRecord(models.Model):
 
 
 class Department(models.Model):
-    branch = models.ForeignKey(BranchOffice, on_delete=models.CASCADE, related_name='departments')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='departments')
     name = models.CharField(max_length=255)
+    branches = models.ManyToManyField(BranchOffice, related_name='departments', blank=True)
 
     def __str__(self):
-        return f"{self.name} - {self.branch.name}"
+        return f"{self.name} ({self.user.email})"
 
 
 class Unit(models.Model):

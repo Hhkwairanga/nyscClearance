@@ -58,8 +58,8 @@ class BranchOfficeAdmin(admin.ModelAdmin):
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ('name', 'branch')
-    search_fields = ('name', 'branch__name')
+    list_display = ('name', 'user')
+    search_fields = ('name', 'user__email', 'branches__name')
 
 
 @admin.register(Unit)

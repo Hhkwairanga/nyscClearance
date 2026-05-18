@@ -50,6 +50,10 @@ from .views import (
     CorperAttendanceReportView,
     AttendanceLogReportView,
     AttendanceExcelExportView,
+    StructureImportTemplateView,
+    StructureImportView,
+    CorperImportTemplateView,
+    CorperImportView,
 )
 
 router = DefaultRouter()
@@ -81,6 +85,10 @@ urlpatterns = [
     path('reports/corpers/', CorperAttendanceReportView.as_view(), name='report-corpers'),
     path('reports/attendance/logs/', AttendanceLogReportView.as_view(), name='report-attendance-logs'),
     path('reports/attendance/export/', AttendanceExcelExportView.as_view(), name='report-attendance-export'),
+    path('imports/structure/template/', StructureImportTemplateView.as_view(), name='structure-import-template'),
+    path('imports/structure/', StructureImportView.as_view(), name='structure-import'),
+    path('imports/corpers/template/', CorperImportTemplateView.as_view(), name='corper-import-template'),
+    path('imports/corpers/', CorperImportView.as_view(), name='corper-import'),
     # Face capture (HTML page + processing endpoint)
     path('capture/<int:corper_id>/', capture_page, name='capture'),
     path('capture/<int:corper_id>/process/', capture_process_frame, name='capture-process'),

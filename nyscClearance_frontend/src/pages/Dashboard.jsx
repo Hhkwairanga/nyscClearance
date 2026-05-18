@@ -113,6 +113,12 @@ export default function Dashboard(){
   const [tourOpen, setTourOpen] = useState(false)
   const [tourStep, setTourStep] = useState(0)
   const [setupDismissed, setSetupDismissed] = useState(false)
+  const [showStructureImport, setShowStructureImport] = useState(false)
+  const [structureImportFile, setStructureImportFile] = useState(null)
+  const [structureImportPreview, setStructureImportPreview] = useState(null)
+  const [showCorperImport, setShowCorperImport] = useState(false)
+  const [corperImportFile, setCorperImportFile] = useState(null)
+  const [corperImportPreview, setCorperImportPreview] = useState(null)
   const [editCorper, setEditCorper] = useState(null)
   const [editCorperForm, setEditCorperForm] = useState(null)
   const [selectedCorper, setSelectedCorper] = useState(null)
@@ -241,10 +247,12 @@ export default function Dashboard(){
 
   const modalOpen = !!(
     showAddBranch ||
-    showAddDepartment ||
-    showAddUnit ||
-    showAddHoliday ||
-    showEditProfile ||
+	    showAddDepartment ||
+	    showAddUnit ||
+	    showAddHoliday ||
+	    showStructureImport ||
+	    showCorperImport ||
+	    showEditProfile ||
     showBranchLocation ||
     editBranch ||
     editDepartment ||
@@ -756,6 +764,88 @@ export default function Dashboard(){
     return false
   }
 
+  async function downloadImportTemplate(kind){
+    const endpoint = kind === 'structure' ? '/api/auth/imports/structure/template/' : '/api/auth/imports/corpers/template/'
+    const fallback = kind === 'structure' ? 'structure_import_template.xlsx' : 'corpers_import_template.xlsx'
+    try{
+      const res = await api.get(endpoint, { responseType: 'blob' })
+      const blob = new Blob([res.data], { type: res.headers?.['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const cd = res.headers?.['content-disposition'] || ''
+      const match = cd.match(/filename="?([^";]+)"?/i)
+      const filename = match?.[1] || fallback
+      const url = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.URL.revokeObjectURL(url)
+    }catch(err){
+      setStatus(`error:import:${extractApiMessage(err, 'Failed to download template')}`)
+    }
+  }
+
+  async function previewImport(kind, file){
+    if(!file){
+      setStatus(`error:import:Please select a CSV or Excel file first.`)
+      return null
+    }
+    const endpoint = kind === 'structure' ? '/api/auth/imports/structure/' : '/api/auth/imports/corpers/'
+    const form = new FormData()
+    form.append('file', file)
+    try{
+      setStatus('pending')
+      const res = await api.post(endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      if(kind === 'structure') setStructureImportPreview(res.data)
+      else setCorperImportPreview(res.data)
+      setStatus(null)
+      return res.data
+    }catch(err){
+      const payload = err?.response?.data
+      if(payload && typeof payload === 'object'){
+        if(kind === 'structure') setStructureImportPreview(payload)
+        else setCorperImportPreview(payload)
+      }
+      setStatus(`error:import:${extractApiMessage(err, 'Failed to preview import')}`)
+      return null
+    }
+  }
+
+  async function applyImport(kind, file){
+    if(!file){
+      setStatus(`error:import:Please select a CSV or Excel file first.`)
+      return
+    }
+    const endpoint = kind === 'structure' ? '/api/auth/imports/structure/' : '/api/auth/imports/corpers/'
+    const form = new FormData()
+    form.append('file', file)
+    form.append('apply', '1')
+    try{
+      setStatus('pending')
+      const res = await api.post(endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      if(kind === 'structure'){
+        setStructureImportPreview(res.data)
+        setShowStructureImport(false)
+        setStructureImportFile(null)
+        setStatus('saved:structure-import')
+      }else{
+        setCorperImportPreview(res.data)
+        setShowCorperImport(false)
+        setCorperImportFile(null)
+        setStatus('saved:corper-import')
+      }
+      await refreshAll()
+    }catch(err){
+      const payload = err?.response?.data
+      if(payload && typeof payload === 'object'){
+        if(kind === 'structure') setStructureImportPreview(payload)
+        else setCorperImportPreview(payload)
+      }
+      setStatus(`error:import:${extractApiMessage(err, 'Failed to apply import')}`)
+    }
+  }
+
   async function createCorper(e){
     e.preventDefault(); setStatus('pending')
     setCorperFormErrors({})
@@ -795,11 +885,11 @@ export default function Dashboard(){
       if(me?.role === 'BRANCH'){
         const b = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
         const targetId = b?.id
-        return deps.filter(d => d.branch === targetId)
+        return deps.filter(d => Array.isArray(d.branches) && d.branches.includes(targetId))
       }
       return deps
     }
-    return deps.filter(d => d.branch === bid)
+    return deps.filter(d => Array.isArray(d.branches) && d.branches.includes(bid))
   }
 
   function enrollUnitOptions(){
@@ -807,7 +897,7 @@ export default function Dashboard(){
     if(did){ return units.filter(u => u.department === did) }
     const bid = Number(enrollBranch || 0)
     if(bid){
-      const deptIds = deps.filter(d => d.branch === bid).map(d => d.id)
+      const deptIds = deps.filter(d => Array.isArray(d.branches) && d.branches.includes(bid)).map(d => d.id)
       return units.filter(u => deptIds.includes(u.department))
     }
     return units
@@ -1977,6 +2067,57 @@ export default function Dashboard(){
         )}
       </>
     )
+	  }
+
+  function ImportPreviewPanel({ preview }){
+    if(!preview) return null
+    const rows = Array.isArray(preview.rows) ? preview.rows : []
+    const summary = preview.summary || {}
+    const firstRows = rows.slice(0, 12)
+    return (
+      <div className="mt-3">
+        <div className={`alert ${preview.errors_count ? 'alert-warning' : 'alert-success'} py-2 mb-3`}>
+          <div className="fw-semibold">{preview.errors_count ? `${preview.errors_count} issue(s) need attention` : 'Preview looks good'}</div>
+          <div className="small">
+            {Object.entries(summary).map(([key, value]) => `${key.replaceAll('_', ' ')}: ${value}`).join(' · ')}
+          </div>
+        </div>
+        {firstRows.length > 0 && (
+          <div className="table-responsive">
+            <table className="table table-sm align-middle dash-table mb-0">
+              <thead>
+                <tr>
+                  <th>Row</th>
+                  <th>Name</th>
+                  <th>Branch</th>
+                  <th>Department</th>
+                  <th>Unit</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {firstRows.map((row) => (
+                  <tr key={row.row}>
+                    <td>{row.row}</td>
+                    <td>{row.full_name || row.branch_name || '—'}</td>
+                    <td>{row.branch_name || '—'}</td>
+                    <td>{row.department_name || '—'}</td>
+                    <td>{row.unit_name || '—'}</td>
+                    <td>
+                      {row.status === 'error' ? (
+                        <span className="text-danger small">{(row.messages || []).join('; ')}</span>
+                      ) : (
+                        <span className="text-success small">Ready</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    )
   }
 
   if(dashboardLoading){
@@ -2139,6 +2280,15 @@ export default function Dashboard(){
           <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Organisation profile saved successfully.</AutoFadeAlert>
         )}
         {status?.startsWith('error:profile:') && (
+          <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>{status.split(':').slice(2).join(':')}</AutoFadeAlert>
+        )}
+        {status==='saved:structure-import' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Structure import completed.</AutoFadeAlert>
+        )}
+        {status==='saved:corper-import' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Corper import completed. Face capture remains live per corper.</AutoFadeAlert>
+        )}
+        {status?.startsWith('error:import:') && (
           <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>{status.split(':').slice(2).join(':')}</AutoFadeAlert>
         )}
         {status==='saved:subscription' && (
@@ -2580,10 +2730,16 @@ export default function Dashboard(){
                     <div className="dash-card-title mb-0">
                       {structureTab==='branches' ? 'Branches' : structureTab==='departments' ? 'Departments' : structureTab==='units' ? 'Units' : structureTab==='holidays' ? 'Holidays' : 'Organisation Profile'}
                     </div>
-                    <div className="d-flex gap-2">
-                      {structureTab==='branches' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddBranch(true)}>Add Branch</button>}
-                      {structureTab==='departments' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddDepartment(true)}>Add Department</button>}
-                      {structureTab==='units' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddUnit(true)}>Add Unit</button>}
+	                    <div className="d-flex gap-2 flex-wrap justify-content-end">
+	                      <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadImportTemplate('structure')}>
+	                        <Download size={15} /> Template
+	                      </button>
+	                      <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>setShowStructureImport(true)}>
+	                        <FileSpreadsheet size={15} /> Import
+	                      </button>
+	                      {structureTab==='branches' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddBranch(true)}>Add Branch</button>}
+	                      {structureTab==='departments' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddDepartment(true)}>Add Department</button>}
+	                      {structureTab==='units' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddUnit(true)}>Add Unit</button>}
                       {structureTab==='holidays' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddHoliday(true)}>Add Holiday</button>}
                       {structureTab==='profile' && <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowEditProfile(true)}>Edit Profile</button>}
                     </div>
@@ -2786,14 +2942,19 @@ export default function Dashboard(){
                           {(() => {
                             const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
                             let filtered = q
-                              ? deps.filter((d) => `${d.name} ${branches.find(b=>b.id===d.branch)?.name || ''}`.toLowerCase().includes(q))
-                              : deps
-                            const cmp = (a, b) => {
-                              const dir = structSortDir === 'desc' ? -1 : 1
-                              const av = (structSortKey === 'branch' ? (branches.find(x=>x.id===a.branch)?.name || '') : a.name || '').toLowerCase()
-                              const bv = (structSortKey === 'branch' ? (branches.find(x=>x.id===b.branch)?.name || '') : b.name || '').toLowerCase()
-                              return av.localeCompare(bv) * dir
-                            }
+	                              ? deps.filter((d) => {
+	                                const bnames = (d.branches || []).map((id) => branches.find((b)=>b.id===id)?.name || '').join(' ')
+	                                return `${d.name} ${bnames}`.toLowerCase().includes(q)
+	                              })
+	                              : deps
+	                            const cmp = (a, b) => {
+	                              const dir = structSortDir === 'desc' ? -1 : 1
+	                              const aBranch = (a.branches || []).map((id) => branches.find((x)=>x.id===id)?.name || '').join(', ')
+	                              const bBranch = (b.branches || []).map((id) => branches.find((x)=>x.id===id)?.name || '').join(', ')
+	                              const av = (structSortKey === 'branch' ? aBranch : a.name || '').toLowerCase()
+	                              const bv = (structSortKey === 'branch' ? bBranch : b.name || '').toLowerCase()
+	                              return av.localeCompare(bv) * dir
+	                            }
                             filtered = [...filtered].sort(cmp)
                             const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
                             const current = Math.min(structPage, totalPages)
@@ -2805,7 +2966,7 @@ export default function Dashboard(){
                                 {rows.map((d) => (
                             <tr key={d.id}>
                               <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{d.name}</div></td>
-                              <td><div className="text-truncate dash-td-truncate">{branches.find(b=>b.id===d.branch)?.name || '—'}</div></td>
+	                              <td><div className="text-truncate dash-td-truncate">{(d.branches || []).map((id)=>branches.find((b)=>b.id===id)?.name).filter(Boolean).join(', ') || '—'}</div></td>
                               <td className="text-end">
                                 <div className="btn-group">
                                   <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditDepartment(d)} aria-label="Edit department">
@@ -3212,7 +3373,7 @@ export default function Dashboard(){
                       <div className="dash-modal-grid">
                         <div className="dash-modal-help">
                           <h6>Flow</h6>
-                          <p>Departments sit under a branch. Units can then be created under a department.</p>
+	                          <p>Departments can be assigned to one or more offices. Units are created under a department.</p>
                           <ul>
                             <li>Select the branch first.</li>
                             <li>Enter a department name.</li>
@@ -3241,8 +3402,8 @@ export default function Dashboard(){
                 </div>
               )}
 
-              {showAddUnit && (
-                <div className="dash-modal" onClick={() => setShowAddUnit(false)}>
+	              {showAddUnit && (
+	                <div className="dash-modal" onClick={() => setShowAddUnit(false)}>
                   <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
                     <div className="dash-modal-head">
                       <strong>Add Unit</strong>
@@ -3278,10 +3439,50 @@ export default function Dashboard(){
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+	                </div>
+	              )}
 
-              {showAddHoliday && (
+	              {showStructureImport && (
+	                <div className="dash-modal" onClick={() => setShowStructureImport(false)}>
+	                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+	                    <div className="dash-modal-head">
+	                      <strong>Import Structure</strong>
+	                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowStructureImport(false)}>Close</button>
+	                    </div>
+	                    <div className="dash-modal-body">
+	                      <div className="dash-modal-grid">
+	                        <div className="dash-modal-help">
+	                          <h6>Bulk setup</h6>
+	                          <p>Upload branches, departments, and units in one file. Departments are organisation-wide and can be assigned to multiple offices; units stay under departments.</p>
+	                          <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadImportTemplate('structure')}>
+	                            <Download size={15} /> Download template
+	                          </button>
+	                        </div>
+	                        <div className="dash-modal-form">
+	                          <label className="form-label">CSV or Excel file</label>
+	                          <input
+	                            className="form-control"
+	                            type="file"
+	                            accept=".xlsx,.xlsm,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	                            onChange={(e)=>{ setStructureImportFile(e.target.files?.[0] || null); setStructureImportPreview(null) }}
+	                          />
+	                          <div className="d-flex justify-content-end gap-2 mt-3">
+	                            <button className="btn btn-outline-secondary" type="button" onClick={()=>previewImport('structure', structureImportFile)}>
+	                              Preview
+	                            </button>
+	                            <button className="btn btn-olive" type="button" disabled={!structureImportPreview || structureImportPreview.errors_count > 0 || isSaving} onClick={()=>applyImport('structure', structureImportFile)}>
+	                              {isSaving ? 'Applying...' : 'Apply Import'}
+	                            </button>
+	                          </div>
+	                          <ImportPreviewPanel preview={structureImportPreview} />
+	                        </div>
+	                      </div>
+	                    </div>
+	                  </div>
+	                </div>
+	              )}
+
+	              {showAddHoliday && (
                 <div className="dash-modal" onClick={() => setShowAddHoliday(false)}>
                   <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
                     <div className="dash-modal-head">
@@ -3671,7 +3872,7 @@ export default function Dashboard(){
                       <div className="dash-modal-grid">
                         <div className="dash-modal-help">
                           <h6>Edit flow</h6>
-                          <p>Departments belong to a branch and group units.</p>
+	                          <p>Departments can be assigned to one or more offices and group units.</p>
                           <ul>
                             <li>Update the name or move to another branch.</li>
                             <li>Deleting a department may remove its units.</li>
@@ -3688,7 +3889,7 @@ export default function Dashboard(){
                                 try {
                                   await api.put(`/api/auth/departments/${editDepartment.id}/`, {
                                     name: payload.name,
-                                    branch: Number(payload.branch),
+	                                    branch: Number(payload.branch),
                                   })
                                   await refreshAll()
                                   setEditDepartment(null)
@@ -3698,7 +3899,7 @@ export default function Dashboard(){
                             }}
                           >
                             <label className="form-label">Branch</label>
-                            <select className="form-select mb-2" name="branch" defaultValue={String(editDepartment.branch)} required>
+	                            <select className="form-select mb-2" name="branch" defaultValue={String((editDepartment.branches || [])[0] || '')} required>
                               {branches.map((b) => (
                                 <option key={b.id} value={b.id}>
                                   {b.name}
@@ -3895,7 +4096,7 @@ export default function Dashboard(){
               {(() => {
                 const myBranch = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
                 if(!myBranch){ return (<div className="text-muted">No branch assigned.</div>) }
-                const myDeps = deps.filter(d => d.branch === myBranch.id)
+	                const myDeps = deps.filter(d => Array.isArray(d.branches) && d.branches.includes(myBranch.id))
                 const myUnits = units.filter(u => myDeps.some(d => d.id === u.department))
 
                 return (
@@ -4072,7 +4273,7 @@ export default function Dashboard(){
                                             ;(async()=>{ try{ await api.delete(`/api/auth/departments/${d.id}/`); await refreshAll() }catch(e){} })()
                                           }
                                         }else{
-                                          ;(async()=>{ try{ await api.put(`/api/auth/departments/${d.id}/`, { name: trimmed, branch: d.branch }); await refreshAll() }catch(e){} })()
+                                          ;(async()=>{ try{ await api.put(`/api/auth/departments/${d.id}/`, { name: trimmed }); await refreshAll() }catch(e){} })()
                                         }
                                       }}>Edit</button>
                                     </td>
@@ -4356,12 +4557,20 @@ export default function Dashboard(){
 
               <div className="card shadow-sm dash-card">
                 <div className="card-body">
-                  <div className="d-flex justify-content-between align-items-center gap-2">
-                    <div className="dash-card-title mb-0">Registered Corpers</div>
-                    <button className="btn btn-sm btn-olive" type="button" onClick={() => setShowAddCorper(true)}>
-                      Add Corper
-                    </button>
-                  </div>
+	                  <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+	                    <div className="dash-card-title mb-0">Registered Corpers</div>
+	                    <div className="d-flex gap-2 flex-wrap justify-content-end">
+	                      <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadImportTemplate('corpers')}>
+	                        <Download size={15} /> Template
+	                      </button>
+	                      <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>setShowCorperImport(true)}>
+	                        <FileSpreadsheet size={15} /> Import
+	                      </button>
+	                      <button className="btn btn-sm btn-olive" type="button" onClick={() => setShowAddCorper(true)}>
+	                        Add Corper
+	                      </button>
+	                    </div>
+	                  </div>
 
                   <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
                     <div className="d-flex align-items-center gap-2 flex-wrap">
@@ -4546,8 +4755,48 @@ export default function Dashboard(){
                 </div>
               </div>
 
-              {showAddCorper && (
-                <div className="dash-modal" onClick={()=>setShowAddCorper(false)}>
+	              {showCorperImport && (
+	                <div className="dash-modal" onClick={()=>setShowCorperImport(false)}>
+	                  <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+	                    <div className="dash-modal-head">
+	                      <strong>Import Corpers</strong>
+	                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowCorperImport(false)}>Close</button>
+	                    </div>
+	                    <div className="dash-modal-body">
+	                      <div className="dash-modal-grid">
+	                        <div className="dash-modal-help">
+	                          <h6>Bulk enrolment</h6>
+	                          <p>Upload corper records after structure setup. The import creates accounts and sends verification emails; face capture still happens live for each corper.</p>
+	                          <button className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" type="button" onClick={()=>downloadImportTemplate('corpers')}>
+	                            <Download size={15} /> Download template
+	                          </button>
+	                        </div>
+	                        <div className="dash-modal-form">
+	                          <label className="form-label">CSV or Excel file</label>
+	                          <input
+	                            className="form-control"
+	                            type="file"
+	                            accept=".xlsx,.xlsm,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	                            onChange={(e)=>{ setCorperImportFile(e.target.files?.[0] || null); setCorperImportPreview(null) }}
+	                          />
+	                          <div className="d-flex justify-content-end gap-2 mt-3">
+	                            <button className="btn btn-outline-secondary" type="button" onClick={()=>previewImport('corpers', corperImportFile)}>
+	                              Preview
+	                            </button>
+	                            <button className="btn btn-olive" type="button" disabled={!corperImportPreview || corperImportPreview.errors_count > 0 || isSaving} onClick={()=>applyImport('corpers', corperImportFile)}>
+	                              {isSaving ? 'Applying...' : 'Apply Import'}
+	                            </button>
+	                          </div>
+	                          <ImportPreviewPanel preview={corperImportPreview} />
+	                        </div>
+	                      </div>
+	                    </div>
+	                  </div>
+	                </div>
+	              )}
+
+	              {showAddCorper && (
+	                <div className="dash-modal" onClick={()=>setShowAddCorper(false)}>
                   <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
                     <div className="dash-modal-head">
                       <strong>Add Corper</strong>
@@ -4769,7 +5018,7 @@ export default function Dashboard(){
                                 <option value="">—</option>
                                 {deps.filter(d=>{
                                   const bid = Number(editCorperForm.branch || editCorper.branch)
-                                  return !bid || d.branch === bid
+                                  return !bid || (Array.isArray(d.branches) && d.branches.includes(bid))
                                 }).map(d=> <option key={d.id} value={d.id}>{d.name}</option>)}
                               </select>
                             </div>

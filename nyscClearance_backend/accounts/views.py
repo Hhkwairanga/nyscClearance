@@ -34,10 +34,12 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 import requests
 import base64
+import csv
 import math
 import numpy as np
 import cv2
 import os
+import re
 import shutil
 import uuid
 import traceback
@@ -45,7 +47,8 @@ import face_recognition
 import hmac
 import hashlib
 import json
-from datetime import timedelta
+from datetime import date, datetime, timedelta
+from io import BytesIO, StringIO
 
 from .serializers import (
     OrganizationRegisterSerializer,
@@ -67,7 +70,7 @@ from .models import NationalHoliday
 from .models import SubscriptionPlanSetting, OrganizationSubscription, SubscriptionPayment, ClearanceAccess, SystemSetting, PaystackConfig
 from .services.holidays import ensure_national_holidays, is_holiday_for_org, working_days
 from django.db.models import Count
-from django.db import models
+from django.db import models, transaction
 
 
 User = get_user_model()
@@ -1133,6 +1136,460 @@ class ProfileView(APIView):
         return Response(serializer.data)
 
 
+STRUCTURE_IMPORT_COLUMNS = [
+    'branch_name',
+    'branch_address',
+    'branch_latitude',
+    'branch_longitude',
+    'admin_name',
+    'admin_email',
+    'admin_staff_id',
+    'department_name',
+    'unit_name',
+]
+
+CORPER_IMPORT_COLUMNS = [
+    'full_name',
+    'email',
+    'gender',
+    'state_code',
+    'passing_out_date',
+    'cds_day',
+    'branch_name',
+    'department_name',
+    'unit_name',
+]
+
+
+def _clean_cell(value):
+    if value is None:
+        return ''
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value).strip()
+
+
+def _name_key(value):
+    return re.sub(r'\s+', ' ', _clean_cell(value)).strip().lower()
+
+
+def _truthy(value):
+    return str(value or '').strip().lower() in {'1', 'true', 'yes', 'y', 'apply'}
+
+
+def _read_import_rows(upload):
+    if not upload:
+        raise ValueError('Upload a CSV or Excel file.')
+
+    filename = (getattr(upload, 'name', '') or '').lower()
+    if filename.endswith('.csv'):
+        text = upload.read().decode('utf-8-sig')
+        reader = csv.DictReader(StringIO(text))
+        if not reader.fieldnames:
+            raise ValueError('The file is empty or missing a header row.')
+        rows = []
+        for idx, row in enumerate(reader, start=2):
+            cleaned = {str(k or '').strip().lower(): _clean_cell(v) for k, v in row.items()}
+            if any(cleaned.values()):
+                cleaned['_row'] = idx
+                rows.append(cleaned)
+        return rows
+
+    if filename.endswith('.xlsx') or filename.endswith('.xlsm'):
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(upload.read()), read_only=True, data_only=True)
+        ws = wb.active
+        header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+        headers = [str(h or '').strip().lower() for h in (header_row or [])]
+        if not any(headers):
+            raise ValueError('The file is empty or missing a header row.')
+        rows = []
+        for idx, values in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            cleaned = {}
+            for col_idx, header in enumerate(headers):
+                if not header:
+                    continue
+                cleaned[header] = _clean_cell(values[col_idx] if col_idx < len(values) else '')
+            if any(cleaned.values()):
+                cleaned['_row'] = idx
+                rows.append(cleaned)
+        return rows
+
+    raise ValueError('Unsupported file type. Upload .xlsx or .csv.')
+
+
+def _xlsx_template_response(filename, sheet_name, columns, example_rows):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_name
+    ws.append(columns)
+    for row in example_rows:
+        ws.append(row)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='4F6228')
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 3, 14), 32)
+
+    # Optional dropdown for CDS day in corper template
+    if 'cds_day' in columns:
+        try:
+            from openpyxl.worksheet.datavalidation import DataValidation
+
+            idx = columns.index('cds_day') + 1
+            col_letter = ws.cell(row=1, column=idx).column_letter
+            dv = DataValidation(type="list", formula1='"Monday,Tuesday,Wednesday,Thursday,Friday"', allow_blank=True)
+            ws.add_data_validation(dv)
+            dv.add(f"{col_letter}2:{col_letter}5000")
+        except Exception:
+            pass
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    resp = HttpResponse(
+        buffer.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+class StructureImportTemplateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if getattr(request.user, 'role', None) != 'ORG':
+            raise PermissionDenied('Only organization can download structure template')
+        return _xlsx_template_response(
+            'structure_import_template.xlsx',
+            'Structure',
+            STRUCTURE_IMPORT_COLUMNS,
+            [
+                ['Head Office', '1 Main Road, Abuja', '9.0765', '7.3986', 'Amina Admin', 'admin@example.com', 'HQ-001', 'Human Resources', 'Recruitment'],
+                ['Head Office', '1 Main Road, Abuja', '9.0765', '7.3986', '', '', '', 'Finance', 'Payroll'],
+                ['Lagos Branch', '12 Marina, Lagos', '6.5244', '3.3792', '', '', '', 'Human Resources', 'Recruitment'],
+            ],
+        )
+
+
+class CorperImportTemplateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if getattr(request.user, 'role', None) not in {'ORG', 'BRANCH'}:
+            raise PermissionDenied('Only organization or branch admins can download corper template')
+        return _xlsx_template_response(
+            'corpers_import_template.xlsx',
+            'Corpers',
+            CORPER_IMPORT_COLUMNS,
+            [
+                ['Amina Yusuf', 'amina.corper@example.com', 'F', 'FC/24A/1234', '2026-10-31', '1', 'Head Office', 'Human Resources', 'Recruitment'],
+                ['David Okon', 'david.corper@example.com', 'M', 'LA/24B/5678', '2026-10-31', '3', 'Lagos Branch', 'Finance', 'Payroll'],
+            ],
+        )
+
+
+class StructureImportView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if getattr(request.user, 'role', None) != 'ORG':
+            raise PermissionDenied('Only organization can import structure')
+        upload = request.FILES.get('file')
+        apply_changes = _truthy(request.data.get('apply'))
+        try:
+            rows = _read_import_rows(upload)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        preview = self._preview(request.user, rows)
+        if apply_changes and preview['errors_count']:
+            return Response(preview, status=status.HTTP_400_BAD_REQUEST)
+        if apply_changes:
+            applied = self._apply(request, rows)
+            return Response({**self._preview(request.user, rows), 'applied': applied})
+        return Response(preview)
+
+    def _preview(self, user, rows):
+        branches = { _name_key(b.name): b for b in BranchOffice.objects.filter(user=user) }
+        departments = { _name_key(d.name): d for d in Department.objects.filter(user=user) }
+        units = { (d_key, _name_key(u.name)): u for d_key, d in departments.items() for u in Unit.objects.filter(department=d) }
+        file_branches = set()
+        file_departments = set()
+        file_units = set()
+        preview_rows = []
+
+        for row in rows:
+            messages = []
+            branch_name = row.get('branch_name', '')
+            department_name = row.get('department_name', '')
+            unit_name = row.get('unit_name', '')
+            branch_key = _name_key(branch_name)
+            department_key = _name_key(department_name)
+            unit_key = _name_key(unit_name)
+            if not branch_key:
+                messages.append('branch_name is required')
+            if unit_key and not department_key:
+                messages.append('department_name is required when unit_name is provided')
+            if row.get('admin_email') and '@' not in row.get('admin_email'):
+                messages.append('admin_email is not valid')
+            branch_exists = branch_key in branches or branch_key in file_branches
+            department_exists = not department_key or department_key in departments or department_key in file_departments
+            unit_exists = not unit_key or (department_key, unit_key) in units or (department_key, unit_key) in file_units
+            if branch_key:
+                file_branches.add(branch_key)
+            if branch_key and department_key:
+                file_departments.add(department_key)
+            if branch_key and department_key and unit_key:
+                file_units.add((department_key, unit_key))
+            preview_rows.append({
+                'row': row.get('_row'),
+                'branch_name': branch_name,
+                'department_name': department_name,
+                'unit_name': unit_name,
+                'status': 'error' if messages else 'ok',
+                'messages': messages,
+                'branch_action': 'reuse' if branch_exists else 'create',
+                'department_action': '' if not department_key else ('reuse' if department_exists else 'create'),
+                'unit_action': '' if not unit_key else ('reuse' if unit_exists else 'create'),
+            })
+
+        errors_count = sum(1 for row in preview_rows if row['status'] == 'error')
+        return {
+            'ok': errors_count == 0,
+            'errors_count': errors_count,
+            'summary': {
+                'rows': len(rows),
+                'branches_to_create': sum(1 for key in file_branches if key not in branches),
+                'departments_to_create': sum(1 for key in file_departments if key not in departments),
+                'units_to_create': sum(1 for key in file_units if key not in units),
+            },
+            'rows': preview_rows[:200],
+        }
+
+    @transaction.atomic
+    def _apply(self, request, rows):
+        user = request.user
+        created = {'branches': 0, 'departments': 0, 'units': 0}
+        branches = { _name_key(b.name): b for b in BranchOffice.objects.select_for_update().filter(user=user) }
+        departments = { _name_key(d.name): d for d in Department.objects.select_for_update().filter(user=user) }
+        units = { (d_key, _name_key(u.name)): u for d_key, d in departments.items() for u in Unit.objects.filter(department=d) }
+        for row in rows:
+            branch_key = _name_key(row.get('branch_name'))
+            department_key = _name_key(row.get('department_name'))
+            unit_key = _name_key(row.get('unit_name'))
+            branch = branches.get(branch_key)
+            if not branch:
+                serializer = BranchOfficeSerializer(data={
+                    'name': row.get('branch_name'),
+                    'address': row.get('branch_address', ''),
+                    'latitude': row.get('branch_latitude') or None,
+                    'longitude': row.get('branch_longitude') or None,
+                    'admin_name': row.get('admin_name', ''),
+                    'admin_email': row.get('admin_email', ''),
+                    'admin_staff_id': row.get('admin_staff_id', ''),
+                }, context={'request': request})
+                serializer.is_valid(raise_exception=True)
+                branch = serializer.save()
+                branches[branch_key] = branch
+                created['branches'] += 1
+            elif row.get('admin_email') and not branch.admin_id:
+                serializer = BranchOfficeSerializer(branch, data={
+                    'admin_name': row.get('admin_name', ''),
+                    'admin_email': row.get('admin_email', ''),
+                    'admin_staff_id': row.get('admin_staff_id', ''),
+                }, partial=True, context={'request': request})
+                serializer.is_valid(raise_exception=True)
+                branch = serializer.save()
+                branches[branch_key] = branch
+
+            if department_key:
+                department = departments.get(department_key)
+                if not department:
+                    department = Department.objects.create(user=user, name=row.get('department_name'))
+                    departments[department_key] = department
+                    created['departments'] += 1
+                if branch and not department.branches.filter(id=branch.id).exists():
+                    department.branches.add(branch)
+                if unit_key:
+                    unit_lookup = (department_key, unit_key)
+                    if unit_lookup not in units:
+                        unit = Unit.objects.create(department=department, name=row.get('unit_name'))
+                        units[unit_lookup] = unit
+                        created['units'] += 1
+        return created
+
+
+class CorperImportView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if getattr(request.user, 'role', None) not in {'ORG', 'BRANCH'}:
+            raise PermissionDenied('Only organization or branch admins can import corpers')
+        upload = request.FILES.get('file')
+        apply_changes = _truthy(request.data.get('apply'))
+        try:
+            rows = _read_import_rows(upload)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        preview = self._preview(request.user, rows)
+        if apply_changes and preview['errors_count']:
+            return Response(preview, status=status.HTTP_400_BAD_REQUEST)
+        if apply_changes:
+            applied = self._apply(request, preview['valid_payloads'])
+            preview.pop('valid_payloads', None)
+            return Response({**preview, 'applied': applied})
+        preview.pop('valid_payloads', None)
+        return Response(preview)
+
+    def _scope(self, user):
+        if getattr(user, 'role', None) == 'ORG':
+            org_user = user
+            branch_qs = BranchOffice.objects.filter(user=user)
+            default_branch = None
+        else:
+            default_branch = BranchOffice.objects.filter(admin=user).first()
+            org_user = default_branch.user if default_branch else None
+            branch_qs = BranchOffice.objects.filter(id=getattr(default_branch, 'id', None))
+        return org_user, default_branch, branch_qs
+
+    def _preview(self, user, rows):
+        org_user, default_branch, branch_qs = self._scope(user)
+        branches = { _name_key(b.name): b for b in branch_qs }
+        departments = { _name_key(d.name): d for d in Department.objects.filter(user=org_user) } if org_user else {}
+        units = { (d_key, _name_key(u.name)): u for d_key, d in departments.items() for u in Unit.objects.filter(department=d) }
+        emails = {_name_key(r.get('email')) for r in rows if _name_key(r.get('email'))}
+        state_codes = {_clean_cell(r.get('state_code')).upper() for r in rows if _clean_cell(r.get('state_code'))}
+        existing_emails = {_name_key(email) for email in User.objects.filter(email__in=emails).values_list('email', flat=True)}
+        existing_state_codes = set(CorpMember.objects.filter(user=org_user, state_code__in=state_codes).values_list('state_code', flat=True)) if org_user else set()
+        seen_emails = set()
+        seen_state_codes = set()
+        preview_rows = []
+        valid_payloads = []
+
+        for row in rows:
+            messages = []
+            full_name = row.get('full_name', '')
+            email = _name_key(row.get('email'))
+            gender = _clean_cell(row.get('gender')).upper()
+            gender_map = {'MALE': 'M', 'FEMALE': 'F', 'OTHER': 'O'}
+            gender = gender_map.get(gender, gender)
+            state_code = _clean_cell(row.get('state_code')).upper()
+            branch_key = _name_key(row.get('branch_name')) if getattr(user, 'role', None) == 'ORG' else _name_key(getattr(default_branch, 'name', ''))
+            department_key = _name_key(row.get('department_name'))
+            unit_key = _name_key(row.get('unit_name'))
+
+            if not full_name:
+                messages.append('full_name is required')
+            if not email:
+                messages.append('email is required')
+            elif email in seen_emails:
+                messages.append('email is duplicated in this file')
+            elif email in existing_emails:
+                messages.append('email already exists')
+            if gender not in {'M', 'F', 'O'}:
+                messages.append('gender must be M, F, O, Male, Female, or Other')
+            if not re.match(r'^[A-Z]{2}/\d{2}[A-Z]/\d{4}$', state_code or ''):
+                messages.append('state_code must be in format AA/00A/0000')
+            elif state_code in seen_state_codes:
+                messages.append('state_code is duplicated in this file')
+            elif state_code in existing_state_codes:
+                messages.append('state_code already exists in this organization')
+            if not row.get('passing_out_date'):
+                messages.append('passing_out_date is required')
+            if not branch_key:
+                messages.append('branch_name is required')
+            branch = branches.get(branch_key)
+            if branch_key and not branch:
+                messages.append('branch_name was not found')
+            department = departments.get(department_key) if department_key else None
+            if department_key and not department:
+                messages.append('department_name was not found in this branch')
+            if department and branch and not department.branches.filter(id=branch.id).exists():
+                messages.append('department_name is not assigned to this branch')
+            unit = units.get((department_key, unit_key)) if unit_key else None
+            if unit_key and not department_key:
+                messages.append('department_name is required when unit_name is provided')
+            elif unit_key and not unit:
+                messages.append('unit_name was not found in this department')
+            cds_day = _clean_cell(row.get('cds_day', ''))
+            cds_int = None
+            if cds_day != '':
+                day_map = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 'friday': 4}
+                key = cds_day.strip().lower()
+                if key in day_map:
+                    cds_int = day_map[key]
+                else:
+                    try:
+                        cds_int = int(float(cds_day))
+                        if cds_int < 0 or cds_int > 4:
+                            messages.append('cds_day must be Monday-Friday or 0-4')
+                    except Exception:
+                        messages.append('cds_day must be Monday-Friday or 0-4')
+                        cds_int = None
+
+            if email:
+                seen_emails.add(email)
+            if state_code:
+                seen_state_codes.add(state_code)
+
+            payload = {
+                'full_name': full_name,
+                'email': email,
+                'gender': gender,
+                'state_code': state_code,
+                'passing_out_date': row.get('passing_out_date'),
+                'cds_day': cds_int,
+                'branch': getattr(branch, 'id', None),
+                'department': getattr(department, 'id', None) if department else None,
+                'unit': getattr(unit, 'id', None) if unit else None,
+            }
+            if not messages:
+                valid_payloads.append(payload)
+            preview_rows.append({
+                'row': row.get('_row'),
+                'full_name': full_name,
+                'email': email,
+                'state_code': state_code,
+                'branch_name': row.get('branch_name') or getattr(default_branch, 'name', ''),
+                'department_name': row.get('department_name', ''),
+                'unit_name': row.get('unit_name', ''),
+                'status': 'error' if messages else 'ok',
+                'messages': messages,
+            })
+
+        errors_count = sum(1 for row in preview_rows if row['status'] == 'error')
+        return {
+            'ok': errors_count == 0,
+            'errors_count': errors_count,
+            'summary': {
+                'rows': len(rows),
+                'corpers_to_create': len(valid_payloads),
+                'face_capture': 'Face capture remains live after import.',
+            },
+            'rows': preview_rows[:200],
+            'valid_payloads': valid_payloads,
+        }
+
+    @transaction.atomic
+    def _apply(self, request, payloads):
+        created = 0
+        for payload in payloads:
+            serializer = CorpMemberSerializer(data=payload, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            created += 1
+        return {'corpers': created}
+
+
 class BranchOfficeViewSet(viewsets.ModelViewSet):
     serializer_class = BranchOfficeSerializer
 
@@ -1156,11 +1613,11 @@ class BranchOfficeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def clone_structure(self, request, pk=None):
-        """Copy departments and units from a source branch into this branch.
+        """Attach departments from a source branch into this branch.
 
         Body: { "source": <branch_id> }
-        - If a department with the same name exists in the target, reuse it.
-        - If a unit with the same name exists under the matched department, reuse it.
+        - Departments are organisation-level and can be assigned to many branches.
+        - Units always live under a department, so no unit copy is required.
         """
         try:
             target = BranchOffice.objects.get(pk=pk)
@@ -1189,26 +1646,14 @@ class BranchOfficeViewSet(viewsets.ModelViewSet):
         else:
             raise PermissionDenied('Not allowed')
 
-        from .models import Department, Unit
-        created_deps = 0
-        created_units = 0
-        # Map department name -> department instance for target
-        existing_target_deps = { d.name: d for d in Department.objects.filter(branch=target) }
-        for d in Department.objects.filter(branch=source).order_by('name'):
-            t_dep = existing_target_deps.get(d.name)
-            if not t_dep:
-                t_dep = Department.objects.create(branch=target, name=d.name)
-                existing_target_deps[d.name] = t_dep
-                created_deps += 1
-            # Units under department
-            existing_units = { u.name: u for u in Unit.objects.filter(department=t_dep) }
-            for u in Unit.objects.filter(department=d).order_by('name'):
-                if u.name in existing_units:
-                    continue
-                Unit.objects.create(department=t_dep, name=u.name)
-                created_units += 1
+        from .models import Department
+        attached = 0
+        for d in Department.objects.filter(user=target.user, branches=source).distinct():
+            if not d.branches.filter(id=target.id).exists():
+                d.branches.add(target)
+                attached += 1
 
-        return Response({ 'created_departments': created_deps, 'created_units': created_units })
+        return Response({ 'attached_departments': attached })
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -1216,28 +1661,21 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if getattr(user, 'role', None) == 'ORG':
-            return Department.objects.filter(branch__user=user)
+            return Department.objects.filter(user=user).prefetch_related('branches')
         if getattr(user, 'role', None) == 'BRANCH':
-            return Department.objects.filter(branch__admin=user)
+            return Department.objects.filter(branches__admin=user).distinct().prefetch_related('branches')
         if getattr(user, 'role', None) == 'CORPER':
             try:
                 br = user.corper_profile.branch
-                return Department.objects.filter(branch=br)
+                org_user = user.corper_profile.user
+                return Department.objects.filter(user=org_user, branches=br).distinct().prefetch_related('branches')
             except Exception:
                 return Department.objects.none()
         return Department.objects.none()
 
     def perform_create(self, serializer):
-        # ensure branch belongs to org or is managed by branch admin
-        branch = serializer.validated_data.get('branch')
         user = self.request.user
-        if getattr(user, 'role', None) == 'ORG':
-            if branch.user_id != user.id:
-                raise PermissionDenied('Invalid branch')
-        elif getattr(user, 'role', None) == 'BRANCH':
-            if branch.admin_id != user.id:
-                raise PermissionDenied('Invalid branch for this admin')
-        else:
+        if getattr(user, 'role', None) not in {'ORG', 'BRANCH'}:
             raise PermissionDenied('Not allowed')
         serializer.save()
 
@@ -1247,13 +1685,14 @@ class UnitViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if getattr(user, 'role', None) == 'ORG':
-            return Unit.objects.filter(department__branch__user=user)
+            return Unit.objects.filter(department__user=user)
         if getattr(user, 'role', None) == 'BRANCH':
-            return Unit.objects.filter(department__branch__admin=user)
+            return Unit.objects.filter(department__branches__admin=user).distinct()
         if getattr(user, 'role', None) == 'CORPER':
             try:
                 br = user.corper_profile.branch
-                return Unit.objects.filter(department__branch=br)
+                org_user = user.corper_profile.user
+                return Unit.objects.filter(department__user=org_user, department__branches=br).distinct()
             except Exception:
                 return Unit.objects.none()
         return Unit.objects.none()
@@ -1262,10 +1701,10 @@ class UnitViewSet(viewsets.ModelViewSet):
         dept = serializer.validated_data.get('department')
         user = self.request.user
         if getattr(user, 'role', None) == 'ORG':
-            if dept.branch.user_id != user.id:
+            if dept.user_id != user.id:
                 raise PermissionDenied('Invalid department')
         elif getattr(user, 'role', None) == 'BRANCH':
-            if dept.branch.admin_id != user.id:
+            if not dept.branches.filter(admin=user).exists():
                 raise PermissionDenied('Invalid department for this admin')
         else:
             raise PermissionDenied('Not allowed')
@@ -1457,15 +1896,15 @@ class StatsView(APIView):
         if getattr(user, 'role', None) == 'BRANCH':
             branch_qs = BranchOffice.objects.filter(admin=user)
             corpers_qs = CorpMember.objects.filter(branch__in=branch_qs)
-            departments_qs = Department.objects.filter(branch__in=branch_qs)
-            units_qs = Unit.objects.filter(department__branch__in=branch_qs)
+            departments_qs = Department.objects.filter(branches__in=branch_qs).distinct()
+            units_qs = Unit.objects.filter(department__branches__in=branch_qs).distinct()
             # Attendance logs for accounts under these branches
             att_qs = AttendanceLog.objects.filter(account__corper_profile__branch__in=branch_qs)
         else:
             branch_qs = BranchOffice.objects.filter(user=user)
             corpers_qs = CorpMember.objects.filter(user=user)
-            departments_qs = Department.objects.filter(branch__user=user)
-            units_qs = Unit.objects.filter(department__branch__user=user)
+            departments_qs = Department.objects.filter(user=user)
+            units_qs = Unit.objects.filter(department__user=user)
             # Attendance logs for this organization
             if getattr(user, 'role', None) == 'CORPER':
                 att_qs = AttendanceLog.objects.filter(account=user)

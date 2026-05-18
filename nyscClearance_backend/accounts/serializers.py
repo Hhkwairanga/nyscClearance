@@ -186,6 +186,18 @@ class BranchOfficeSerializer(serializers.ModelSerializer):
             'admin_info'
         )
 
+    def validate(self, attrs):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        name = (attrs.get('name') or getattr(self.instance, 'name', '') or '').strip()
+        if name and getattr(user, 'role', None) == 'ORG':
+            qs = BranchOffice.objects.filter(user=user, name__iexact=name)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({'name': 'A branch with this name already exists.'})
+        return attrs
+
     def create(self, validated_data):
         admin_name = validated_data.pop('admin_name', '').strip()
         admin_email = validated_data.pop('admin_email', '').strip()
@@ -299,15 +311,76 @@ class BranchOfficeSerializer(serializers.ModelSerializer):
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
+    # Convenience: allow posting a single branch id to assign the department to an office.
+    branch = serializers.IntegerField(write_only=True, required=False)
+
     class Meta:
         model = Department
-        fields = ('id', 'branch', 'name')
+        fields = ('id', 'name', 'branches', 'branch')
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        name = (attrs.get('name') or getattr(self.instance, 'name', '') or '').strip()
+        if not name:
+            raise serializers.ValidationError({'name': 'Department name is required.'})
+        # Enforce unique department name per organisation (case-insensitive)
+        org_user = user
+        if getattr(user, 'role', None) == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=user).first()
+            org_user = b.user if b else None
+        if org_user:
+            qs = Department.objects.filter(user=org_user, name__iexact=name)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({'name': 'A department with this name already exists in your organisation.'})
+        return attrs
+
+    def create(self, validated_data):
+        branch_id = validated_data.pop('branch', None)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        name = (validated_data.get('name') or '').strip()
+
+        org_user = user
+        allowed_branch_qs = BranchOffice.objects.none()
+        if getattr(user, 'role', None) == 'ORG':
+            allowed_branch_qs = BranchOffice.objects.filter(user=user)
+        elif getattr(user, 'role', None) == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=user).first()
+            org_user = b.user if b else None
+            allowed_branch_qs = BranchOffice.objects.filter(id=getattr(b, 'id', None))
+        else:
+            raise serializers.ValidationError('Not allowed')
+
+        dept = Department.objects.filter(user=org_user, name__iexact=name).first()
+        if not dept:
+            dept = Department.objects.create(user=org_user, name=name)
+
+        if branch_id:
+            branch = allowed_branch_qs.filter(id=int(branch_id)).first()
+            if not branch:
+                raise serializers.ValidationError({'branch': 'Invalid branch'})
+            dept.branches.add(branch)
+        return dept
 
 
 class UnitSerializer(serializers.ModelSerializer):
     class Meta:
         model = Unit
         fields = ('id', 'department', 'name')
+
+    def validate(self, attrs):
+        department = attrs.get('department') or getattr(self.instance, 'department', None)
+        name = (attrs.get('name') or getattr(self.instance, 'name', '') or '').strip()
+        if department and name:
+            qs = Unit.objects.filter(department=department, name__iexact=name)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({'name': 'This unit already exists in the selected department.'})
+        return attrs
 
 
 class PublicHolidaySerializer(serializers.ModelSerializer):
@@ -409,8 +482,8 @@ class CorpMemberSerializer(serializers.ModelSerializer):
         branch = validated_data.get('branch')
         dept = validated_data.get('department')
         unit = validated_data.get('unit')
-        if dept and branch and getattr(dept, 'branch_id', None) != getattr(branch, 'id', None):
-            raise serializers.ValidationError({'department': 'Department does not belong to the selected branch'})
+        if dept and branch and not dept.branches.filter(id=getattr(branch, 'id', None)).exists():
+            raise serializers.ValidationError({'department': 'Department is not assigned to the selected branch'})
         if unit and dept and getattr(unit, 'department_id', None) != getattr(dept, 'id', None):
             raise serializers.ValidationError({'unit': 'Unit does not belong to the selected department'})
 
@@ -441,8 +514,8 @@ class CorpMemberSerializer(serializers.ModelSerializer):
         branch = validated_data.get('branch', instance.branch)
         dept = validated_data.get('department', instance.department)
         unit = validated_data.get('unit', instance.unit)
-        if dept and branch and getattr(dept, 'branch_id', None) != getattr(branch, 'id', None):
-            raise serializers.ValidationError({'department': 'Department does not belong to the selected branch'})
+        if dept and branch and not dept.branches.filter(id=getattr(branch, 'id', None)).exists():
+            raise serializers.ValidationError({'department': 'Department is not assigned to the selected branch'})
         if unit and dept and getattr(unit, 'department_id', None) != getattr(dept, 'id', None):
             raise serializers.ValidationError({'unit': 'Unit does not belong to the selected department'})
 
