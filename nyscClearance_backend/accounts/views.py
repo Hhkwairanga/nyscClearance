@@ -3143,8 +3143,8 @@ SUBSCRIPTION_PLAN_DEFAULTS = [
         'name': 'Starter',
         'corper_min': 0,
         'corper_max': 10,
-        'monthly_price': Decimal('0.00'),
-        'yearly_price': Decimal('0.00'),
+        'monthly_price': Decimal('5000.00'),
+        'yearly_price': Decimal('55000.00'),
         'sort_order': 1,
     },
     {
@@ -3212,6 +3212,7 @@ def _plan_range_label(plan):
 def _subscription_plan_payload(plan):
     monthly_original, monthly_discount, monthly_charged = _discounted_subscription_amount(plan, 'MONTHLY')
     yearly_original, yearly_discount, yearly_charged = _discounted_subscription_amount(plan, 'YEARLY')
+    custom_pricing = str(plan.code or '').upper() == 'ENTERPRISE' and monthly_original <= 0 and yearly_original <= 0
     return {
         'id': plan.id,
         'code': plan.code,
@@ -3227,6 +3228,7 @@ def _subscription_plan_payload(plan):
         'yearly_discount_amount': str(yearly_discount),
         'discount_enabled': bool(plan.discount_enabled),
         'discount_percent': str(plan.discount_percent or Decimal('0.00')),
+        'custom_pricing': custom_pricing,
         'is_active': bool(plan.is_active),
     }
 
@@ -3327,6 +3329,8 @@ class SubscriptionInitializeView(APIView):
             return Response({'detail': 'Subscription plan not found'}, status=404)
 
         original, discount_amount, charged = _discounted_subscription_amount(plan, billing_cycle)
+        if str(plan.code or '').upper() == 'ENTERPRISE' and original <= 0:
+            return Response({'detail': 'Contact us for Enterprise pricing at admin@sahabs.tech or +2347082505053.'}, status=400)
         reference = f"SUB-{request.user.id}-{uuid.uuid4().hex[:18]}".upper()
         payment = SubscriptionPayment.objects.create(
             org=request.user,

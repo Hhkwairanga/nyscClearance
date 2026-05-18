@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf, clearToken } from './api/axios'
 import { RefreshCw } from 'lucide-react'
+import PublicFooter from './components/PublicFooter'
 
 function AppLoadingScreen(){
   return (
@@ -80,7 +81,7 @@ export default function App(){
       <main className={isHome || isDashboard ? '' : 'container py-4'}>
         <Outlet />
       </main>
-      {/* Footer intentionally only exists on the landing page */}
+      {!isDashboard && <PublicFooter />}
     </div>
   )
 }

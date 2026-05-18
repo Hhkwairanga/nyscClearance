@@ -961,6 +961,10 @@ export default function Dashboard(){
       return cycle === 'YEARLY' ? plan.original_yearly_price : plan.original_monthly_price
     }
 
+    function isCustomPricing(plan, original){
+      return String(plan?.code || '').toUpperCase() === 'ENTERPRISE' && (Boolean(plan?.custom_pricing) || Number(original || 0) <= 0)
+    }
+
     async function subscribe(plan){
       setLoadingPlan(plan.code)
       setStatus(null)
@@ -1024,7 +1028,8 @@ export default function Dashboard(){
             {plans.map((plan) => {
               const amount = planAmount(plan)
               const original = planOriginal(plan)
-              const discounted = Number(original || 0) > Number(amount || 0)
+              const customPricing = isCustomPricing(plan, original)
+              const discounted = !customPricing && Number(original || 0) > Number(amount || 0)
               const active = current?.plan_code === plan.code && current?.status === 'ACTIVE'
               return (
                 <div className="col-md-6 col-xl-3" key={plan.code}>
@@ -1038,15 +1043,15 @@ export default function Dashboard(){
                         {active && <span className="badge bg-success">Active</span>}
                       </div>
                       <div className="mt-3">
-                        <div className="display-6 fs-2 fw-bold text-olive mb-0">{formatMoney(amount)}</div>
-                        <div className="small text-muted">{cycle.toLowerCase()}</div>
+                        <div className="display-6 fs-2 fw-bold text-olive mb-0">{customPricing ? 'Contact us for pricing' : formatMoney(amount)}</div>
+                        <div className="small text-muted">{customPricing ? 'Custom enterprise plan' : cycle.toLowerCase()}</div>
                         {discounted && (
                           <div className="small text-muted">
                             <span className="text-decoration-line-through">{formatMoney(original)}</span> before discount
                           </div>
                         )}
                       </div>
-                      {plan.discount_enabled && Number(plan.discount_percent || 0) > 0 && (
+                      {!customPricing && plan.discount_enabled && Number(plan.discount_percent || 0) > 0 && (
                         <div className="badge bg-light text-olive border mt-3 align-self-start">{Number(plan.discount_percent).toLocaleString()}% discount</div>
                       )}
                       <ul className="small text-muted mt-3 mb-4 ps-3">
@@ -1054,14 +1059,20 @@ export default function Dashboard(){
                         <li>Organization and admin access</li>
                         <li>Separate from wallet funding</li>
                       </ul>
-                      <button
-                        className="btn btn-olive mt-auto"
-                        type="button"
-                        disabled={loadingPlan === plan.code}
-                        onClick={()=>subscribe(plan)}
-                      >
-                        {loadingPlan === plan.code ? 'Processing…' : Number(amount || 0) <= 0 ? 'Activate Plan' : `Pay ${formatMoney(amount)}`}
-                      </button>
+                      {customPricing ? (
+                        <button className="btn btn-olive mt-auto" type="button" onClick={()=>navigate('/contact')}>
+                          Contact Us
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-olive mt-auto"
+                          type="button"
+                          disabled={loadingPlan === plan.code}
+                          onClick={()=>subscribe(plan)}
+                        >
+                          {loadingPlan === plan.code ? 'Processing…' : Number(amount || 0) <= 0 ? 'Activate Plan' : `Pay ${formatMoney(amount)}`}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

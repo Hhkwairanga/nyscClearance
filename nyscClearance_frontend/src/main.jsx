@@ -13,6 +13,7 @@ import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
+import Contact from './pages/Contact'
 import { refreshForDeploymentVersion } from './deploymentVersion'
 
 async function bootstrap(){
@@ -36,6 +37,7 @@ async function bootstrap(){
             <Route path="reset-password" element={<ResetPassword />} />
             <Route path="terms" element={<Terms />} />
             <Route path="privacy" element={<Privacy />} />
+            <Route path="contact" element={<Contact />} />
           </Route>
         </Routes>
       </BrowserRouter>

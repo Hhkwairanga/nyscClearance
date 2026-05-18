@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 
 const DEFAULT_PRICING_PLANS = [
-  { code: 'STARTER', name: 'Starter', range_label: '0-10 corpers', monthly_price: '0.00', yearly_price: '0.00', original_monthly_price: '0.00', original_yearly_price: '0.00', discount_enabled: false, discount_percent: '0.00' },
+  { code: 'STARTER', name: 'Starter', range_label: '0-10 corpers', monthly_price: '5000.00', yearly_price: '55000.00', original_monthly_price: '5000.00', original_yearly_price: '55000.00', discount_enabled: false, discount_percent: '0.00' },
   { code: 'BASIC', name: 'Basic', range_label: '10-50 corpers', monthly_price: '25000.00', yearly_price: '258000.00', original_monthly_price: '25000.00', original_yearly_price: '258000.00', discount_enabled: false, discount_percent: '0.00' },
   { code: 'PRO', name: 'Pro', range_label: '50-100 corpers', monthly_price: '45000.00', yearly_price: '510000.00', original_monthly_price: '45000.00', original_yearly_price: '510000.00', discount_enabled: false, discount_percent: '0.00' },
   { code: 'ENTERPRISE', name: 'Enterprise', range_label: '100+ corpers', monthly_price: '95000.00', yearly_price: '999999.00', original_monthly_price: '95000.00', original_yearly_price: '999999.00', discount_enabled: false, discount_percent: '0.00' },
@@ -29,6 +29,18 @@ function money(value){
   const n = Number(value || 0)
   if(!Number.isFinite(n) || n <= 0) return 'Free'
   return `₦${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+}
+
+function isEnterpriseCustomPrice(plan, original){
+  return String(plan?.code || '').toUpperCase() === 'ENTERPRISE' && Number(original || 0) <= 0
+}
+
+function isEnterpriseCustomPlan(plan){
+  return (
+    Boolean(plan?.custom_pricing) ||
+    isEnterpriseCustomPrice(plan, plan?.original_monthly_price ?? plan?.monthly_price) ||
+    isEnterpriseCustomPrice(plan, plan?.original_yearly_price ?? plan?.yearly_price)
+  )
 }
 
 function planItems(plan){
@@ -54,18 +66,23 @@ function PriceLine({ label, amount, original }) {
 }
 
 function PricingCard({ plan, featured }) {
+  const customPricing = isEnterpriseCustomPlan(plan)
   return (
     <div className="col-md-6 col-lg-3">
       <div className={`nl-pricing-card p-4 h-100 ${featured ? 'featured' : ''}`}>
         {featured && <span className="nl-save-badge">Most Recommended</span>}
         <span className="nl-eyebrow">{plan.name}</span>
-        <h2 className="nl-fw-black my-2">{money(plan.monthly_price)}</h2>
+        <h2 className="nl-fw-black my-2">{customPricing ? 'Contact us for pricing' : money(plan.monthly_price)}</h2>
         <p className="small opacity-75 mb-3">{plan.range_label}</p>
-        <div className="nl-price-box">
-          <PriceLine label="Monthly" amount={plan.monthly_price} original={plan.original_monthly_price} />
-          <PriceLine label="Yearly" amount={plan.yearly_price} original={plan.original_yearly_price} />
-        </div>
-        {plan.discount_enabled && Number(plan.discount_percent || 0) > 0 && (
+        {customPricing ? (
+          <p className="small text-muted mb-0">We’ll tailor a plan for high-volume organisations.</p>
+        ) : (
+          <div className="nl-price-box">
+            <PriceLine label="Monthly" amount={plan.monthly_price} original={plan.original_monthly_price} />
+            <PriceLine label="Yearly" amount={plan.yearly_price} original={plan.original_yearly_price} />
+          </div>
+        )}
+        {!customPricing && plan.discount_enabled && Number(plan.discount_percent || 0) > 0 && (
           <div className="nl-discount-note">{Number(plan.discount_percent).toLocaleString()}% discount applied</div>
         )}
         <hr />
@@ -76,10 +93,10 @@ function PricingCard({ plan, featured }) {
           </p>
         ))}
         <Link
-          to="/signup"
+          to={customPricing ? '/contact' : '/signup'}
           className={`btn w-100 mt-3 rounded-pill ${featured ? 'btn-olive' : 'btn-outline-secondary'}`}
         >
-          Start Free Trial
+          {customPricing ? 'Contact Us' : 'Choose Plan'}
         </Link>
       </div>
     </div>
@@ -88,6 +105,24 @@ function PricingCard({ plan, featured }) {
 
 export default function Landing() {
   const [pricingPlans, setPricingPlans] = useState(DEFAULT_PRICING_PLANS)
+  const employerShareText =
+    "Hi Sir/Ma, I’d like to introduce you to NYSC Clearance, a platform that automates attendance and clearance letters.";
+
+  async function shareWithEmployer(){
+    const url = window.location.origin
+    const shareData = {
+      title: 'NYSC Clearance',
+      text: employerShareText,
+      url,
+    }
+    if(navigator?.share){
+      try{
+        await navigator.share(shareData)
+        return
+      }catch(e){}
+    }
+    window.location.href = `mailto:?subject=${encodeURIComponent('NYSC Clearance for monthly clearance')}&body=${encodeURIComponent(`${employerShareText}\n\n${url}`)}`
+  }
 
   const stats = useMemo(
     () => [
@@ -150,14 +185,14 @@ export default function Landing() {
                   Finally Automated.
                 </h1>
                 <p className="lead text-muted mb-4">
-                  Face recognition check-in. Geofence attendance. QR verified clearance letters — all in one platform.
+                  Face recognition clock-in. Geofenced attendance. QR verified clearance letters — all in one platform.
                   Set it up in minutes, not days.
                 </p>
                 <div className="d-flex flex-wrap gap-2 mb-5">
                   <Link className="btn btn-olive px-4" to="/signup">
-                    Start free trial
+                    Get Started
                   </Link>
-                  <Link className="btn btn-outline-secondary px-4" to="/login">
+                  <Link className="btn btn-outline-secondary px-4" to="/contact">
                     Book a demo
                   </Link>
                 </div>
@@ -209,7 +244,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="py-5 nl-bg-soft">
+      <section id="about" className="py-5 nl-bg-soft">
         <div className="container">
           <div className="text-center mb-4">
             <span className="nl-eyebrow">The problem</span>
@@ -236,7 +271,7 @@ export default function Landing() {
               <div className="nl-problem-card new p-4">
                 <h6 className="fw-bold">The New Way</h6>
                 {[
-                  'Face recognition check-in via any smartphone',
+                  'Face recognition clock-in via any smartphone',
                   'Geofenced attendance, they must be present',
                   'Clearance letters auto-generated in one click',
                   'QR-code on every letter for instant verification',
@@ -259,7 +294,7 @@ export default function Landing() {
           </div>
           <div className="row g-4 justify-content-center">
             {[
-              [Smartphone, 'Face ID Check-In via Any Smartphone', 'Corps members check in using face recognition on their personal phone or any available device.'],
+              [Smartphone, 'Face ID Clock-In via Any Smartphone', 'Corps members clock in using face recognition on their personal phone or any available device.'],
               [MapPin, 'Geofenced Attendance, They Must Be Present', 'Attendance is only valid within the GPS boundary of your organisation.'],
               [QrCode, 'Tamper-Proof Clearance Letters', 'Every letter carries a unique QR code for instant verification.'],
               [ShieldCheck, 'Leaves & Holidays', 'Approve or reject leave requests, and set organization-wide public holidays.'],
@@ -374,9 +409,9 @@ export default function Landing() {
                   </span>
                 ))}
               </div>
-              <Link className="btn btn-olive rounded-pill px-4" to="/signup">
+              <a className="btn btn-olive rounded-pill px-4" href="#how">
                 See How It Works
-              </Link>
+              </a>
             </div>
             <div className="col-lg-4">
               <div className="nl-letter-card p-4">
@@ -402,9 +437,9 @@ export default function Landing() {
             <span className="nl-eyebrow">For corps members</span>
             <h2 className="nl-section-title">Are You a Corps Member?</h2>
             <p className="text-muted small">You shouldn’t have to chase your supervisor for a clearance letter every month.</p>
-            <Link className="btn btn-olive rounded-pill px-4 mb-4" to="/signup">
+            <button className="btn btn-olive rounded-pill px-4 mb-4" type="button" onClick={shareWithEmployer}>
               Share With Your Employer
-            </Link>
+            </button>
             <div className="nl-email-box text-start mx-auto">
               <Mail size={18} aria-hidden />
               <span>
@@ -414,9 +449,7 @@ export default function Landing() {
                 className="btn btn-dark btn-sm rounded-pill ms-auto"
                 type="button"
                 onClick={() => {
-                  const text =
-                    "Hi Sir/Ma, I’d like to introduce you to NYSC Clearance, a platform that automates attendance and clearance letters.";
-                  navigator?.clipboard?.writeText?.(text)
+                  navigator?.clipboard?.writeText?.(employerShareText)
                 }}
               >
                 Copy
@@ -426,59 +459,47 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="py-5 nl-bg-soft text-center">
+      <section id="faq" className="py-5 nl-bg-soft">
+        <div className="container">
+          <div className="text-center mb-4">
+            <span className="nl-eyebrow">FAQ</span>
+            <h2 className="nl-section-title">Questions Organisations Ask</h2>
+          </div>
+          <div className="row g-4 justify-content-center">
+            {[
+              ['Can branches use separate dashboards?', 'Yes. Head office can create branches, assign admins, and monitor each branch from the organisation dashboard.'],
+              ['Does attendance require location coordinates?', 'Yes. Organisations configure approved coordinates so corps members can only clock in from the allowed location.'],
+              ['Can corps members download clearance letters?', 'Yes. Once attendance and billing rules are satisfied, verified clearance letters can be downloaded with QR verification.'],
+            ].map(([title, body]) => (
+              <div className="col-md-6 col-lg-4" key={title}>
+                <div className="nl-feature-card p-4 h-100">
+                  <h6 className="fw-bold">{title}</h6>
+                  <p className="small text-muted mb-0">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="contact" className="py-5 nl-bg-soft text-center">
         <div className="container">
           <h2 className="nl-section-title">Ready to Make Monthly<br />Clearance Effortless?</h2>
           <p className="small text-muted">Join organisations already using NYSC Clearance to save time and protect records.</p>
           <div className="d-flex justify-content-center flex-wrap gap-3">
             <Link className="btn btn-olive rounded-pill px-4" to="/signup">
-              Start Your Free Trial
+              Start Your Setup
             </Link>
-            <Link className="btn btn-outline-secondary rounded-pill px-4" to="/login">
+            <Link className="btn btn-outline-secondary rounded-pill px-4" to="/contact">
               Book a 15-Minute Demo
             </Link>
           </div>
+          <div className="small text-muted mt-3">
+            Email <a className="auth-link" href="mailto:admin@sahabs.tech">admin@sahabs.tech</a> or call{' '}
+            <a className="auth-link" href="tel:+2347082505053">+2347082505053</a>
+          </div>
         </div>
       </section>
-
-      <footer className="nl-footer py-5 text-white">
-        <div className="container">
-          <div className="row g-4">
-            <div className="col-lg-4">
-              <h5 className="fw-bold">NYSC Clearance</h5>
-              <p className="small opacity-75">
-                A smarter way to manage attendance and clearance for corps members.
-              </p>
-            </div>
-            {[
-              ['Product', 'Features', 'How it Works', 'Pricing'],
-              ['Company', 'About', 'FAQ', 'Contact us'],
-              ['Legal', 'Privacy Policy', 'Terms of Service'],
-            ].map(([title, ...links]) => (
-              <div className="col-6 col-lg-2" key={title}>
-                <h6>{title}</h6>
-                {links.map((l) => (
-                  <p className="small opacity-75 mb-2" key={l}>
-                    {title === 'Legal' && l === 'Privacy Policy' ? (
-                      <Link className="nl-footer-link" to="/privacy">
-                        {l}
-                      </Link>
-                    ) : title === 'Legal' && l === 'Terms of Service' ? (
-                      <Link className="nl-footer-link" to="/terms">
-                        {l}
-                      </Link>
-                    ) : (
-                      l
-                    )}
-                  </p>
-                ))}
-              </div>
-            ))}
-          </div>
-          <hr className="border-light opacity-25" />
-          <p className="small opacity-75 mb-0">© {new Date().getFullYear()} Sahab Technology. All rights reserved.</p>
-        </div>
-      </footer>
     </div>
   )
 }

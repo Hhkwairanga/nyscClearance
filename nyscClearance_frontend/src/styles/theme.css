@@ -14,6 +14,9 @@
 
 body{ background-color:#f7f9f6; }
 
+.app-shell{ min-height: 100vh; display:flex; flex-direction: column; }
+.app-shell > main{ flex: 1 0 auto; }
+
 .min-w-0{ min-width: 0 !important; }
 
 .app-loading-screen,
@@ -87,7 +90,8 @@ body{ background-color:#f7f9f6; }
 }
 
 /* Auth pages (Signup/Login) */
-.auth-page{
+.auth-page,
+.contact-page{
   min-height: calc(100vh - 76px);
   background: radial-gradient(1200px 600px at 10% 10%, rgba(189,183,107,0.18), transparent),
               radial-gradient(900px 450px at 90% 20%, rgba(85,107,47,0.12), transparent);
@@ -135,6 +139,21 @@ body{ background-color:#f7f9f6; }
 .auth-link:hover{ text-decoration: underline; color: #465826; }
 .auth-meta{ display:flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .auth-map{ border-radius: 14px; overflow:hidden; border:1px solid #e6e9df; background:#fff; }
+.contact-option{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:14px;
+  border:1px solid #edf0ea;
+  border-radius:16px;
+  color: inherit;
+  text-decoration:none;
+  background:#fff;
+}
+.contact-option:hover{ border-color: rgba(85,107,47,.35); box-shadow: 0 15px 40px rgba(85,107,47,.10); color: inherit; }
+.contact-option strong,
+.contact-option small{ display:block; }
+.contact-option small{ color: rgba(0,0,0,.58); }
 
 /* Landing (CAMS-inspired) */
 .nl-page{
@@ -186,7 +205,7 @@ body{ background-color:#f7f9f6; }
 .nl-circle.one{ width:90px; height:90px; right:305px; top:80px; }
 .nl-circle.two{ width:80px; height:80px; right:-25px; top:210px; }
 
-.nl-stats, .nl-how-section, .nl-footer{ background: var(--nl-green); }
+.nl-stats, .nl-how-section, .nl-footer{ background: var(--nl-green, var(--olive)); }
 .nl-stat-icon{ width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; background: rgba(255,255,255,.15); margin: 0 auto .5rem; }
 .nl-stat-icon svg{ opacity: .85; }
 
@@ -357,14 +376,18 @@ body{ background-color:#f7f9f6; }
 .topnav .btn.btn-olive{ color:#fff; }
 
 /* Dashboard (modern sidebar layout) */
-.dash-shell{ display:flex; min-height: 100%; width: 100%; background: var(--nl-soft, #f7faf7); }
+.dash-shell{ display:flex; min-height: calc(100vh - 76px); width: 100%; background: var(--nl-soft, #f7faf7); align-items:stretch; }
 .dash-sidebar{
   width: 320px;
+  flex: 0 0 320px;
+  min-height: calc(100vh - 76px);
+  align-self: stretch;
+  overflow-y: auto;
   background:#fff;
   border-right: 1px solid #edf0ea;
   padding: 16px;
 }
-.dash-sidebar.collapsed{ width: 84px; }
+.dash-sidebar.collapsed{ width: 84px; flex-basis: 84px; }
 .dash-sidebar.collapsed .dash-brand .min-w-0{ display:none; }
 .dash-sidebar.collapsed .dash-nav-item span{ display:none; }
 .dash-sidebar.collapsed .dash-badge{ display:none; }
@@ -395,8 +418,9 @@ body{ background-color:#f7f9f6; }
 .dash-title{ display:flex; flex-direction: column; line-height: 1.15; }
 .dash-toplink{ color: rgba(0,0,0,.68); text-decoration: none; font-weight: 700; font-size: .95rem; padding: 6px 10px; border-radius: 999px; }
 .dash-toplink:hover{ color: rgba(0,0,0,.9); background: #f6f8f4; }
-.dash-mini-footer{ padding: 10px 16px; border-top: 1px solid #edf0ea; background: rgba(255,255,255,.86); backdrop-filter: blur(8px); color: rgba(0,0,0,.6); font-size: .9rem; }
-.dash-content{ padding: 12px; }
+.dash-mini-footer{ position: fixed; left: 320px; right: 0; bottom: 0; z-index: 1025; padding: 10px 16px; border-top: 1px solid #edf0ea; background: rgba(255,255,255,.92); backdrop-filter: blur(8px); color: rgba(0,0,0,.6); font-size: .9rem; text-align:center; }
+.dash-sidebar.collapsed + .dash-main .dash-mini-footer{ left: 84px; }
+.dash-content{ padding: 12px 12px 64px; }
 
 .dash-section-head{ display:flex; align-items:flex-end; justify-content: space-between; gap: 12px; }
 .dash-section-title{ font-size: 14px; font-weight: 900; letter-spacing: .02em; text-transform: uppercase; color: rgba(0,0,0,.70); }
@@ -525,11 +549,16 @@ thead .dash-action-cell{ z-index: 3; background: #fff; }
 @keyframes spinIcon{ to{ transform: rotate(360deg); } }
 
 @media (max-width: 992px){
+  .dash-mini-footer{ left: 0; }
+  .dash-sidebar.collapsed + .dash-main .dash-mini-footer{ left: 0; }
+  .dash-content{ padding-bottom: 72px; }
   .dash-sidebar{
     position: fixed;
     left: 0;
     top: 0;
     bottom: 0;
+    height: 100vh;
+    min-height: 100vh;
     z-index: 1050;
     transform: translateX(-105%);
     box-shadow: 0 25px 70px rgba(0,0,0,.18);
