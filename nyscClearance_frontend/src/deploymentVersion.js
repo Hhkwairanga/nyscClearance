@@ -18,7 +18,6 @@ async function logoutServerSession(){
     await fetch(apiUrl('/api/auth/logout/'), {
       method: 'POST',
       credentials: 'include',
-      cache: 'no-store',
       signal: controller.signal,
     })
     return true
@@ -51,7 +50,6 @@ async function fetchBackendDeploymentVersion(){
     const res = await fetch(apiUrl(`/api/auth/config/version/?_=${Date.now()}`), {
       method: 'GET',
       credentials: 'include',
-      cache: 'no-store',
       signal: controller.signal,
       headers: { 'Accept': 'application/json' },
     })

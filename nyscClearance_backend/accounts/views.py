@@ -1096,7 +1096,25 @@ class LogoutView(APIView):
 
     def post(self, request):
         logout(request)
-        return Response({'message': 'Logged out'})
+        resp = Response({'message': 'Logged out'})
+        # Explicitly expire cookies to prevent sticky auth across deployments/browsers.
+        try:
+            resp.delete_cookie(
+                getattr(settings, 'SESSION_COOKIE_NAME', 'sessionid'),
+                path=getattr(settings, 'SESSION_COOKIE_PATH', '/') or '/',
+                domain=getattr(settings, 'SESSION_COOKIE_DOMAIN', None),
+            )
+        except Exception:
+            pass
+        try:
+            resp.delete_cookie(
+                getattr(settings, 'CSRF_COOKIE_NAME', 'csrftoken'),
+                path=getattr(settings, 'CSRF_COOKIE_PATH', '/') or '/',
+                domain=getattr(settings, 'CSRF_COOKIE_DOMAIN', None),
+            )
+        except Exception:
+            pass
+        return resp
 
 
 class MeView(APIView):
