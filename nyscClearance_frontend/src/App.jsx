@@ -63,19 +63,18 @@ export default function App(){
           <Link to={dashPath} className="navbar-brand d-flex align-items-center">
             <img src="/nyscclearance_logo.svg" alt="NYSC Clearance" className="brand-logo"/>
           </Link>
-          <div className="ms-auto d-flex align-items-center gap-2">
-            {isAuthed && isDashboard && (
-            <div className="d-none d-lg-flex align-items-center gap-3 me-3">
-              <a className="nav-link px-0 text-white-50" href="https://home.sahabs.tech" target="_blank" rel="noreferrer">About</a>
-              <a className="nav-link px-0 text-white-50" href="https://home.sahabs.tech" target="_blank" rel="noreferrer">Services</a>
-              <a className="nav-link px-0 text-white-50" href="https://home.sahabs.tech" target="_blank" rel="noreferrer">Contact</a>
-              <a className="nav-link px-0 text-white-50" href="https://home.sahabs.tech" target="_blank" rel="noreferrer">Help</a>
-            </div>
-            )}
-            {!isAuthed && <Link to="/signup" className="btn btn-khaki">Sign Up</Link>}
-            {!isAuthed && <Link to="/login" className="btn btn-outline-light">Login</Link>}
-            {isAuthed && <button className="btn btn-outline-light" onClick={logout}>Logout</button>}
-          </div>
+	          <div className="ms-auto d-flex align-items-center gap-2">
+	            {isAuthed && isDashboard && (
+	            <div className="d-none d-lg-flex align-items-center gap-3 me-3">
+	              <Link className="nav-link px-0 text-white-50" to="/about">About</Link>
+	              <a className="nav-link px-0 text-white-50" href="https://home.sahabs.tech" target="_blank" rel="noreferrer">Services</a>
+	              <Link className="nav-link px-0 text-white-50" to="/contact">Help</Link>
+	            </div>
+	            )}
+	            {!isAuthed && <Link to="/signup" className="btn btn-khaki">Sign Up</Link>}
+	            {!isAuthed && <Link to="/login" className="btn btn-outline-light">Login</Link>}
+	            {isAuthed && <button className="btn btn-outline-light" onClick={logout}>Logout</button>}
+	          </div>
         </div>
       </nav>
       <main className={isHome || isDashboard ? '' : 'container py-4'}>

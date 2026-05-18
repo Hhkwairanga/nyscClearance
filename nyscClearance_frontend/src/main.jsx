@@ -14,6 +14,7 @@ import ResetPassword from './pages/ResetPassword'
 import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
 import Contact from './pages/Contact'
+import About from './pages/About'
 import { refreshForDeploymentVersion } from './deploymentVersion'
 
 async function bootstrap(){
@@ -38,6 +39,7 @@ async function bootstrap(){
             <Route path="terms" element={<Terms />} />
             <Route path="privacy" element={<Privacy />} />
             <Route path="contact" element={<Contact />} />
+            <Route path="about" element={<About />} />
           </Route>
         </Routes>
       </BrowserRouter>
