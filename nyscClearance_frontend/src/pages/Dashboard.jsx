@@ -110,6 +110,9 @@ export default function Dashboard(){
   const [showAddCorper, setShowAddCorper] = useState(false)
   const [corperFormErrors, setCorperFormErrors] = useState({})
   const [profileFormErrors, setProfileFormErrors] = useState({})
+  const [tourOpen, setTourOpen] = useState(false)
+  const [tourStep, setTourStep] = useState(0)
+  const [setupDismissed, setSetupDismissed] = useState(false)
   const [editCorper, setEditCorper] = useState(null)
   const [editCorperForm, setEditCorperForm] = useState(null)
   const [selectedCorper, setSelectedCorper] = useState(null)
@@ -435,6 +438,110 @@ export default function Dashboard(){
       return next
     })
   }
+
+  const tourSteps = useMemo(() => {
+    if(me?.role !== 'ORG') return []
+    return [
+      { key: 'structure', title: 'Set up your structure', body: 'Start here to confirm your organisation profile and create Head Office / branches.' },
+      { key: 'corpers', title: 'Add corps members', body: 'Create and manage corps member accounts, placements, and assignments.' },
+      { key: 'report', title: 'Generate reports', body: 'Download attendance and corper reports for any period.' },
+      { key: 'wallet', title: 'Fund wallet', body: 'Fund your wallet to keep clearance services running without interruption.' },
+      { key: 'subscription', title: 'Manage subscription', body: 'Subscriptions are separate from wallet funding and can be managed here.' },
+    ]
+  }, [me?.role])
+
+  const setupItems = useMemo(() => {
+    if(me?.role !== 'ORG') return []
+    const hasBranches = Array.isArray(branches) && branches.length > 0
+    const hasCorpers = Array.isArray(corpers) && corpers.length > 0
+    const profileReady = !!((profile?.signatory_name || '').trim() || profile?.logo || profile?.signature)
+    const walletReady = Number(wallet?.balance || 0) > 0
+    const subscriptionActive = !!subscriptionInfo?.current?.is_active
+    return [
+      {
+        key: 'profile',
+        label: 'Update organisation profile',
+        done: profileReady,
+        action: () => { setActiveTab('structure'); setStructureTab('profile'); setShowEditProfile(true) }
+      },
+      {
+        key: 'structure',
+        label: 'Create Head Office / branches',
+        done: hasBranches,
+        action: () => { setActiveTab('structure'); setStructureTab('branches'); setShowAddBranch(true) }
+      },
+      {
+        key: 'corpers',
+        label: 'Add your first corps member',
+        done: hasCorpers,
+        action: () => { setActiveTab('corpers'); setShowAddCorper(true) }
+      },
+      {
+        key: 'funding',
+        label: 'Set up funding (wallet or subscription)',
+        done: walletReady || subscriptionActive,
+        action: () => { setActiveTab(walletReady ? 'wallet' : 'subscription') }
+      },
+    ]
+  }, [me?.role, branches, corpers, profile?.signatory_name, profile?.logo, profile?.signature, wallet?.balance, subscriptionInfo?.current?.is_active])
+
+  const setupProgress = useMemo(() => {
+    if(!setupItems.length) return { done: 0, total: 0, pct: 0 }
+    const done = setupItems.filter(i => i.done).length
+    const total = setupItems.length
+    const pct = Math.round((done / total) * 100)
+    return { done, total, pct }
+  }, [setupItems])
+
+  function startTour(){
+    if(me?.role !== 'ORG') return
+    setTourStep(0)
+    setTourOpen(true)
+    try{
+      localStorage.removeItem(`nysc_tour_dismissed:${me?.email || 'org'}`)
+    }catch(e){}
+  }
+
+  useEffect(() => {
+    if(!tourOpen) return
+    const step = tourSteps[tourStep]
+    if(!step) return
+    try{
+      document.querySelectorAll('.tour-highlight').forEach((el) => el.classList.remove('tour-highlight'))
+      const target = document.querySelector(`[data-tour-key="${step.key}"]`)
+      if(target){
+        target.classList.add('tour-highlight')
+        try{ target.scrollIntoView({ block:'center', behavior:'smooth' }) }catch(e){}
+      }
+    }catch(e){}
+    return () => {
+      try{ document.querySelectorAll('.tour-highlight').forEach((el) => el.classList.remove('tour-highlight')) }catch(e){}
+    }
+  }, [tourOpen, tourStep, tourSteps])
+
+  useEffect(() => {
+    if(me?.role !== 'ORG') return
+    try{
+      const key = `nysc_setup_dismissed:${me?.email || 'org'}`
+      setSetupDismissed(localStorage.getItem(key) === '1')
+    }catch(e){}
+  }, [me?.role, me?.email])
+
+  useEffect(() => {
+    if(me?.role !== 'ORG') return
+    if(dashboardLoading) return
+    if(!tourSteps.length) return
+    try{
+      const doneKey = `nysc_tour_done:${me?.email || 'org'}`
+      const dismissedKey = `nysc_tour_dismissed:${me?.email || 'org'}`
+      const alreadyDone = localStorage.getItem(doneKey) === '1'
+      const dismissed = localStorage.getItem(dismissedKey) === '1'
+      if(!alreadyDone && !dismissed){
+        setTourStep(0)
+        setTourOpen(true)
+      }
+    }catch(e){}
+  }, [me?.role, me?.email, dashboardLoading, tourSteps.length])
 
   // Handle result banners and Paystack return
   useEffect(() => {
@@ -1876,8 +1983,8 @@ export default function Dashboard(){
     return <DashboardLoadingScreen />
   }
 
-  return (
-    <div className="container-fluid p-0">
+	  return (
+	    <div className="container-fluid p-0">
       {showFund && (
         <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:1050}} onClick={()=>setShowFund(false)}>
           <div className="card shadow" style={{position:'absolute', top:'20%', left:'50%', transform:'translateX(-50%)', width:'min(420px, 92%)'}} onClick={e=>e.stopPropagation()}>
@@ -1896,8 +2003,8 @@ export default function Dashboard(){
           </div>
         </div>
       )}
-      {me?.role==='ORG' && announcement && (
-        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.35)', zIndex:1050}} onClick={()=>setAnnouncement(null)}>
+	      {me?.role==='ORG' && announcement && (
+	        <div style={{position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.35)', zIndex:1050}} onClick={()=>setAnnouncement(null)}>
           <div className="card shadow" style={{position:'absolute', top:'15%', left:'50%', transform:'translateX(-50%)', width:'min(520px, 95%)'}} onClick={e=>e.stopPropagation()}>
             <div className="card-header d-flex justify-content-between align-items-center">
               <strong>{announcement.title || 'Notice'}</strong>
@@ -1907,9 +2014,46 @@ export default function Dashboard(){
               <div style={{whiteSpace:'pre-wrap'}}>{announcement.message}</div>
             </div>
           </div>
-        </div>
-      )}
-      <div className="dash-shell">
+	        </div>
+	      )}
+	      {tourOpen && tourSteps[tourStep] && (
+	        <div className="tour-backdrop" onClick={() => {
+	          try{ localStorage.setItem(`nysc_tour_dismissed:${me?.email || 'org'}`, '1') }catch(e){}
+	          setTourOpen(false)
+	        }}>
+	          <div className="tour-card" onClick={(e)=>e.stopPropagation()}>
+	            <div className="d-flex justify-content-between align-items-start gap-3">
+	              <div className="min-w-0">
+	                <div className="tour-kicker">Quick tour • Step {tourStep + 1} of {tourSteps.length}</div>
+	                <div className="tour-title">{tourSteps[tourStep].title}</div>
+	                <div className="tour-body">{tourSteps[tourStep].body}</div>
+	              </div>
+	              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => {
+	                try{ localStorage.setItem(`nysc_tour_dismissed:${me?.email || 'org'}`, '1') }catch(e){}
+	                setTourOpen(false)
+	              }}>Skip</button>
+	            </div>
+	            <div className="d-flex justify-content-between align-items-center gap-2 mt-3">
+	              <button className="btn btn-outline-secondary" type="button" disabled={tourStep === 0} onClick={() => setTourStep((s)=>Math.max(0, s - 1))}>
+	                Back
+	              </button>
+	              {tourStep < tourSteps.length - 1 ? (
+	                <button className="btn btn-olive" type="button" onClick={() => setTourStep((s)=>Math.min(tourSteps.length - 1, s + 1))}>
+	                  Next
+	                </button>
+	              ) : (
+	                <button className="btn btn-olive" type="button" onClick={() => {
+	                  try{ localStorage.setItem(`nysc_tour_done:${me?.email || 'org'}`, '1') }catch(e){}
+	                  setTourOpen(false)
+	                }}>
+	                  Done
+	                </button>
+	              )}
+	            </div>
+	          </div>
+	        </div>
+	      )}
+	      <div className="dash-shell">
         <aside className={`dash-sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
           <div className="dash-brand">
             <div className="d-flex align-items-center gap-2">
@@ -1924,15 +2068,16 @@ export default function Dashboard(){
             </button>
           </div>
 
-          <nav className="dash-nav" aria-label="Dashboard navigation">
-            {navItems.map(({ key, label, Icon, badge }) => (
-              <button
-                key={key}
-                className={`dash-nav-item ${activeTab === key ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTab(key)
-                  setSidebarOpen(false)
-                }}
+	          <nav className="dash-nav" aria-label="Dashboard navigation">
+	            {navItems.map(({ key, label, Icon, badge }) => (
+	              <button
+	                key={key}
+	                data-tour-key={key}
+	                className={`dash-nav-item ${activeTab === key ? 'active' : ''}`}
+	                onClick={() => {
+	                  setActiveTab(key)
+	                  setSidebarOpen(false)
+	                }}
                 type="button"
               >
                 <Icon size={18} aria-hidden />
@@ -2017,13 +2162,53 @@ export default function Dashboard(){
         {status==='error:query-resolve' && (
           <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>Failed to resolve query.</AutoFadeAlert>
         )}
-          {activeTab==='overview' && (
-            <>
-              <div className="row g-3">
-                {me?.role !== 'CORPER' && (
-                <div className="col-12 col-xxl-9">
-                  {me?.role !== 'CORPER' && (
-                    <>
+	          {activeTab==='overview' && (
+	            <>
+	              <div className="row g-3">
+	                {me?.role === 'ORG' && !setupDismissed && setupItems.length > 0 && (
+	                  <div className="col-12">
+	                    <div className="card shadow-sm dash-card">
+	                      <div className="card-body">
+	                        <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+	                          <div className="min-w-0">
+	                            <div className="dash-card-title mb-1">Getting started</div>
+	                            <div className="small text-muted">
+	                              Complete these steps to finish setup ({setupProgress.done}/{setupProgress.total}).
+	                            </div>
+	                          </div>
+	                          <div className="d-flex gap-2">
+	                            <button className="btn btn-sm btn-outline-secondary" type="button" onClick={startTour}>Take a tour</button>
+	                            <button className="btn btn-sm btn-outline-secondary" type="button" aria-label="Dismiss" onClick={() => {
+	                              setSetupDismissed(true)
+	                              try{ localStorage.setItem(`nysc_setup_dismissed:${me?.email || 'org'}`, '1') }catch(e){}
+	                            }}>×</button>
+	                          </div>
+	                        </div>
+	                        <div className="progress mt-3" style={{height:8}}>
+	                          <div className="progress-bar bg-olive" role="progressbar" style={{width:`${setupProgress.pct}%`}} aria-valuenow={setupProgress.pct} aria-valuemin="0" aria-valuemax="100" />
+	                        </div>
+	                        <div className="row g-2 mt-3">
+	                          {setupItems.map((item) => (
+	                            <div className="col-12 col-md-6 col-xl-3" key={item.key}>
+	                              <button
+	                                type="button"
+	                                className={`btn w-100 text-start d-flex align-items-center justify-content-between gap-2 btn-outline-secondary ${item.done ? '' : 'border-olive text-olive'}`}
+	                                onClick={item.action}
+	                              >
+	                                <span className="text-truncate">{item.label}</span>
+	                                <span className={`badge ${item.done ? 'bg-success' : 'bg-secondary'}`}>{item.done ? 'Done' : 'Start'}</span>
+	                              </button>
+	                            </div>
+	                          ))}
+	                        </div>
+	                      </div>
+	                    </div>
+	                  </div>
+	                )}
+	                {me?.role !== 'CORPER' && (
+	                <div className="col-12 col-xxl-9">
+	                  {me?.role !== 'CORPER' && (
+	                    <>
                       <div className="dash-section-head" />
 
                       <div className="row g-3">

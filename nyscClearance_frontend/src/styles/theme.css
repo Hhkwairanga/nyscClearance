@@ -6,6 +6,47 @@
 .bg-olive{ background-color: var(--olive) !important; }
 .text-olive{ color: var(--olive) !important; }
 .border-olive{ border-color: var(--olive) !important; }
+
+/* Simple onboarding tour */
+.tour-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 1060;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+}
+.tour-card{
+  width: min(560px, 96vw);
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+  padding: 16px;
+}
+.tour-kicker{
+  font-size: 12px;
+  color: rgba(0,0,0,0.6);
+  margin-bottom: 4px;
+}
+.tour-title{
+  font-weight: 700;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+.tour-body{
+  font-size: 13px;
+  color: rgba(0,0,0,0.72);
+}
+.tour-highlight{
+  outline: 2px solid var(--olive);
+  outline-offset: 2px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 4px rgba(107, 122, 40, 0.22);
+  position: relative;
+  z-index: 1065;
+}
 .btn-olive{ background-color: var(--olive); color:#fff; border-color: var(--olive); }
 .btn-olive:hover{ background-color: #465826; border-color:#465826; }
 
