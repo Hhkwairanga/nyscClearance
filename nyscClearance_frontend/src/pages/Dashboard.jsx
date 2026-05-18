@@ -148,6 +148,9 @@ export default function Dashboard(){
   const [showEditProfile, setShowEditProfile] = useState(false)
   const [showBranchLocation, setShowBranchLocation] = useState(false)
   const [branchLocationPos, setBranchLocationPos] = useState(null)
+  const [branchLocationAddress, setBranchLocationAddress] = useState('')
+  const [showBranchGeoTour, setShowBranchGeoTour] = useState(false)
+  const [showCorperTour, setShowCorperTour] = useState(false)
   const [editBranch, setEditBranch] = useState(null)
   const [editDepartment, setEditDepartment] = useState(null)
   const [editUnit, setEditUnit] = useState(null)
@@ -191,6 +194,36 @@ export default function Dashboard(){
       name: p.name || 'Head Office',
     }))
   }, [me?.role, branches, structurePrompted])
+
+  // Lightweight onboarding prompts (branch geo-fence location + corper quick tour).
+  useEffect(() => {
+    if(!me?.role) return
+    try{
+      if(me.role === 'BRANCH'){
+        const myBranch = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
+        const missing = myBranch && !(myBranch.latitude && myBranch.longitude)
+        const prompted = sessionStorage.getItem('nysc_branch_geo_prompted') === '1'
+        if(missing && !prompted){
+          sessionStorage.setItem('nysc_branch_geo_prompted', '1')
+          setShowBranchGeoTour(true)
+        }
+      }
+
+      if(me.role === 'CORPER'){
+        const prompted = sessionStorage.getItem('nysc_corper_tour_prompted') === '1'
+        if(prompted) return
+        sessionStorage.setItem('nysc_corper_tour_prompted', '1')
+        const key = `nysc_corper_login_count:${me.email || 'corper'}`
+        let count = parseInt(localStorage.getItem(key) || '0', 10)
+        if(Number.isNaN(count)) count = 0
+        count += 1
+        localStorage.setItem(key, String(count))
+        if(count <= 3){
+          setShowCorperTour(true)
+        }
+      }
+    }catch(e){}
+  }, [me, branches])
 
   useEffect(() => {
     if (!editBranch) {
@@ -2146,6 +2179,73 @@ export default function Dashboard(){
           </div>
 	        </div>
 	      )}
+
+        {showBranchGeoTour && me?.role === 'BRANCH' && (
+          <div className="dash-modal" onClick={()=>setShowBranchGeoTour(false)}>
+            <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+              <div className="dash-modal-head">
+                <strong>Update your branch location</strong>
+                <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowBranchGeoTour(false)}>Close</button>
+              </div>
+              <div className="dash-modal-body">
+                <div className="dash-modal-grid">
+                  <div className="dash-modal-help">
+                    <h6>Why this matters</h6>
+                    <p>Setting your branch coordinates helps geofencing work accurately for attendance.</p>
+                    <ul>
+                      <li>Pick the location on the map</li>
+                      <li>Add or confirm the branch address</li>
+                      <li>Save to apply immediately</li>
+                    </ul>
+                  </div>
+                  <div className="dash-modal-form">
+                    <div className="d-grid gap-2">
+                      <button className="btn btn-olive" type="button" onClick={()=>{
+                        const myBranch = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
+                        setActiveTab('structure')
+                        setStructureTab('branch')
+                        setBranchLocationPos(myBranch?.latitude && myBranch?.longitude ? { lat: myBranch.latitude, lng: myBranch.longitude } : null)
+                        setBranchLocationAddress(myBranch?.address || '')
+                        setShowBranchGeoTour(false)
+                        setShowBranchLocation(true)
+                      }}>Update location now</button>
+                      <button className="btn btn-outline-secondary" type="button" onClick={()=>setShowBranchGeoTour(false)}>Later</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCorperTour && me?.role === 'CORPER' && (
+          <div className="dash-modal" onClick={()=>setShowCorperTour(false)}>
+            <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+              <div className="dash-modal-head">
+                <strong>Welcome</strong>
+                <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowCorperTour(false)}>Close</button>
+              </div>
+              <div className="dash-modal-body">
+                <div className="dash-modal-grid">
+                  <div className="dash-modal-help">
+                    <h6>Quick guide</h6>
+                    <ul>
+                      <li>Use <strong>Attendance</strong> to clock-in and clock-out</li>
+                      <li>Keep your face capture clear and well-lit</li>
+                      <li>Download your clearance letter when qualified</li>
+                    </ul>
+                  </div>
+                  <div className="dash-modal-form">
+                    <div className="d-grid gap-2">
+                      <button className="btn btn-olive" type="button" onClick={()=>setShowCorperTour(false)}>Got it</button>
+                    </div>
+                    <div className="form-text mt-2">This guide shows during your first three logins.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 	      {tourOpen && tourSteps[tourStep] && (
 	        <div className="tour-backdrop" onClick={() => {
 	          try{ localStorage.setItem(`nysc_tour_dismissed:${me?.email || 'org'}`, '1') }catch(e){}
@@ -4075,6 +4175,7 @@ export default function Dashboard(){
                             {structureTab==='branch' && (
                               <button className="btn btn-sm btn-olive" type="button" onClick={() => {
                                 setBranchLocationPos(myBranch.latitude && myBranch.longitude ? { lat: myBranch.latitude, lng: myBranch.longitude } : null)
+                                setBranchLocationAddress(myBranch.address || '')
                                 setShowBranchLocation(true)
                               }}>Update location</button>
                             )}
@@ -4409,7 +4510,7 @@ export default function Dashboard(){
                               const f=new FormData(e.target)
                               const name=f.get('name')
 	                              try{
-	                                await api.post('/api/auth/departments/', { branch: myBranch.id, name })
+	                                await api.post('/api/auth/departments/', { name })
 	                                await refreshAll()
                                 setStatus('saved:department')
                                 setShowAddDepartment(false)
@@ -4470,6 +4571,13 @@ export default function Dashboard(){
                                 </ul>
                               </div>
                               <div className="dash-modal-form">
+                                <label className="form-label">Branch address</label>
+                                <input
+                                  className="form-control mb-2"
+                                  value={branchLocationAddress}
+                                  onChange={(e)=>setBranchLocationAddress(e.target.value)}
+                                  placeholder="e.g., 12 Marina, Lagos"
+                                />
                                 <MapPicker
                                   value={branchLocationPos}
                                   onChange={(pos) => setBranchLocationPos(pos)}
@@ -4481,7 +4589,7 @@ export default function Dashboard(){
                                   if(!branchLocationPos){ alert('Pick a location on the map first.'); return }
                                   setStatus('pending')
                                   try{
-                                    await api.put(`/api/auth/branches/${myBranch.id}/`, { latitude: branchLocationPos.lat, longitude: branchLocationPos.lng, name: myBranch.name, address: myBranch.address||'' })
+                                    await api.put(`/api/auth/branches/${myBranch.id}/`, { latitude: branchLocationPos.lat, longitude: branchLocationPos.lng, name: myBranch.name, address: String(branchLocationAddress || '').trim() })
                                     await refreshAll()
                                     setShowBranchLocation(false)
                                     setStatus('saved:branch')

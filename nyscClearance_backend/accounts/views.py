@@ -1388,7 +1388,8 @@ class StructureImportTemplateView(APIView):
                     ],
                     'rows': [
                         ['Head Office', '1 Main Road, Abuja', '9.0765', '7.3986', 'Amina Admin', 'admin@example.com', 'HQ-001'],
-                        ['Lagos Branch', '12 Marina, Lagos', '6.5244', '3.3792', '', '', ''],
+                        # Latitude/longitude are optional. You can update location later from the dashboard map.
+                        ['Lagos Branch', '12 Marina, Lagos', '', '', '', '', ''],
                     ],
                 },
                 {
@@ -1422,7 +1423,8 @@ class CorperImportTemplateView(APIView):
             'Corpers',
             CORPER_IMPORT_COLUMNS,
             [
-                ['Amina Yusuf', 'amina.corper@example.com', 'F', 'FC/24A/1234', '2026-10-31', 'Tuesday', 'Head Office', 'Human Resources', 'Recruitment'],
+                # department_name and unit_name are optional.
+                ['Amina Yusuf', 'amina.corper@example.com', 'F', 'FC/24A/1234', '2026-10-31', 'Tuesday', 'Head Office', '', ''],
                 ['David Okon', 'david.corper@example.com', 'M', 'LA/24B/5678', '2026-10-31', 'Thursday', 'Lagos Branch', 'Finance', 'Payroll'],
             ],
         )
