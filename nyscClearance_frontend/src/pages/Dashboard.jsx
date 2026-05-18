@@ -137,6 +137,7 @@ export default function Dashboard(){
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [structureTab, setStructureTab] = useState('profile')
+  const [loadingOverlay, setLoadingOverlay] = useState(null)
 
   const isSaving = status === 'pending'
   const configVersionRef = useRef('')
@@ -574,6 +575,26 @@ export default function Dashboard(){
     if(!tourOpen) return
     const step = tourSteps[tourStep]
     if(!step) return
+    // Navigate to the relevant section, but never trigger funding/subscription actions during the tour.
+    try{
+      if(step.key === 'wallet'){
+        setActiveTab('wallet')
+        setShowFund(false)
+      }
+      if(step.key === 'subscription'){
+        setActiveTab('subscription')
+      }
+      if(step.key === 'structure'){
+        setActiveTab('structure')
+        setStructureTab('profile')
+      }
+      if(step.key === 'corpers'){
+        setActiveTab('corpers')
+      }
+      if(step.key === 'report'){
+        setActiveTab('report')
+      }
+    }catch(e){}
     try{
       document.querySelectorAll('.tour-highlight').forEach((el) => el.classList.remove('tour-highlight'))
       const target = document.querySelector(`[data-tour-key="${step.key}"]`)
@@ -857,11 +878,18 @@ export default function Dashboard(){
     const form = new FormData()
     form.append('file', file)
     try{
+      setLoadingOverlay({
+        title: 'Validating file…',
+        body: kind === 'structure'
+          ? 'Checking your branches, departments, and units.'
+          : 'Checking corps member records and required fields.',
+      })
       setStatus('pending')
       const res = await api.post(endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' } })
       if(kind === 'structure') setStructureImportPreview(res.data)
       else setCorperImportPreview(res.data)
       setStatus(null)
+      setLoadingOverlay(null)
       return res.data
     }catch(err){
       const payload = err?.response?.data
@@ -870,6 +898,7 @@ export default function Dashboard(){
         else setCorperImportPreview(payload)
       }
       setStatus(`error:import:${extractApiMessage(err, 'Failed to preview import')}`)
+      setLoadingOverlay(null)
       return null
     }
   }
@@ -884,6 +913,12 @@ export default function Dashboard(){
     form.append('file', file)
     form.append('apply', '1')
     try{
+      setLoadingOverlay({
+        title: 'Applying import…',
+        body: kind === 'structure'
+          ? 'Creating branches, departments, and units.'
+          : 'Creating accounts and sending verification emails.',
+      })
       setStatus('pending')
       const res = await api.post(endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' } })
       if(kind === 'structure'){
@@ -898,6 +933,7 @@ export default function Dashboard(){
         setStatus('saved:corper-import')
       }
       await refreshAll()
+      setLoadingOverlay(null)
     }catch(err){
       const payload = err?.response?.data
       if(payload && typeof payload === 'object'){
@@ -905,6 +941,7 @@ export default function Dashboard(){
         else setCorperImportPreview(payload)
       }
       setStatus(`error:import:${extractApiMessage(err, 'Failed to apply import')}`)
+      setLoadingOverlay(null)
     }
   }
 
@@ -2172,6 +2209,20 @@ export default function Dashboard(){
 
 	  return (
 	    <div className="container-fluid p-0">
+      {loadingOverlay && (
+        <div className="app-loading-screen" style={{ zIndex: 2000 }}>
+          <div className="app-loading-card text-center">
+            <div className="dashboard-loading-icon mx-auto" aria-hidden>
+              <RefreshCw size={24} className="spin-icon" />
+            </div>
+            <div className="app-loading-title mt-3">{loadingOverlay.title || 'Working…'}</div>
+            <p className="text-muted small mb-3">{loadingOverlay.body || 'Please wait.'}</p>
+            <div className="loading-progress" aria-hidden>
+              <div className="loading-progress-bar" />
+            </div>
+          </div>
+        </div>
+      )}
       {showFund && (
         <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:1050}} onClick={()=>setShowFund(false)}>
           <div className="card shadow" style={{position:'absolute', top:'20%', left:'50%', transform:'translateX(-50%)', width:'min(420px, 92%)'}} onClick={e=>e.stopPropagation()}>

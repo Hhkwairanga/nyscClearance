@@ -52,6 +52,22 @@ export default function App(){
     }
   }, [isHome, isAuthed, dashPath, navigate])
 
+  // Support deep-linking to landing sections like "/#features" from any page.
+  useEffect(() => {
+    if(location.pathname !== '/') return
+    const hash = (location.hash || '').replace('#', '').trim()
+    if(!hash) return
+    const t = setTimeout(() => {
+      try{
+        const el = document.getElementById(hash)
+        if(el){
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }catch(e){}
+    }, 50)
+    return () => clearTimeout(t)
+  }, [location.pathname, location.hash])
+
   if(me === null){
     return <AppLoadingScreen />
   }
