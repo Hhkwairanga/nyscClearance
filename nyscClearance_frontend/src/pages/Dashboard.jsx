@@ -608,6 +608,15 @@ export default function Dashboard(){
     }
   }, [tourOpen, tourStep, tourSteps])
 
+  // Guard: if tourStep exceeds available steps (e.g. after refresh), clamp it.
+  useEffect(() => {
+    if(!tourOpen) return
+    if(!tourSteps.length) return
+    if(tourStep > tourSteps.length - 1){
+      setTourStep(tourSteps.length - 1)
+    }
+  }, [tourOpen, tourStep, tourSteps.length])
+
   useEffect(() => {
     if(me?.role !== 'ORG') return
     try{
@@ -625,12 +634,19 @@ export default function Dashboard(){
       const dismissedKey = `nysc_tour_dismissed:${me?.email || 'org'}`
       const alreadyDone = localStorage.getItem(doneKey) === '1'
       const dismissed = localStorage.getItem(dismissedKey) === '1'
+      // If the user already completed all setup items, do not auto-open the tour again.
+      if(setupProgress?.pct === 100){
+        if(!alreadyDone){
+          localStorage.setItem(doneKey, '1')
+        }
+        return
+      }
       if(!alreadyDone && !dismissed){
         setTourStep(0)
         setTourOpen(true)
       }
     }catch(e){}
-  }, [me?.role, me?.email, dashboardLoading, tourSteps.length])
+  }, [me?.role, me?.email, dashboardLoading, tourSteps.length, setupProgress?.pct])
 
   // Handle result banners and Paystack return
   useEffect(() => {
