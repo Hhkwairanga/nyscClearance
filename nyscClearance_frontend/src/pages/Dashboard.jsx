@@ -204,9 +204,13 @@ export default function Dashboard(){
       if(me.role === 'BRANCH'){
         const myBranch = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
         const missing = myBranch && !(myBranch.latitude && myBranch.longitude)
-        const prompted = sessionStorage.getItem('nysc_branch_geo_prompted') === '1'
-        if(missing && !prompted){
-          sessionStorage.setItem('nysc_branch_geo_prompted', '1')
+        const doneKey = `nysc_branch_geo_done:${me.email || 'branch'}`
+        const dismissedAtKey = `nysc_branch_geo_dismissed_at:${me.email || 'branch'}`
+        const done = localStorage.getItem(doneKey) === '1'
+        const dismissedAt = parseInt(localStorage.getItem(dismissedAtKey) || '0', 10) || 0
+        const dayMs = 24 * 60 * 60 * 1000
+        const recentlyDismissed = dismissedAt > 0 && (Date.now() - dismissedAt) < dayMs
+        if(missing && !done && !recentlyDismissed){
           setShowBranchGeoTour(true)
         }
       }
@@ -2276,7 +2280,10 @@ export default function Dashboard(){
             <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
               <div className="dash-modal-head">
                 <strong>Update your branch location</strong>
-                <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowBranchGeoTour(false)}>Close</button>
+                <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>{
+                  try{ localStorage.setItem(`nysc_branch_geo_dismissed_at:${me?.email || 'branch'}`, String(Date.now())) }catch(e){}
+                  setShowBranchGeoTour(false)
+                }}>Close</button>
               </div>
               <div className="dash-modal-body">
                 <div className="dash-modal-grid">
@@ -2301,8 +2308,12 @@ export default function Dashboard(){
                         setShowBranchGeoTour(false)
                         setShowBranchLocation(true)
                       }}>Update location now</button>
-                      <button className="btn btn-outline-secondary" type="button" onClick={()=>setShowBranchGeoTour(false)}>Later</button>
+                      <button className="btn btn-outline-secondary" type="button" onClick={()=>{
+                        try{ localStorage.setItem(`nysc_branch_geo_dismissed_at:${me?.email || 'branch'}`, String(Date.now())) }catch(e){}
+                        setShowBranchGeoTour(false)
+                      }}>Remind me later</button>
                     </div>
+                    <div className="form-text mt-2">We’ll remind you again tomorrow if location is still missing.</div>
                   </div>
                 </div>
               </div>
@@ -2324,11 +2335,13 @@ export default function Dashboard(){
                     <ul>
                       <li>Use <strong>Attendance</strong> to clock-in and clock-out</li>
                       <li>Keep your face capture clear and well-lit</li>
-                      <li>Download your clearance letter when qualified</li>
+                      <li>View <strong>Clearance</strong> to track eligibility and download when qualified</li>
                     </ul>
                   </div>
                   <div className="dash-modal-form">
                     <div className="d-grid gap-2">
+                      <button className="btn btn-outline-secondary" type="button" onClick={()=>{ setActiveTab('attendance'); setShowCorperTour(false) }}>Go to Attendance</button>
+                      <button className="btn btn-outline-secondary" type="button" onClick={()=>{ setActiveTab('performance'); setShowCorperTour(false) }}>Go to Clearance</button>
                       <button className="btn btn-olive" type="button" onClick={()=>setShowCorperTour(false)}>Got it</button>
                     </div>
                     <div className="form-text mt-2">This guide shows during your first three logins.</div>
@@ -4322,6 +4335,7 @@ export default function Dashboard(){
                                   try{
                                     await api.put(`/api/auth/branches/${myBranch.id}/`, { latitude: branchLocationPos.lat, longitude: branchLocationPos.lng, name: myBranch.name, address: String(branchLocationAddress || '').trim() })
                                     await refreshAll()
+                                    try{ localStorage.setItem(`nysc_branch_geo_done:${me?.email || 'branch'}`, '1') }catch(e){}
                                     setShowBranchLocation(false)
                                     setStatus('saved:branch')
                                   }catch(e){}
