@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
+from pathlib import Path
 from rest_framework import serializers
 from django.conf import settings
 
@@ -94,6 +95,18 @@ class LoginSerializer(serializers.Serializer):
 
 
 class OrganizationProfileSerializer(serializers.ModelSerializer):
+    logo = serializers.FileField(required=False, allow_null=True)
+    nullable_blank_fields = {
+        'late_time',
+        'closing_time',
+        'max_days_late',
+        'max_days_absent',
+        'location_lat',
+        'location_lng',
+    }
+    optional_file_fields = {'logo', 'signature'}
+    allowed_logo_extensions = {'.png', '.jpg', '.jpeg', '.svg', '.webp', '.gif', '.bmp'}
+
     class Meta:
         model = OrganizationProfile
         fields = (
@@ -101,6 +114,33 @@ class OrganizationProfileSerializer(serializers.ModelSerializer):
             'logo', 'location_lat', 'location_lng',
             'signatory_name', 'signature'
         )
+
+    def to_internal_value(self, data):
+        if hasattr(data, 'copy'):
+            data = data.copy()
+        for field in self.nullable_blank_fields:
+            if field in data and data.get(field) == '':
+                data[field] = None
+        for field in self.optional_file_fields:
+            if field not in data:
+                continue
+            value = data.get(field)
+            is_empty_upload = getattr(value, 'size', None) == 0 and not getattr(value, 'name', '')
+            if value in ('', None) or is_empty_upload:
+                try:
+                    data.pop(field)
+                except Exception:
+                    data[field] = None
+        return super().to_internal_value(data)
+
+    def validate_logo(self, value):
+        if not value:
+            return value
+        ext = Path(getattr(value, 'name', '') or '').suffix.lower()
+        if ext not in self.allowed_logo_extensions:
+            allowed = ', '.join(sorted(self.allowed_logo_extensions))
+            raise serializers.ValidationError(f'Unsupported logo format. Please upload one of: {allowed}.')
+        return value
 
     def update(self, instance, validated_data):
         # Do not overwrite existing logo when no new file is provided

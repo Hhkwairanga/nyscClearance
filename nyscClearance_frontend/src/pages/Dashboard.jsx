@@ -109,6 +109,7 @@ export default function Dashboard(){
   const [corperFilterBranch, setCorperFilterBranch] = useState('all')
   const [showAddCorper, setShowAddCorper] = useState(false)
   const [corperFormErrors, setCorperFormErrors] = useState({})
+  const [profileFormErrors, setProfileFormErrors] = useState({})
   const [editCorper, setEditCorper] = useState(null)
   const [editCorperForm, setEditCorperForm] = useState(null)
   const [selectedCorper, setSelectedCorper] = useState(null)
@@ -123,6 +124,7 @@ export default function Dashboard(){
       setCorperFormErrors({})
     }
   }, [showAddCorper])
+
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [structureTab, setStructureTab] = useState('profile')
@@ -155,6 +157,12 @@ export default function Dashboard(){
   const [editBranchForm, setEditBranchForm] = useState(null)
   const [forceStructureSetup, setForceStructureSetup] = useState(false)
   const [structurePrompted, setStructurePrompted] = useState(false)
+
+  useEffect(() => {
+    if (!showEditProfile) {
+      setProfileFormErrors({})
+    }
+  }, [showEditProfile])
 
   // On org login: if no branches, prompt from Organisation Profile before Head Office setup.
   useEffect(() => {
@@ -403,6 +411,31 @@ export default function Dashboard(){
     return err?.message || fallback
   }
 
+  function fieldError(errors, field){
+    const value = errors?.[field]
+    if(!value) return ''
+    if(Array.isArray(value)){
+      return value.map((item) => {
+        if(item && typeof item === 'object') return Object.values(item).join(', ')
+        return String(item || '')
+      }).filter(Boolean).join(' ')
+    }
+    if(typeof value === 'object'){
+      const first = Object.values(value).flat().find(Boolean)
+      return first ? String(first) : JSON.stringify(value)
+    }
+    return String(value)
+  }
+
+  function clearFieldError(setter, field){
+    setter((prev) => {
+      if(!prev?.[field]) return prev
+      const next = { ...(prev || {}) }
+      delete next[field]
+      return next
+    })
+  }
+
   // Handle result banners and Paystack return
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
@@ -569,13 +602,26 @@ export default function Dashboard(){
   async function saveProfile(e){
     e.preventDefault()
     setStatus('pending')
+    setProfileFormErrors({})
     const form = new FormData(e.target)
+    for(const field of ['logo', 'signature']){
+      const file = form.get(field)
+      if(typeof File !== 'undefined' && file instanceof File && file.size === 0 && !file.name){
+        form.delete(field)
+      }
+    }
     try{
       const res = await api.put('/api/auth/profile/', form, { headers: { 'Content-Type':'multipart/form-data' } })
       setProfile(res.data)
       setStatus('saved:profile')
       return true
-    }catch(err){ setStatus('error:profile') }
+    }catch(err){
+      const payload = err?.response?.data
+      if(payload && typeof payload === 'object' && !Array.isArray(payload)){
+        setProfileFormErrors(payload)
+      }
+      setStatus(`error:profile:${extractApiMessage(err, 'Failed to save organisation profile')}`)
+    }
     return false
   }
 
@@ -1944,6 +1990,12 @@ export default function Dashboard(){
         {status==='saved:config-refresh' && (
           <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Latest admin settings applied.</AutoFadeAlert>
         )}
+        {status==='saved:profile' && (
+          <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Organisation profile saved successfully.</AutoFadeAlert>
+        )}
+        {status?.startsWith('error:profile:') && (
+          <AutoFadeAlert type="danger" onClose={()=>setStatus(null)}>{status.split(':').slice(2).join(':')}</AutoFadeAlert>
+        )}
         {status==='saved:subscription' && (
           <AutoFadeAlert type="success" onClose={()=>setStatus(null)}>Subscription updated successfully.</AutoFadeAlert>
         )}
@@ -3197,16 +3249,43 @@ export default function Dashboard(){
                               <div className="row g-2">
                                 <div className="col-12">
                                   <label className="form-label">Director HR Name</label>
-                                  <input className="form-control" type="text" name="signatory_name" defaultValue={profile?.signatory_name || ''} />
+                                  <input
+                                    className={`form-control ${fieldError(profileFormErrors, 'signatory_name') ? 'is-invalid' : ''}`}
+                                    type="text"
+                                    name="signatory_name"
+                                    defaultValue={profile?.signatory_name || ''}
+                                    onChange={() => clearFieldError(setProfileFormErrors, 'signatory_name')}
+                                  />
+                                  {fieldError(profileFormErrors, 'signatory_name') && (
+                                    <div className="invalid-feedback">{fieldError(profileFormErrors, 'signatory_name')}</div>
+                                  )}
                                 </div>
                                 <div className="col-12">
                                   <label className="form-label">Logo</label>
-                                  <input className="form-control" type="file" name="logo" accept="image/*" />
-                                  <div className="form-text">Used on generated clearance letters.</div>
+                                  <input
+                                    className={`form-control ${fieldError(profileFormErrors, 'logo') ? 'is-invalid' : ''}`}
+                                    type="file"
+                                    name="logo"
+                                    accept=".png,.jpg,.jpeg,.svg,.webp,.gif,.bmp,image/png,image/jpeg,image/svg+xml,image/webp,image/gif,image/bmp"
+                                    onChange={() => clearFieldError(setProfileFormErrors, 'logo')}
+                                  />
+                                  {fieldError(profileFormErrors, 'logo') && (
+                                    <div className="invalid-feedback">{fieldError(profileFormErrors, 'logo')}</div>
+                                  )}
+                                  <div className="form-text">Upload PNG, JPG, SVG, WEBP, GIF, or BMP for generated clearance letters.</div>
                                 </div>
                                 <div className="col-12">
                                   <label className="form-label">Signature</label>
-                                  <input className="form-control" type="file" name="signature" accept="image/*" />
+                                  <input
+                                    className={`form-control ${fieldError(profileFormErrors, 'signature') ? 'is-invalid' : ''}`}
+                                    type="file"
+                                    name="signature"
+                                    accept="image/*"
+                                    onChange={() => clearFieldError(setProfileFormErrors, 'signature')}
+                                  />
+                                  {fieldError(profileFormErrors, 'signature') && (
+                                    <div className="invalid-feedback">{fieldError(profileFormErrors, 'signature')}</div>
+                                  )}
                                   <div className="form-text">Director HR signature for clearance sign-off.</div>
                                 </div>
                               </div>
@@ -3217,21 +3296,61 @@ export default function Dashboard(){
                               <div className="row g-2">
                                 <div className="col-12 col-md-6">
                                   <label className="form-label">Late Time</label>
-                                  <input className="form-control" type="time" name="late_time" defaultValue={profile?.late_time || ''} />
+                                  <input
+                                    className={`form-control ${fieldError(profileFormErrors, 'late_time') ? 'is-invalid' : ''}`}
+                                    type="time"
+                                    name="late_time"
+                                    defaultValue={profile?.late_time || ''}
+                                    onChange={() => clearFieldError(setProfileFormErrors, 'late_time')}
+                                  />
+                                  {fieldError(profileFormErrors, 'late_time') && (
+                                    <div className="invalid-feedback">{fieldError(profileFormErrors, 'late_time')}</div>
+                                  )}
                                   <div className="form-text">Use 24-hour format (HH:MM), e.g. 08:30.</div>
                                 </div>
                                 <div className="col-12 col-md-6">
                                   <label className="form-label">Closing Time</label>
-                                  <input className="form-control" type="time" name="closing_time" defaultValue={profile?.closing_time || ''} />
+                                  <input
+                                    className={`form-control ${fieldError(profileFormErrors, 'closing_time') ? 'is-invalid' : ''}`}
+                                    type="time"
+                                    name="closing_time"
+                                    defaultValue={profile?.closing_time || ''}
+                                    onChange={() => clearFieldError(setProfileFormErrors, 'closing_time')}
+                                  />
+                                  {fieldError(profileFormErrors, 'closing_time') && (
+                                    <div className="invalid-feedback">{fieldError(profileFormErrors, 'closing_time')}</div>
+                                  )}
                                   <div className="form-text">Use 24-hour format (HH:MM), e.g. 17:00.</div>
                                 </div>
                                 <div className="col-12 col-md-6">
                                   <label className="form-label">Max Late Days</label>
-                                  <input className="form-control" type="number" min="0" step="1" name="max_days_late" defaultValue={profile?.max_days_late ?? ''} />
+                                  <input
+                                    className={`form-control ${fieldError(profileFormErrors, 'max_days_late') ? 'is-invalid' : ''}`}
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    name="max_days_late"
+                                    defaultValue={profile?.max_days_late ?? ''}
+                                    onChange={() => clearFieldError(setProfileFormErrors, 'max_days_late')}
+                                  />
+                                  {fieldError(profileFormErrors, 'max_days_late') && (
+                                    <div className="invalid-feedback">{fieldError(profileFormErrors, 'max_days_late')}</div>
+                                  )}
                                 </div>
                                 <div className="col-12 col-md-6">
                                   <label className="form-label">Max Absent Days</label>
-                                  <input className="form-control" type="number" min="0" step="1" name="max_days_absent" defaultValue={profile?.max_days_absent ?? ''} />
+                                  <input
+                                    className={`form-control ${fieldError(profileFormErrors, 'max_days_absent') ? 'is-invalid' : ''}`}
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    name="max_days_absent"
+                                    defaultValue={profile?.max_days_absent ?? ''}
+                                    onChange={() => clearFieldError(setProfileFormErrors, 'max_days_absent')}
+                                  />
+                                  {fieldError(profileFormErrors, 'max_days_absent') && (
+                                    <div className="invalid-feedback">{fieldError(profileFormErrors, 'max_days_absent')}</div>
+                                  )}
                                 </div>
                               </div>
                             </div>
