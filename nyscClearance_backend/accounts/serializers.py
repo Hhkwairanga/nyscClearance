@@ -333,12 +333,14 @@ class DepartmentSerializer(serializers.ModelSerializer):
             qs = Department.objects.filter(user=org_user, name__iexact=name)
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
+            # On create, we allow reusing an existing department (then assigning offices).
+            if self.instance and qs.exists():
                 raise serializers.ValidationError({'name': 'A department with this name already exists in your organisation.'})
         return attrs
 
     def create(self, validated_data):
         branch_id = validated_data.pop('branch', None)
+        branches_ids = validated_data.pop('branches', None)
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         name = (validated_data.get('name') or '').strip()
@@ -358,12 +360,63 @@ class DepartmentSerializer(serializers.ModelSerializer):
         if not dept:
             dept = Department.objects.create(user=org_user, name=name)
 
+        if branches_ids:
+            allowed_ids = set(allowed_branch_qs.values_list('id', flat=True))
+            for bid in branches_ids:
+                try:
+                    bid_int = int(bid)
+                except Exception:
+                    continue
+                if bid_int in allowed_ids:
+                    dept.branches.add(bid_int)
+
         if branch_id:
             branch = allowed_branch_qs.filter(id=int(branch_id)).first()
             if not branch:
                 raise serializers.ValidationError({'branch': 'Invalid branch'})
             dept.branches.add(branch)
         return dept
+
+    def update(self, instance, validated_data):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        branches_ids = validated_data.pop('branches', None)
+        branch_id = validated_data.pop('branch', None)
+
+        name = validated_data.get('name')
+        if name is not None:
+            instance.name = (name or '').strip()
+            instance.save(update_fields=['name'])
+
+        # Constrain branch assignment by role
+        allowed_branch_qs = BranchOffice.objects.none()
+        if getattr(user, 'role', None) == 'ORG':
+            allowed_branch_qs = BranchOffice.objects.filter(user=user)
+        elif getattr(user, 'role', None) == 'BRANCH':
+            b = BranchOffice.objects.filter(admin=user).first()
+            allowed_branch_qs = BranchOffice.objects.filter(id=getattr(b, 'id', None))
+        else:
+            raise serializers.ValidationError('Not allowed')
+
+        if branches_ids is not None:
+            allowed_ids = set(allowed_branch_qs.values_list('id', flat=True))
+            next_ids = []
+            for bid in branches_ids:
+                try:
+                    bid_int = int(bid)
+                except Exception:
+                    continue
+                if bid_int in allowed_ids:
+                    next_ids.append(bid_int)
+            instance.branches.set(next_ids)
+
+        if branch_id:
+            branch = allowed_branch_qs.filter(id=int(branch_id)).first()
+            if not branch:
+                raise serializers.ValidationError({'branch': 'Invalid branch'})
+            instance.branches.add(branch)
+
+        return instance
 
 
 class UnitSerializer(serializers.ModelSerializer):

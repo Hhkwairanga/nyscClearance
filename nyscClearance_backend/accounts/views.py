@@ -1221,6 +1221,70 @@ def _read_import_rows(upload):
     raise ValueError('Unsupported file type. Upload .xlsx or .csv.')
 
 
+def _read_xlsx_sheet_rows(wb, sheet_name):
+    try:
+        ws = wb[sheet_name]
+    except Exception:
+        return []
+    header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+    headers = [str(h or '').strip().lower() for h in (header_row or [])]
+    if not any(headers):
+        return []
+    rows = []
+    for idx, values in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        cleaned = {}
+        for col_idx, header in enumerate(headers):
+            if not header:
+                continue
+            cleaned[header] = _clean_cell(values[col_idx] if col_idx < len(values) else '')
+        if any(cleaned.values()):
+            cleaned['_row'] = idx
+            cleaned['_sheet'] = sheet_name
+            rows.append(cleaned)
+    return rows
+
+
+def _read_structure_import(upload):
+    """Read structure import either as new multi-sheet workbook or legacy single-sheet rows."""
+    filename = (getattr(upload, 'name', '') or '').lower()
+    if filename.endswith('.xlsx') or filename.endswith('.xlsm'):
+        from openpyxl import load_workbook
+
+        data = upload.read()
+        wb = load_workbook(BytesIO(data), read_only=True, data_only=True)
+        sheets = set(wb.sheetnames or [])
+        multi = {'Branches', 'Departments', 'Department Offices', 'Units'}
+        if multi.issubset(sheets):
+            return {
+                'mode': 'multi',
+                'branches': _read_xlsx_sheet_rows(wb, 'Branches'),
+                'departments': _read_xlsx_sheet_rows(wb, 'Departments'),
+                'dept_offices': _read_xlsx_sheet_rows(wb, 'Department Offices'),
+                'units': _read_xlsx_sheet_rows(wb, 'Units'),
+            }
+        # Legacy: read active sheet rows
+        ws = wb.active
+        header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+        headers = [str(h or '').strip().lower() for h in (header_row or [])]
+        if not any(headers):
+            raise ValueError('The file is empty or missing a header row.')
+        rows = []
+        for idx, values in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            cleaned = {}
+            for col_idx, header in enumerate(headers):
+                if not header:
+                    continue
+                cleaned[header] = _clean_cell(values[col_idx] if col_idx < len(values) else '')
+            if any(cleaned.values()):
+                cleaned['_row'] = idx
+                cleaned['_sheet'] = ws.title
+                rows.append(cleaned)
+        return {'mode': 'legacy', 'rows': rows}
+
+    # CSV is legacy combined rows
+    return {'mode': 'legacy', 'rows': _read_import_rows(upload)}
+
+
 def _xlsx_template_response(filename, sheet_name, columns, example_rows):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
@@ -1261,20 +1325,98 @@ def _xlsx_template_response(filename, sheet_name, columns, example_rows):
     return resp
 
 
+def _xlsx_workbook_response(filename, sheets):
+    """Create a multi-sheet XLSX workbook response.
+
+    sheets: list of dicts: { name, columns, rows }
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    wb = Workbook()
+    # Remove default sheet; we'll add our own in order.
+    try:
+        wb.remove(wb.active)
+    except Exception:
+        pass
+
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill('solid', fgColor='4F6228')
+
+    for idx, spec in enumerate(sheets):
+        ws = wb.create_sheet(spec['name'], idx)
+        columns = spec.get('columns') or []
+        ws.append(columns)
+        for row in (spec.get('rows') or []):
+            ws.append(row)
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 3, 14), 32)
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    resp = HttpResponse(
+        buffer.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
 class StructureImportTemplateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         if getattr(request.user, 'role', None) != 'ORG':
             raise PermissionDenied('Only organization can download structure template')
-        return _xlsx_template_response(
+        return _xlsx_workbook_response(
             'structure_import_template.xlsx',
-            'Structure',
-            STRUCTURE_IMPORT_COLUMNS,
             [
-                ['Head Office', '1 Main Road, Abuja', '9.0765', '7.3986', 'Amina Admin', 'admin@example.com', 'HQ-001', 'Human Resources', 'Recruitment'],
-                ['Head Office', '1 Main Road, Abuja', '9.0765', '7.3986', '', '', '', 'Finance', 'Payroll'],
-                ['Lagos Branch', '12 Marina, Lagos', '6.5244', '3.3792', '', '', '', 'Human Resources', 'Recruitment'],
+                {
+                    'name': 'Branches',
+                    'columns': [
+                        'branch_name',
+                        'branch_address',
+                        'branch_latitude',
+                        'branch_longitude',
+                        'admin_name',
+                        'admin_email',
+                        'admin_staff_id',
+                    ],
+                    'rows': [
+                        ['Head Office', '1 Main Road, Abuja', '9.0765', '7.3986', 'Amina Admin', 'admin@example.com', 'HQ-001'],
+                        ['Lagos Branch', '12 Marina, Lagos', '6.5244', '3.3792', '', '', ''],
+                    ],
+                },
+                {
+                    'name': 'Departments',
+                    'columns': ['department_name'],
+                    'rows': [
+                        ['Human Resources'],
+                        ['Finance'],
+                    ],
+                },
+                {
+                    'name': 'Department Offices',
+                    'columns': ['department_name', 'branch_name'],
+                    'rows': [
+                        ['Human Resources', 'Head Office'],
+                        ['Human Resources', 'Lagos Branch'],
+                        ['Finance', 'Head Office'],
+                    ],
+                },
+                {
+                    'name': 'Units',
+                    'columns': ['department_name', 'unit_name'],
+                    'rows': [
+                        ['Human Resources', 'Recruitment'],
+                        ['Finance', 'Payroll'],
+                    ],
+                },
             ],
         )
 
@@ -1290,8 +1432,8 @@ class CorperImportTemplateView(APIView):
             'Corpers',
             CORPER_IMPORT_COLUMNS,
             [
-                ['Amina Yusuf', 'amina.corper@example.com', 'F', 'FC/24A/1234', '2026-10-31', '1', 'Head Office', 'Human Resources', 'Recruitment'],
-                ['David Okon', 'david.corper@example.com', 'M', 'LA/24B/5678', '2026-10-31', '3', 'Lagos Branch', 'Finance', 'Payroll'],
+                ['Amina Yusuf', 'amina.corper@example.com', 'F', 'FC/24A/1234', '2026-10-31', 'Tuesday', 'Head Office', 'Human Resources', 'Recruitment'],
+                ['David Okon', 'david.corper@example.com', 'M', 'LA/24B/5678', '2026-10-31', 'Thursday', 'Lagos Branch', 'Finance', 'Payroll'],
             ],
         )
 
@@ -1305,86 +1447,207 @@ class StructureImportView(APIView):
         upload = request.FILES.get('file')
         apply_changes = _truthy(request.data.get('apply'))
         try:
-            rows = _read_import_rows(upload)
+            data = _read_structure_import(upload)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        preview = self._preview(request.user, rows)
+        preview = self._preview(request.user, data)
         if apply_changes and preview['errors_count']:
             return Response(preview, status=status.HTTP_400_BAD_REQUEST)
         if apply_changes:
-            applied = self._apply(request, rows)
-            return Response({**self._preview(request.user, rows), 'applied': applied})
+            applied = self._apply(request, data)
+            return Response({**self._preview(request.user, data), 'applied': applied})
         return Response(preview)
 
-    def _preview(self, user, rows):
+    def _preview(self, user, data):
         branches = { _name_key(b.name): b for b in BranchOffice.objects.filter(user=user) }
         departments = { _name_key(d.name): d for d in Department.objects.filter(user=user) }
         units = { (d_key, _name_key(u.name)): u for d_key, d in departments.items() for u in Unit.objects.filter(department=d) }
         file_branches = set()
         file_departments = set()
         file_units = set()
+        file_dept_offices = set()
         preview_rows = []
 
-        for row in rows:
-            messages = []
-            branch_name = row.get('branch_name', '')
-            department_name = row.get('department_name', '')
-            unit_name = row.get('unit_name', '')
-            branch_key = _name_key(branch_name)
-            department_key = _name_key(department_name)
-            unit_key = _name_key(unit_name)
-            if not branch_key:
-                messages.append('branch_name is required')
-            if unit_key and not department_key:
-                messages.append('department_name is required when unit_name is provided')
-            if row.get('admin_email') and '@' not in row.get('admin_email'):
-                messages.append('admin_email is not valid')
-            branch_exists = branch_key in branches or branch_key in file_branches
-            department_exists = not department_key or department_key in departments or department_key in file_departments
-            unit_exists = not unit_key or (department_key, unit_key) in units or (department_key, unit_key) in file_units
-            if branch_key:
-                file_branches.add(branch_key)
-            if branch_key and department_key:
-                file_departments.add(department_key)
-            if branch_key and department_key and unit_key:
-                file_units.add((department_key, unit_key))
-            preview_rows.append({
-                'row': row.get('_row'),
-                'branch_name': branch_name,
-                'department_name': department_name,
-                'unit_name': unit_name,
-                'status': 'error' if messages else 'ok',
-                'messages': messages,
-                'branch_action': 'reuse' if branch_exists else 'create',
-                'department_action': '' if not department_key else ('reuse' if department_exists else 'create'),
-                'unit_action': '' if not unit_key else ('reuse' if unit_exists else 'create'),
-            })
+        mode = data.get('mode')
+        if mode == 'legacy':
+            # Legacy combined rows: branch + department + unit in one sheet
+            for row in (data.get('rows') or []):
+                messages = []
+                branch_name = row.get('branch_name', '')
+                department_name = row.get('department_name', '')
+                unit_name = row.get('unit_name', '')
+                branch_key = _name_key(branch_name)
+                department_key = _name_key(department_name)
+                unit_key = _name_key(unit_name)
+                if not branch_key:
+                    messages.append('branch_name is required')
+                if unit_key and not department_key:
+                    messages.append('department_name is required when unit_name is provided')
+                if row.get('admin_email') and '@' not in row.get('admin_email'):
+                    messages.append('admin_email is not valid')
+                branch_exists = branch_key in branches or branch_key in file_branches
+                department_exists = not department_key or department_key in departments or department_key in file_departments
+                unit_exists = not unit_key or (department_key, unit_key) in units or (department_key, unit_key) in file_units
+                if branch_key:
+                    file_branches.add(branch_key)
+                if department_key:
+                    file_departments.add(department_key)
+                if branch_key and department_key:
+                    file_dept_offices.add((department_key, branch_key))
+                if department_key and unit_key:
+                    file_units.add((department_key, unit_key))
+                preview_rows.append({
+                    'row': row.get('_row'),
+                    'branch_name': branch_name,
+                    'department_name': department_name,
+                    'unit_name': unit_name,
+                    'status': 'error' if messages else 'ok',
+                    'messages': messages,
+                    'branch_action': 'reuse' if branch_exists else 'create',
+                    'department_action': '' if not department_key else ('reuse' if department_exists else 'create'),
+                    'unit_action': '' if not unit_key else ('reuse' if unit_exists else 'create'),
+                })
+        else:
+            # Multi-sheet import
+            for row in (data.get('branches') or []):
+                messages = []
+                branch_name = row.get('branch_name', '')
+                branch_key = _name_key(branch_name)
+                if not branch_key:
+                    messages.append('branch_name is required')
+                if row.get('admin_email') and '@' not in row.get('admin_email'):
+                    messages.append('admin_email is not valid')
+                branch_exists = branch_key in branches or branch_key in file_branches
+                if branch_key:
+                    file_branches.add(branch_key)
+                preview_rows.append({
+                    'row': row.get('_row'),
+                    'branch_name': branch_name,
+                    'department_name': '',
+                    'unit_name': '',
+                    'status': 'error' if messages else 'ok',
+                    'messages': messages,
+                    'branch_action': 'reuse' if branch_exists else 'create',
+                    'department_action': '',
+                    'unit_action': '',
+                })
+
+            for row in (data.get('departments') or []):
+                messages = []
+                department_name = row.get('department_name', '') or row.get('name', '')
+                department_key = _name_key(department_name)
+                if not department_key:
+                    messages.append('department_name is required')
+                department_exists = department_key in departments or department_key in file_departments
+                if department_key:
+                    file_departments.add(department_key)
+                preview_rows.append({
+                    'row': row.get('_row'),
+                    'branch_name': '',
+                    'department_name': department_name,
+                    'unit_name': '',
+                    'status': 'error' if messages else 'ok',
+                    'messages': messages,
+                    'branch_action': '',
+                    'department_action': 'reuse' if department_exists else 'create',
+                    'unit_action': '',
+                })
+
+            for row in (data.get('dept_offices') or []):
+                messages = []
+                branch_name = row.get('branch_name', '')
+                department_name = row.get('department_name', '')
+                branch_key = _name_key(branch_name)
+                department_key = _name_key(department_name)
+                if not department_key:
+                    messages.append('department_name is required')
+                if not branch_key:
+                    messages.append('branch_name is required')
+                if branch_key and branch_key not in branches and branch_key not in file_branches:
+                    messages.append('branch_name was not found (add it in Branches sheet)')
+                if department_key and department_key not in departments and department_key not in file_departments:
+                    messages.append('department_name was not found (add it in Departments sheet)')
+                if branch_key and department_key:
+                    file_dept_offices.add((department_key, branch_key))
+                preview_rows.append({
+                    'row': row.get('_row'),
+                    'branch_name': branch_name,
+                    'department_name': department_name,
+                    'unit_name': '',
+                    'status': 'error' if messages else 'ok',
+                    'messages': messages,
+                    'branch_action': '',
+                    'department_action': '',
+                    'unit_action': '',
+                })
+
+            for row in (data.get('units') or []):
+                messages = []
+                department_name = row.get('department_name', '')
+                unit_name = row.get('unit_name', '')
+                department_key = _name_key(department_name)
+                unit_key = _name_key(unit_name)
+                if not department_key:
+                    messages.append('department_name is required')
+                if not unit_key:
+                    messages.append('unit_name is required')
+                if department_key and department_key not in departments and department_key not in file_departments:
+                    messages.append('department_name was not found (add it in Departments sheet)')
+                unit_exists = not unit_key or (department_key, unit_key) in units or (department_key, unit_key) in file_units
+                if department_key and unit_key:
+                    file_units.add((department_key, unit_key))
+                preview_rows.append({
+                    'row': row.get('_row'),
+                    'branch_name': '',
+                    'department_name': department_name,
+                    'unit_name': unit_name,
+                    'status': 'error' if messages else 'ok',
+                    'messages': messages,
+                    'branch_action': '',
+                    'department_action': '',
+                    'unit_action': '' if not unit_key else ('reuse' if unit_exists else 'create'),
+                })
 
         errors_count = sum(1 for row in preview_rows if row['status'] == 'error')
         return {
             'ok': errors_count == 0,
             'errors_count': errors_count,
             'summary': {
-                'rows': len(rows),
+                'rows': len(preview_rows),
                 'branches_to_create': sum(1 for key in file_branches if key not in branches),
                 'departments_to_create': sum(1 for key in file_departments if key not in departments),
                 'units_to_create': sum(1 for key in file_units if key not in units),
+                'department_offices': len(file_dept_offices),
             },
             'rows': preview_rows[:200],
         }
 
     @transaction.atomic
-    def _apply(self, request, rows):
+    def _apply(self, request, data):
         user = request.user
         created = {'branches': 0, 'departments': 0, 'units': 0}
         branches = { _name_key(b.name): b for b in BranchOffice.objects.select_for_update().filter(user=user) }
         departments = { _name_key(d.name): d for d in Department.objects.select_for_update().filter(user=user) }
         units = { (d_key, _name_key(u.name)): u for d_key, d in departments.items() for u in Unit.objects.filter(department=d) }
-        for row in rows:
+
+        if data.get('mode') == 'legacy':
+            legacy_rows = data.get('rows') or []
+            branch_rows = legacy_rows
+            dept_rows = legacy_rows
+            dept_office_rows = legacy_rows
+            unit_rows = legacy_rows
+        else:
+            branch_rows = data.get('branches') or []
+            dept_rows = data.get('departments') or []
+            dept_office_rows = data.get('dept_offices') or []
+            unit_rows = data.get('units') or []
+
+        # Branches
+        for row in branch_rows:
             branch_key = _name_key(row.get('branch_name'))
-            department_key = _name_key(row.get('department_name'))
-            unit_key = _name_key(row.get('unit_name'))
+            if not branch_key:
+                continue
             branch = branches.get(branch_key)
             if not branch:
                 serializer = BranchOfficeSerializer(data={
@@ -1410,20 +1673,48 @@ class StructureImportView(APIView):
                 branch = serializer.save()
                 branches[branch_key] = branch
 
-            if department_key:
-                department = departments.get(department_key)
-                if not department:
-                    department = Department.objects.create(user=user, name=row.get('department_name'))
-                    departments[department_key] = department
-                    created['departments'] += 1
-                if branch and not department.branches.filter(id=branch.id).exists():
-                    department.branches.add(branch)
-                if unit_key:
-                    unit_lookup = (department_key, unit_key)
-                    if unit_lookup not in units:
-                        unit = Unit.objects.create(department=department, name=row.get('unit_name'))
-                        units[unit_lookup] = unit
-                        created['units'] += 1
+        # Departments
+        for row in dept_rows:
+            dept_name = row.get('department_name') or row.get('name')
+            department_key = _name_key(dept_name)
+            if not department_key:
+                continue
+            if department_key not in departments:
+                department = Department.objects.create(user=user, name=dept_name)
+                departments[department_key] = department
+                created['departments'] += 1
+
+        # Department offices mapping
+        for row in dept_office_rows:
+            branch_key = _name_key(row.get('branch_name'))
+            dept_key = _name_key(row.get('department_name'))
+            if data.get('mode') == 'legacy':
+                # legacy row carries both names
+                branch_key = _name_key(row.get('branch_name'))
+                dept_key = _name_key(row.get('department_name'))
+            if not branch_key or not dept_key:
+                continue
+            branch = branches.get(branch_key)
+            dept = departments.get(dept_key)
+            if branch and dept and not dept.branches.filter(id=branch.id).exists():
+                dept.branches.add(branch)
+
+        # Units
+        for row in unit_rows:
+            dept_key = _name_key(row.get('department_name'))
+            unit_key = _name_key(row.get('unit_name'))
+            if data.get('mode') == 'legacy':
+                dept_key = _name_key(row.get('department_name'))
+                unit_key = _name_key(row.get('unit_name'))
+            if not dept_key or not unit_key:
+                continue
+            dept = departments.get(dept_key)
+            if not dept:
+                continue
+            lookup = (dept_key, unit_key)
+            if lookup not in units:
+                units[lookup] = Unit.objects.create(department=dept, name=row.get('unit_name'))
+                created['units'] += 1
         return created
 
 

@@ -753,7 +753,10 @@ export default function Dashboard(){
   async function createDepartment(e){
     e.preventDefault(); setStatus('pending')
     const form = new FormData(e.target)
-    try{ await api.post('/api/auth/departments/', Object.fromEntries(form)); await refreshAll(); setStatus('saved:department'); return true }catch(e){ setStatus('error:department') }
+    const data = Object.fromEntries(form)
+    const branchesIds = form.getAll('branches').filter(Boolean)
+    if(branchesIds.length) data.branches = branchesIds
+    try{ await api.post('/api/auth/departments/', data); await refreshAll(); setStatus('saved:department'); return true }catch(e){ setStatus('error:department') }
     return false
   }
 
@@ -3362,8 +3365,8 @@ export default function Dashboard(){
                 </div>
               )}
 
-              {showAddDepartment && (
-                <div className="dash-modal" onClick={() => setShowAddDepartment(false)}>
+	              {showAddDepartment && (
+	                <div className="dash-modal" onClick={() => setShowAddDepartment(false)}>
                   <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
                     <div className="dash-modal-head">
                       <strong>Add Department</strong>
@@ -3380,22 +3383,26 @@ export default function Dashboard(){
                             <li>Use Units to add sub-teams.</li>
                           </ul>
                         </div>
-                        <div className="dash-modal-form">
-                          <form onSubmit={async (e)=>{ const ok = await createDepartment(e); if(ok) setShowAddDepartment(false) }}>
-                            <label className="form-label">Branch</label>
-                            <select className="form-select mb-2" name="branch" required>
-                              <option value="">Select Branch</option>
-                              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                            </select>
-                            <label className="form-label">Department name</label>
-                            <input className="form-control mb-3" name="name" placeholder="e.g., HR" required/>
-                            <div className="d-grid">
-                              <button className="btn btn-olive" disabled={isSaving}>
-                                {isSaving ? 'Adding…' : 'Add Department'}
-                              </button>
-                            </div>
-                          </form>
-                        </div>
+	                        <div className="dash-modal-form">
+	                          <form onSubmit={async (e)=>{ const ok = await createDepartment(e); if(ok) setShowAddDepartment(false) }}>
+	                            <label className="form-label">Department name</label>
+	                            <input className="form-control mb-3" name="name" placeholder="e.g., HR" required/>
+	                            {me?.role === 'ORG' && (
+	                              <>
+	                                <label className="form-label">Assign to offices (optional)</label>
+	                                <select className="form-select mb-3" name="branches" multiple>
+	                                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+	                                </select>
+	                                <div className="form-text mb-2">You can assign a department to more offices later.</div>
+	                              </>
+	                            )}
+	                            <div className="d-grid">
+	                              <button className="btn btn-olive" disabled={isSaving}>
+	                                {isSaving ? 'Adding…' : 'Add Department'}
+	                              </button>
+	                            </div>
+	                          </form>
+	                        </div>
                       </div>
                     </div>
                   </div>
@@ -3870,51 +3877,53 @@ export default function Dashboard(){
                     </div>
                     <div className="dash-modal-body">
                       <div className="dash-modal-grid">
-                        <div className="dash-modal-help">
-                          <h6>Edit flow</h6>
+	                        <div className="dash-modal-help">
+	                          <h6>Edit flow</h6>
 	                          <p>Departments can be assigned to one or more offices and group units.</p>
-                          <ul>
-                            <li>Update the name or move to another branch.</li>
-                            <li>Deleting a department may remove its units.</li>
-                          </ul>
-                        </div>
-                        <div className="dash-modal-form">
-                          <form
-                            onSubmit={(e) => {
-                              e.preventDefault()
-                              setStatus('pending')
-                              const fd = new FormData(e.target)
-                              const payload = Object.fromEntries(fd)
-                              ;(async () => {
-                                try {
-                                  await api.put(`/api/auth/departments/${editDepartment.id}/`, {
-                                    name: payload.name,
-	                                    branch: Number(payload.branch),
-                                  })
-                                  await refreshAll()
-                                  setEditDepartment(null)
-                                  setStatus('saved:department')
-                                } catch (err) {}
-                              })()
-                            }}
-                          >
-                            <label className="form-label">Branch</label>
-	                            <select className="form-select mb-2" name="branch" defaultValue={String((editDepartment.branches || [])[0] || '')} required>
-                              {branches.map((b) => (
-                                <option key={b.id} value={b.id}>
-                                  {b.name}
-                                </option>
-                              ))}
-                            </select>
-                            <label className="form-label">Department name</label>
-                            <input className="form-control" name="name" defaultValue={editDepartment.name} required />
-                            <div className="d-grid mt-3">
-                              <button className="btn btn-olive" disabled={isSaving}>
-                                {isSaving ? 'Saving…' : 'Save changes'}
-                              </button>
-                            </div>
-                          </form>
-                        </div>
+	                          <ul>
+	                            <li>Update the name or change assigned offices.</li>
+	                            <li>Deleting a department may remove its units.</li>
+	                          </ul>
+	                        </div>
+	                        <div className="dash-modal-form">
+	                          <form
+	                            onSubmit={(e) => {
+	                              e.preventDefault()
+	                              setStatus('pending')
+	                              const fd = new FormData(e.target)
+	                              const payload = Object.fromEntries(fd)
+	                              const branchesIds = fd.getAll('branches').filter(Boolean)
+	                              if(branchesIds.length) payload.branches = branchesIds
+	                              ;(async () => {
+	                                try {
+	                                  await api.put(`/api/auth/departments/${editDepartment.id}/`, {
+	                                    name: payload.name,
+	                                    branches: payload.branches,
+	                                  })
+	                                  await refreshAll()
+	                                  setEditDepartment(null)
+	                                  setStatus('saved:department')
+	                                } catch (err) {}
+	                              })()
+	                            }}
+	                          >
+	                            <label className="form-label">Department name</label>
+	                            <input className="form-control" name="name" defaultValue={editDepartment.name} required />
+	                            <label className="form-label mt-2">Assigned offices</label>
+	                            <select className="form-select" name="branches" multiple defaultValue={(editDepartment.branches || []).map(String)}>
+	                              {branches.map((b) => (
+	                                <option key={b.id} value={b.id}>
+	                                  {b.name}
+	                                </option>
+	                              ))}
+	                            </select>
+	                            <div className="d-grid mt-3">
+	                              <button className="btn btn-olive" disabled={isSaving}>
+	                                {isSaving ? 'Saving…' : 'Save changes'}
+	                              </button>
+	                            </div>
+	                          </form>
+	                        </div>
                       </div>
                     </div>
                   </div>
@@ -4452,9 +4461,9 @@ export default function Dashboard(){
                               setStatus('pending')
                               const f=new FormData(e.target)
                               const name=f.get('name')
-                              try{
-                                await api.post('/api/auth/departments/', { branch: myBranch.id, name })
-                                await refreshAll()
+	                              try{
+	                                await api.post('/api/auth/departments/', { branch: myBranch.id, name })
+	                                await refreshAll()
                                 setStatus('saved:department')
                                 setShowAddDepartment(false)
                               }catch(err){ setStatus('error:department') }
