@@ -4153,404 +4153,42 @@ export default function Dashboard(){
               {(() => {
                 const myBranch = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
                 if(!myBranch){ return (<div className="text-muted">No branch assigned.</div>) }
-	                const myDeps = deps
-                const myUnits = units
 
                 return (
                   <>
-                    <div className="dash-struct-nav mb-3">
-                      <button className={`dash-struct-item ${structureTab==='branch'?'active':''}`} type="button" onClick={()=>setStructureTab('branch')}>My Branch</button>
-                      <button className={`dash-struct-item ${structureTab==='departments'?'active':''}`} type="button" onClick={()=>setStructureTab('departments')}>Departments</button>
-                      <button className={`dash-struct-item ${structureTab==='units'?'active':''}`} type="button" onClick={()=>setStructureTab('units')}>Units</button>
-                      <button className={`dash-struct-item ${structureTab==='holidays'?'active':''}`} type="button" onClick={()=>setStructureTab('holidays')}>Holidays</button>
-                    </div>
-
                     <div className="card shadow-sm dash-card">
                       <div className="card-body">
                         <div className="d-flex justify-content-between align-items-center gap-2">
-                          <div className="dash-card-title mb-0">
-                            {structureTab==='branch' ? 'My Branch' : structureTab==='departments' ? 'Departments' : structureTab==='units' ? 'Units' : 'Holidays (view only)'}
-                          </div>
+                          <div className="dash-card-title mb-0">My Branch</div>
                           <div className="d-flex gap-2">
-                            {structureTab==='branch' && (
-                              <button className="btn btn-sm btn-olive" type="button" onClick={() => {
-                                setBranchLocationPos(myBranch.latitude && myBranch.longitude ? { lat: myBranch.latitude, lng: myBranch.longitude } : null)
-                                setBranchLocationAddress(myBranch.address || '')
-                                setShowBranchLocation(true)
-                              }}>Update location</button>
-                            )}
-                            {structureTab==='departments' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddDepartment(true)}>Add Department</button>}
-                            {structureTab==='units' && <button className="btn btn-sm btn-olive" type="button" onClick={()=>setShowAddUnit(true)}>Add Unit</button>}
+                            <button className="btn btn-sm btn-olive" type="button" onClick={() => {
+                              setBranchLocationPos(myBranch.latitude && myBranch.longitude ? { lat: myBranch.latitude, lng: myBranch.longitude } : null)
+                              setBranchLocationAddress(myBranch.address || '')
+                              setShowBranchLocation(true)
+                            }}>Update location</button>
                           </div>
                         </div>
 
-                        {structureTab !== 'holidays' ? (
-                          <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
-                            <div className="dash-table-search">
-                              <input
-                                className="form-control form-control-sm"
-                                placeholder="Search…"
-                                value={structQuery}
-                                onChange={(e) => {
-                                  setStructQuery(e.target.value)
-                                  setStructPage(1)
-                                }}
-                              />
-                            </div>
-                            <div className="small text-muted">Page {structPage}</div>
-                          </div>
-                        ) : (
-                          <div className="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
-                            <div className="d-flex align-items-center gap-2 flex-wrap">
-                              <button
-                                className={`btn btn-sm ${structSearchOpen ? 'btn-olive' : 'btn-outline-secondary'}`}
-                                type="button"
-                                aria-label="Search"
-                                onClick={() => setStructSearchOpen((v) => !v)}
-                              >
-                                <Search size={16} />
-                              </button>
-                              {structSearchOpen && (
-                                <div className="dash-table-search">
-                                  <input
-                                    className="form-control form-control-sm"
-                                    placeholder="Search…"
-                                    value={structQuery}
-                                    onChange={(e) => {
-                                      setStructQuery(e.target.value)
-                                      setStructPage(1)
-                                    }}
-                                  />
-                                </div>
-                              )}
-
-                              <select
-                                className="form-select form-select-sm"
-                                style={{ width: 140 }}
-                                value={structFilter}
-                                onChange={(e) => {
-                                  setStructFilter(e.target.value)
-                                  setStructPage(1)
-                                }}
-                                aria-label="Filter"
-                              >
-                                <option value="all">All</option>
-                                <option value="manual">Manual</option>
-                                <option value="auto">Auto (NG)</option>
-                              </select>
-
-                              <select
-                                className="form-select form-select-sm"
-                                style={{ width: 140 }}
-                                value={structSortKey}
-                                onChange={(e) => {
-                                  setStructSortKey(e.target.value)
-                                  setStructPage(1)
-                                }}
-                                aria-label="Sort by"
-                              >
-                                <option value="date">Sort: Date</option>
-                                <option value="title">Sort: Title</option>
-                                <option value="type">Sort: Type</option>
-                              </select>
-
-                              <select
-                                className="form-select form-select-sm"
-                                style={{ width: 110 }}
-                                value={structSortDir}
-                                onChange={(e) => {
-                                  setStructSortDir(e.target.value)
-                                  setStructPage(1)
-                                }}
-                                aria-label="Sort direction"
-                              >
-                                <option value="asc">Asc</option>
-                                <option value="desc">Desc</option>
-                              </select>
-                            </div>
-                            <div className="d-flex align-items-center gap-2">
-                              <span className="small text-muted">Rows</span>
-                              <select
-                                className="form-select form-select-sm"
-                                style={{ width: 96 }}
-                                value={structPageSize}
-                                onChange={(e) => {
-                                  setStructPageSize(Number(e.target.value))
-                                  setStructPage(1)
-                                }}
-                              >
-                                {[20, 50, 100].map((n) => (
-                                  <option key={n} value={n}>
-                                    {n}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="table-responsive mt-2">
-                          {structureTab==='branch' && (
-                            <table className="table table-sm align-middle">
-                              <thead><tr><th>Name</th><th>Address</th><th>Latitude</th><th>Longitude</th></tr></thead>
-                              <tbody>
-                                <tr>
-                                  <td className="fw-semibold">{myBranch.name}</td>
-                                  <td>{myBranch.address || '—'}</td>
-                                  <td>{myBranch.latitude ?? '—'}</td>
-                                  <td>{myBranch.longitude ?? '—'}</td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          )}
-
-                          {structureTab==='departments' && (
-                            <table className="table table-sm align-middle dash-table">
-                              <thead><tr><th>Name</th><th></th></tr></thead>
-                              <tbody>
-                                {(() => {
-                                  const q = structQuery.trim().toLowerCase()
-                                  const filtered = q ? myDeps.filter((d) => d.name.toLowerCase().includes(q)) : myDeps
-                                  const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
-                                  const current = Math.min(structPage, totalPages)
-                                  if (current !== structPage) setStructPage(current)
-                                  const start = (current - 1) * structPageSize
-                                  const rows = filtered.slice(start, start + structPageSize)
-                                  return (
-                                    <>
-                                      {rows.map((d) => (
-                                  <tr key={d.id}>
-                                    <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{d.name}</div></td>
-                                    <td className="text-end">
-                                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => {
-                                        const newName = prompt('Edit department name (leave empty to delete)', d.name)
-                                        if(newName === null) return
-                                        const trimmed = (newName || '').trim()
-                                        if(trimmed === ''){
-                                          if(confirm('Delete this department and its units?')){
-                                            ;(async()=>{ try{ await api.delete(`/api/auth/departments/${d.id}/`); await refreshAll() }catch(e){} })()
-                                          }
-                                        }else{
-                                          ;(async()=>{ try{ await api.put(`/api/auth/departments/${d.id}/`, { name: trimmed }); await refreshAll() }catch(e){} })()
-                                        }
-                                      }}>Edit</button>
-                                    </td>
-                                  </tr>
-                                      ))}
-                                      {filtered.length===0 && <tr><td colSpan="2" className="text-muted">No departments found.</td></tr>}
-                                      {filtered.length>0 && (
-                                        <tr>
-                                          <td colSpan="2">
-                                            <div className="d-flex justify-content-between align-items-center">
-                                              <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
-                                              <div className="btn-group">
-                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
-                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
-                                              </div>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      )}
-                                    </>
-                                  )
-                                })()}
-                              </tbody>
-                            </table>
-                          )}
-
-                          {structureTab==='units' && (
-                            <table className="table table-sm align-middle dash-table">
-                              <thead><tr><th>Name</th><th></th></tr></thead>
-                              <tbody>
-                                {(() => {
-                                  const q = structQuery.trim().toLowerCase()
-                                  const filtered = q
-                                    ? myUnits.filter((u) => `${u.name}`.toLowerCase().includes(q))
-                                    : myUnits
-                                  const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
-                                  const current = Math.min(structPage, totalPages)
-                                  if (current !== structPage) setStructPage(current)
-                                  const start = (current - 1) * structPageSize
-                                  const rows = filtered.slice(start, start + structPageSize)
-                                  return (
-                                    <>
-                                      {rows.map((u) => (
-                                  <tr key={u.id}>
-                                    <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{u.name}</div></td>
-                                    <td className="text-end">
-                                      <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => {
-                                        const newUnitName = prompt('Edit unit name (leave empty to delete)', u.name)
-                                        if(newUnitName === null) return
-                                        const trimmed = (newUnitName || '').trim()
-                                        if(trimmed === ''){
-                                          if(confirm('Delete this unit?')){
-                                            ;(async()=>{ try{ await api.delete(`/api/auth/units/${u.id}/`); await refreshAll() }catch(e){} })()
-                                          }
-                                        }else{
-                                          ;(async()=>{ try{ await api.put(`/api/auth/units/${u.id}/`, { name: trimmed }); await refreshAll() }catch(e){} })()
-                                        }
-                                      }}>Edit</button>
-                                    </td>
-                                  </tr>
-                                      ))}
-                                      {filtered.length===0 && <tr><td colSpan="2" className="text-muted">No units found.</td></tr>}
-                                      {filtered.length>0 && (
-                                        <tr>
-                                          <td colSpan="2">
-                                            <div className="d-flex justify-content-between align-items-center">
-                                              <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
-                                              <div className="btn-group">
-                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
-                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
-                                              </div>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      )}
-                                    </>
-                                  )
-                                })()}
-                              </tbody>
-                            </table>
-                          )}
-
-                          {structureTab==='holidays' && (
-                            <table className="table table-sm align-middle dash-table">
-                              <thead><tr><th>Title</th><th>Date</th><th>Type</th><th></th></tr></thead>
-                              <tbody>
-                                {(() => {
-                                  const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
-                                  const base = holidaysAll.length ? holidaysAll : holidays
-                                  let filtered = q
-                                    ? base.filter((h) => `${h.title} ${h.start_date} ${h.end_date} ${h.source||''}`.toLowerCase().includes(q))
-                                    : base
-
-                                  if(structFilter !== 'all'){
-                                    filtered = filtered.filter((h) => {
-                                      const isAuto = h.source === 'NATIONAL' || h.deletable === false
-                                      return structFilter === 'auto' ? isAuto : !isAuto
-                                    })
-                                  }
-
-                                  const dir = structSortDir === 'desc' ? -1 : 1
-                                  const cmp = (a, b) => {
-                                    const typeLabel = (h) => (h.source === 'NATIONAL' || h.deletable === false ? 'auto' : 'manual')
-                                    const getVal = (h) => {
-                                      if(structSortKey === 'title') return (h.title || '').toLowerCase()
-                                      if(structSortKey === 'type') return typeLabel(h)
-                                      return (h.start_date || '').toLowerCase()
-                                    }
-                                    return getVal(a).localeCompare(getVal(b)) * dir
-                                  }
-                                  filtered = [...filtered].sort(cmp)
-
-                                  const totalPages = Math.max(1, Math.ceil(filtered.length / structPageSize))
-                                  const current = Math.min(structPage, totalPages)
-                                  if (current !== structPage) setStructPage(current)
-                                  const start = (current - 1) * structPageSize
-                                  const rows = filtered.slice(start, start + structPageSize)
-
-                                  return (
-                                    <>
-                                      {rows.map((h) => (
-                                        <tr key={h.id}>
-                                          <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{h.title}</div></td>
-                                          <td>{h.start_date}{h.end_date && h.end_date !== h.start_date ? ` → ${h.end_date}` : ''}</td>
-                                          <td>
-                                            {h.source === 'NATIONAL' || h.deletable === false ? (
-                                              <span className="badge bg-secondary">Auto (NG)</span>
-                                            ) : (
-                                              <span className="badge bg-olive">Manual</span>
-                                            )}
-                                          </td>
-                                          <td className="text-end">
-                                            {h.source === 'NATIONAL' || h.deletable === false ? (
-                                              <span className="badge bg-secondary">Auto</span>
-                                            ) : (
-                                              <span className="badge bg-olive">Manual</span>
-                                            )}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                      {filtered.length===0 && <tr><td colSpan="4" className="text-muted">No holidays found.</td></tr>}
-                                      {filtered.length>0 && (
-                                        <tr>
-                                          <td colSpan="4">
-                                            <div className="d-flex justify-content-between align-items-center">
-                                              <div className="small text-muted">Page {current} of {totalPages} · {filtered.length} result(s)</div>
-                                              <div className="btn-group">
-                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===1} onClick={()=>setStructPage(p=>Math.max(1,p-1))}>Prev</button>
-                                                <button className="btn btn-sm btn-outline-secondary" type="button" disabled={current===totalPages} onClick={()=>setStructPage(p=>Math.min(totalPages,p+1))}>Next</button>
-                                              </div>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      )}
-                                    </>
-                                  )
-                                })()}
-                              </tbody>
-                            </table>
-                          )}
+                        <div className="table-responsive mt-3">
+                          <table className="table table-sm align-middle">
+                            <thead><tr><th>Name</th><th>Address</th><th>Latitude</th><th>Longitude</th></tr></thead>
+                            <tbody>
+                              <tr>
+                                <td className="fw-semibold">{myBranch.name}</td>
+                                <td>{myBranch.address || '—'}</td>
+                                <td>{myBranch.latitude ?? '—'}</td>
+                                <td>{myBranch.longitude ?? '—'}</td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
+
+                        <div className="small text-muted mt-2">
+                          Departments and units are managed by the organisation.
+                        </div>
+
                       </div>
                     </div>
-
-                    {showAddDepartment && (
-                      <div className="dash-modal" onClick={() => setShowAddDepartment(false)}>
-                        <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
-                          <div className="dash-modal-head">
-                            <strong>Add Department</strong>
-                            <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddDepartment(false)}>Close</button>
-                          </div>
-                          <div className="card-body">
-                            <form onSubmit={async (e)=>{
-                              e.preventDefault()
-                              setStatus('pending')
-                              const f=new FormData(e.target)
-                              const name=f.get('name')
-	                              try{
-	                                await api.post('/api/auth/departments/', { name })
-	                                await refreshAll()
-                                setStatus('saved:department')
-                                setShowAddDepartment(false)
-                              }catch(err){ setStatus('error:department') }
-                            }}>
-                              <input className="form-control mb-3" name="name" placeholder="Department name" required/>
-                              <div className="d-grid"><button className="btn btn-olive">Add Department</button></div>
-                            </form>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {showAddUnit && (
-                      <div className="dash-modal" onClick={() => setShowAddUnit(false)}>
-                        <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
-                          <div className="dash-modal-head">
-                            <strong>Add Unit</strong>
-                            <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setShowAddUnit(false)}>Close</button>
-                          </div>
-                          <div className="card-body">
-                            <form onSubmit={async (e)=>{
-                              e.preventDefault()
-                              setStatus('pending')
-                              const f=new FormData(e.target)
-                              const name=f.get('name')
-                              try{
-                                await api.post('/api/auth/units/', { name })
-                                await refreshAll()
-                                setStatus('saved:unit')
-                                setShowAddUnit(false)
-                              }catch(err){ setStatus('error:unit') }
-                            }}>
-                              <input className="form-control mb-3" name="name" placeholder="Unit name" required/>
-                              <div className="d-grid"><button className="btn btn-olive">Add Unit</button></div>
-                            </form>
-                          </div>
-                        </div>
-                      </div>
-                    )}
 
                     {showBranchLocation && (
                       <div className="dash-modal" onClick={() => setShowBranchLocation(false)}>
