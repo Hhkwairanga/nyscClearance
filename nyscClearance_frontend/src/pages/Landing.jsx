@@ -21,7 +21,7 @@ import {
 const DEFAULT_PRICING_PLANS = [
   { code: 'STARTER', name: 'Starter', range_label: '0-10 corpers', monthly_price: '5000.00', yearly_price: '55000.00', original_monthly_price: '5000.00', original_yearly_price: '55000.00', discount_enabled: false, discount_percent: '0.00' },
   { code: 'BASIC', name: 'Basic', range_label: '10-50 corpers', monthly_price: '25000.00', yearly_price: '258000.00', original_monthly_price: '25000.00', original_yearly_price: '258000.00', discount_enabled: false, discount_percent: '0.00' },
-  { code: 'PRO', name: 'Pro', range_label: '50-100 corpers', monthly_price: '45000.00', yearly_price: '510000.00', original_monthly_price: '45000.00', original_yearly_price: '510000.00', discount_enabled: false, discount_percent: '0.00' },
+  { code: 'PRO', name: 'Premium', range_label: '50-100 corpers', monthly_price: '45000.00', yearly_price: '510000.00', original_monthly_price: '45000.00', original_yearly_price: '510000.00', discount_enabled: false, discount_percent: '0.00' },
   { code: 'ENTERPRISE', name: 'Enterprise', range_label: '100+ corpers', monthly_price: '95000.00', yearly_price: '999999.00', original_monthly_price: '95000.00', original_yearly_price: '999999.00', discount_enabled: false, discount_percent: '0.00' },
 ]
 

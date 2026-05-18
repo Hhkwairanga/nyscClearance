@@ -389,7 +389,7 @@ class SubscriptionPlanSetting(models.Model):
     PLAN_CHOICES = (
         ('STARTER', 'Starter'),
         ('BASIC', 'Basic'),
-        ('PRO', 'Pro'),
+        ('PRO', 'Premium'),
         ('ENTERPRISE', 'Enterprise'),
     )
 

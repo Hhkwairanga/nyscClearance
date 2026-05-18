@@ -3158,7 +3158,7 @@ SUBSCRIPTION_PLAN_DEFAULTS = [
     },
     {
         'code': 'PRO',
-        'name': 'Pro',
+        'name': 'Premium',
         'corper_min': 50,
         'corper_max': 100,
         'monthly_price': Decimal('45000.00'),
