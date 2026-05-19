@@ -1598,6 +1598,7 @@ class StructureImportView(APIView):
     def _apply(self, request, data):
         user = request.user
         created = {'branches': 0, 'departments': 0, 'units': 0}
+        default_password = 'Password123'
         branches = { _name_key(b.name): b for b in BranchOffice.objects.select_for_update().filter(user=user) }
         departments = { _name_key(d.name): d for d in Department.objects.select_for_update().filter(user=user) }
         existing_units = { _name_key(u.name) for u in Unit.objects.select_for_update().filter(user=user) }
@@ -1619,28 +1620,43 @@ class StructureImportView(APIView):
                 continue
             branch = branches.get(branch_key)
             if not branch:
+                # Bulk import creates the branch and (optionally) a branch admin immediately
+                # without email activation.
                 serializer = BranchOfficeSerializer(data={
                     'name': row.get('branch_name'),
                     'address': row.get('branch_address', ''),
                     'latitude': row.get('branch_latitude') or None,
                     'longitude': row.get('branch_longitude') or None,
-                    'admin_name': row.get('admin_name', ''),
-                    'admin_email': row.get('admin_email', ''),
-                    'admin_staff_id': row.get('admin_staff_id', ''),
                 }, context={'request': request})
                 serializer.is_valid(raise_exception=True)
                 branch = serializer.save()
                 branches[branch_key] = branch
                 created['branches'] += 1
-            elif row.get('admin_email') and not branch.admin_id:
-                serializer = BranchOfficeSerializer(branch, data={
-                    'admin_name': row.get('admin_name', ''),
-                    'admin_email': row.get('admin_email', ''),
-                    'admin_staff_id': row.get('admin_staff_id', ''),
-                }, partial=True, context={'request': request})
-                serializer.is_valid(raise_exception=True)
-                branch = serializer.save()
-                branches[branch_key] = branch
+
+            admin_email = (row.get('admin_email') or '').strip().lower()
+            admin_name = (row.get('admin_name') or '').strip()
+            admin_staff_id = (row.get('admin_staff_id') or '').strip()
+            if admin_email and not branch.admin_id:
+                # Create or reuse admin user for this email; activate immediately.
+                admin_user, was_created = User.objects.get_or_create(
+                    email=admin_email,
+                    defaults={
+                        'name': admin_name or admin_email.split('@')[0],
+                        'is_active': True,
+                        'is_email_verified': True,
+                        'role': 'BRANCH',
+                    }
+                )
+                if was_created or not admin_user.is_active:
+                    admin_user.name = admin_user.name or (admin_name or admin_email.split('@')[0])
+                    admin_user.is_active = True
+                    admin_user.is_email_verified = True
+                    admin_user.role = 'BRANCH'
+                    admin_user.set_password(default_password)
+                    admin_user.save()
+                branch.admin = admin_user
+                branch.admin_staff_id = admin_staff_id
+                branch.save(update_fields=['admin', 'admin_staff_id'])
 
         # Departments
         for row in dept_rows:
@@ -1817,13 +1833,48 @@ class CorperImportView(APIView):
 
     @transaction.atomic
     def _apply(self, request, payloads):
+        default_password = 'Password123'
         created = 0
+
+        requester = request.user
+        if getattr(requester, 'role', None) == 'ORG':
+            org_user = requester
+        else:
+            default_branch = BranchOffice.objects.filter(admin=requester).first()
+            org_user = default_branch.user if default_branch else None
+        if not org_user:
+            raise PermissionDenied('Organisation scope not found')
+
         for payload in payloads:
-            serializer = CorpMemberSerializer(data=payload, context={'request': request})
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
+            # Bulk import creates corper login accounts immediately without email activation.
+            email = (payload.get('email') or '').strip().lower()
+            full_name = payload.get('full_name') or ''
+            corper_user = User.objects.create(
+                email=email,
+                name=full_name,
+                is_active=True,
+                is_email_verified=True,
+                role='CORPER',
+            )
+            corper_user.set_password(default_password)
+            corper_user.save(update_fields=['password'])
+
+            CorpMember.objects.create(
+                user=org_user,
+                account=corper_user,
+                full_name=full_name,
+                email=email,
+                gender=payload.get('gender'),
+                state_code=payload.get('state_code'),
+                passing_out_date=payload.get('passing_out_date'),
+                cds_day=payload.get('cds_day'),
+                branch_id=payload.get('branch'),
+                department_id=payload.get('department'),
+                unit_id=payload.get('unit'),
+            )
             created += 1
-        return {'corpers': created}
+
+        return {'corpers': created, 'default_password': default_password}
 
 
 class BranchOfficeViewSet(viewsets.ModelViewSet):

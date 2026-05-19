@@ -152,6 +152,7 @@ export default function Dashboard(){
   const [branchLocationAddress, setBranchLocationAddress] = useState('')
   const [branchLocationAddressTouched, setBranchLocationAddressTouched] = useState(false)
   const [showBranchGeoTour, setShowBranchGeoTour] = useState(false)
+  const [showBranchTour, setShowBranchTour] = useState(false)
   const [showCorperTour, setShowCorperTour] = useState(false)
   const [editBranch, setEditBranch] = useState(null)
   const [editDepartment, setEditDepartment] = useState(null)
@@ -202,6 +203,19 @@ export default function Dashboard(){
     if(!me?.role) return
     try{
       if(me.role === 'BRANCH'){
+        const prompted = sessionStorage.getItem('nysc_branch_tour_prompted') === '1'
+        if(!prompted){
+          sessionStorage.setItem('nysc_branch_tour_prompted', '1')
+          const key = `nysc_branch_login_count:${me.email || 'branch'}`
+          let count = parseInt(localStorage.getItem(key) || '0', 10)
+          if(Number.isNaN(count)) count = 0
+          count += 1
+          localStorage.setItem(key, String(count))
+          if(count <= 3){
+            setShowBranchTour(true)
+          }
+        }
+
         const myBranch = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
         const missing = myBranch && !(myBranch.latitude && myBranch.longitude)
         const doneKey = `nysc_branch_geo_done:${me.email || 'branch'}`
@@ -933,11 +947,14 @@ export default function Dashboard(){
     form.append('file', file)
     form.append('apply', '1')
     try{
+      // Hide preview while applying to keep focus on the loading screen.
+      if(kind === 'structure') setStructureImportPreview(null)
+      else setCorperImportPreview(null)
       setLoadingOverlay({
         title: 'Applying import…',
         body: kind === 'structure'
           ? 'Creating branches, departments, and units.'
-          : 'Creating accounts and sending verification emails.',
+          : 'Creating accounts and preparing face capture.',
       })
       setStatus('pending')
       const res = await api.post(endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' } })
@@ -2177,6 +2194,16 @@ export default function Dashboard(){
     const rows = Array.isArray(preview.rows) ? preview.rows : []
     const summary = preview.summary || {}
     const firstRows = rows.slice(0, 12)
+    const getRowLabel = (row) => {
+      const branchName = row.branch_name || ''
+      const deptName = row.department_name || ''
+      const unitName = row.unit_name || ''
+      if(branchName) return { type: 'Branch', name: branchName }
+      if(deptName) return { type: 'Department', name: deptName }
+      if(unitName) return { type: 'Unit', name: unitName }
+      if(row.full_name) return { type: 'Corper', name: row.full_name }
+      return { type: 'Row', name: '—' }
+    }
     return (
       <div className="mt-3">
         <div className={`alert ${preview.errors_count ? 'alert-warning' : 'alert-success'} py-2 mb-3`}>
@@ -2191,6 +2218,7 @@ export default function Dashboard(){
               <thead>
                 <tr>
                   <th>Row</th>
+                  <th>Type</th>
                   <th>Name</th>
                   <th>Branch</th>
                   <th>Department</th>
@@ -2202,7 +2230,15 @@ export default function Dashboard(){
                 {firstRows.map((row) => (
                   <tr key={row.row}>
                     <td>{row.row}</td>
-                    <td>{row.full_name || row.branch_name || '—'}</td>
+                    {(() => {
+                      const label = getRowLabel(row)
+                      return (
+                        <>
+                          <td>{label.type}</td>
+                          <td className="fw-semibold">{label.name}</td>
+                        </>
+                      )
+                    })()}
                     <td>{row.branch_name || '—'}</td>
                     <td>{row.department_name || '—'}</td>
                     <td>{row.unit_name || '—'}</td>
@@ -2314,6 +2350,47 @@ export default function Dashboard(){
                       }}>Remind me later</button>
                     </div>
                     <div className="form-text mt-2">We’ll remind you again tomorrow if location is still missing.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showBranchTour && me?.role === 'BRANCH' && (
+          <div className="dash-modal" onClick={()=>setShowBranchTour(false)}>
+            <div className="dash-modal-card" onClick={(e)=>e.stopPropagation()}>
+              <div className="dash-modal-head">
+                <strong>Welcome</strong>
+                <button className="btn btn-sm btn-outline-secondary" type="button" onClick={()=>setShowBranchTour(false)}>Close</button>
+              </div>
+              <div className="dash-modal-body">
+                <div className="dash-modal-grid">
+                  <div className="dash-modal-help">
+                    <h6>Quick guide</h6>
+                    <ul>
+                      <li>Update your branch location for accurate geofence attendance</li>
+                      <li>Track corps members and attendance as they clock-in</li>
+                      <li>Check notifications for queries and system updates</li>
+                    </ul>
+                  </div>
+                  <div className="dash-modal-form">
+                    <div className="d-grid gap-2">
+                      <button className="btn btn-olive" type="button" onClick={()=>{
+                        const myBranch = branches.find(x => x.admin_info && x.admin_info.email === me?.email) || branches[0]
+                        setActiveTab('structure')
+                        setStructureTab('branch')
+                        setBranchLocationPos(myBranch?.latitude && myBranch?.longitude ? { lat: myBranch.latitude, lng: myBranch.longitude } : null)
+                        setBranchLocationAddress(myBranch?.address || '')
+                        setBranchLocationAddressTouched(false)
+                        setShowBranchTour(false)
+                        setShowBranchLocation(true)
+                      }}>Update location now</button>
+                      <button className="btn btn-outline-secondary" type="button" onClick={()=>{ setActiveTab('corpers'); setShowBranchTour(false) }}>Go to Corpers</button>
+                      <button className="btn btn-outline-secondary" type="button" onClick={()=>{ setActiveTab('attendance'); setShowBranchTour(false) }}>Go to Attendance</button>
+                      <button className="btn btn-outline-secondary" type="button" onClick={()=>setShowBranchTour(false)}>Got it</button>
+                    </div>
+                    <div className="form-text mt-2">This guide shows during your first three logins.</div>
                   </div>
                 </div>
               </div>
