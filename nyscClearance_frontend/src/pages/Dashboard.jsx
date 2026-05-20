@@ -2747,24 +2747,44 @@ export default function Dashboard(){
                     <div className="col-12 col-lg-6">
                       <div className="card shadow-sm dash-card"><div className="card-body" style={{height:360}}>
                         <div className="dash-card-title">My Attendance (Last 7 Days)</div>
-                        <Bar
-                          data={{
-                            labels: (stats?.attendance?.last7||[]).map(r=> new Date(r.date).toLocaleDateString()),
-                            datasets: [{
-                              label: 'Hours',
-                              data: (stats?.attendance?.last7||[]).map(r=> r.hours ?? 0),
-                              backgroundColor: chartTheme.olive,
-                              borderRadius: 10,
-                            }]
-                          }}
-                          options={{
-                            ...barOptions,
-                            scales: {
-                              x: { grid: { display: false }, ticks: { color: chartTheme.text }, title: { display: true, text: 'Day' } },
-                              y: { grid: { color: chartTheme.grid }, ticks: { color: chartTheme.text }, beginAtZero: true, title: { display: true, text: 'Hours' } },
-                            },
-                          }}
-                        />
+                        {(() => {
+                          const last7 = (stats?.attendance?.last7 || [])
+                          const hasAnyHours = last7.some((r) => Number(r?.hours || 0) > 0)
+                          const seriesLabel = hasAnyHours ? 'Hours' : 'Check-ins'
+                          const seriesData = hasAnyHours
+                            ? last7.map((r) => Number(r?.hours || 0))
+                            : last7.map((r) => Number(r?.count || 0))
+                          const yTitle = hasAnyHours ? 'Hours' : 'Check-ins'
+                          const total7 = seriesData.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0)
+                          return (
+                            <>
+                              <div className="d-flex flex-wrap gap-2 mb-2">
+                                <span className="badge text-bg-light border">Today: {stats?.attendance?.today ?? 0}</span>
+                                <span className="badge text-bg-light border">This month: {stats?.attendance?.this_month ?? 0}</span>
+                                <span className="badge text-bg-light border">Last 7 days: {hasAnyHours ? `${total7.toFixed(2)}h` : total7}</span>
+                              </div>
+                              <Bar
+                                data={{
+                                  labels: last7.map(r=> new Date(r.date).toLocaleDateString()),
+                                  datasets: [{
+                                    label: seriesLabel,
+                                    data: seriesData,
+                                    backgroundColor: chartTheme.olive,
+                                    borderRadius: 10,
+                                  }]
+                                }}
+                                options={{
+                                  ...barOptions,
+                                  scales: {
+                                    x: { grid: { display: false }, ticks: { color: chartTheme.text }, title: { display: true, text: 'Day' } },
+                                    y: { grid: { color: chartTheme.grid }, ticks: { color: chartTheme.text }, beginAtZero: true, title: { display: true, text: yTitle } },
+                                  },
+                                }}
+                              />
+                              {last7.length === 0 && <div className="text-muted mt-2">No attendance records yet.</div>}
+                            </>
+                          )
+                        })()}
                       </div></div>
                     </div>
                     <div className="col-12 col-lg-6">
