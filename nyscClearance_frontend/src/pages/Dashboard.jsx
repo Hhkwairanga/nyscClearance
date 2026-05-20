@@ -950,6 +950,9 @@ export default function Dashboard(){
       // Hide preview while applying to keep focus on the loading screen.
       if(kind === 'structure') setStructureImportPreview(null)
       else setCorperImportPreview(null)
+      // Close the modal immediately so the user only sees the loading screen.
+      if(kind === 'structure') setShowStructureImport(false)
+      else setShowCorperImport(false)
       setLoadingOverlay({
         title: 'Applying import…',
         body: kind === 'structure'
@@ -960,12 +963,10 @@ export default function Dashboard(){
       const res = await api.post(endpoint, form, { headers: { 'Content-Type': 'multipart/form-data' } })
       if(kind === 'structure'){
         setStructureImportPreview(res.data)
-        setShowStructureImport(false)
         setStructureImportFile(null)
         setStatus('saved:structure-import')
       }else{
         setCorperImportPreview(res.data)
-        setShowCorperImport(false)
         setCorperImportFile(null)
         setStatus('saved:corper-import')
       }
@@ -2193,7 +2194,6 @@ export default function Dashboard(){
     if(!preview) return null
     const rows = Array.isArray(preview.rows) ? preview.rows : []
     const summary = preview.summary || {}
-    const firstRows = rows.slice(0, 12)
     const getRowLabel = (row) => {
       const branchName = row.branch_name || ''
       const deptName = row.department_name || ''
@@ -2204,12 +2204,29 @@ export default function Dashboard(){
       if(row.full_name) return { type: 'Corper', name: row.full_name }
       return { type: 'Row', name: '—' }
     }
+
+    // Show a balanced preview (so multi-sheet structure imports always show dept/unit).
+    const byType = (type) => rows.filter((r) => getRowLabel(r).type === type)
+    const firstRows = [
+      ...byType('Branch').slice(0, 6),
+      ...byType('Department').slice(0, 3),
+      ...byType('Unit').slice(0, 3),
+      ...rows.filter((r) => getRowLabel(r).type === 'Corper').slice(0, 12),
+    ].slice(0, 12)
     return (
       <div className="mt-3">
         <div className={`alert ${preview.errors_count ? 'alert-warning' : 'alert-success'} py-2 mb-3`}>
           <div className="fw-semibold">{preview.errors_count ? `${preview.errors_count} issue(s) need attention` : 'Preview looks good'}</div>
-          <div className="small">
-            {Object.entries(summary).map(([key, value]) => `${key.replaceAll('_', ' ')}: ${value}`).join(' · ')}
+          <div className="small d-flex flex-wrap gap-2 mt-1" style={{ lineHeight: 1.25 }}>
+            {Object.entries(summary).map(([key, value]) => (
+              <span
+                key={key}
+                className="badge text-bg-light border"
+                style={{ whiteSpace: 'normal', textAlign: 'left' }}
+              >
+                {key.replaceAll('_', ' ')}: {String(value)}
+              </span>
+            ))}
           </div>
         </div>
         {firstRows.length > 0 && (
@@ -2228,7 +2245,7 @@ export default function Dashboard(){
               </thead>
               <tbody>
                 {firstRows.map((row) => (
-                  <tr key={row.row}>
+                  <tr key={`${row.row || 'na'}-${getRowLabel(row).type}-${getRowLabel(row).name}`}>
                     <td>{row.row}</td>
                     {(() => {
                       const label = getRowLabel(row)
@@ -2266,7 +2283,7 @@ export default function Dashboard(){
 	  return (
 	    <div className="container-fluid p-0">
       {loadingOverlay && (
-        <div className="app-loading-screen" style={{ zIndex: 2000 }}>
+        <div className="app-loading-screen" style={{ zIndex: 2000, background: '#fff' }}>
           <div className="app-loading-card text-center">
             <div className="dashboard-loading-icon mx-auto" aria-hidden>
               <RefreshCw size={24} className="spin-icon" />
