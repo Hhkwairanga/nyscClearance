@@ -2230,46 +2230,43 @@ export default function Dashboard(){
           </div>
         </div>
         {firstRows.length > 0 && (
-          <div className="table-responsive">
-            <table className="table table-sm align-middle dash-table mb-0">
-              <thead>
-                <tr>
-                  <th>Row</th>
-                  <th>Type</th>
-                  <th>Name</th>
-                  <th>Branch</th>
-                  <th>Department</th>
-                  <th>Unit</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {firstRows.map((row) => (
-                  <tr key={`${row.row || 'na'}-${getRowLabel(row).type}-${getRowLabel(row).name}`}>
-                    <td>{row.row}</td>
-                    {(() => {
-                      const label = getRowLabel(row)
-                      return (
-                        <>
-                          <td>{label.type}</td>
-                          <td className="fw-semibold">{label.name}</td>
-                        </>
-                      )
-                    })()}
-                    <td>{row.branch_name || '—'}</td>
-                    <td>{row.department_name || '—'}</td>
-                    <td>{row.unit_name || '—'}</td>
-                    <td>
-                      {row.status === 'error' ? (
-                        <span className="text-danger small">{(row.messages || []).join('; ')}</span>
-                      ) : (
-                        <span className="text-success small">Ready</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="d-grid gap-2">
+            {firstRows.map((row) => {
+              const label = getRowLabel(row)
+              const statusOk = row.status !== 'error'
+              const messages = Array.isArray(row.messages) ? row.messages : []
+              return (
+                <div
+                  key={`${row.row || 'na'}-${label.type}-${label.name}`}
+                  className="border rounded-3 p-2 bg-white"
+                  style={{ overflow: 'hidden' }}
+                >
+                  <div className="d-flex align-items-start justify-content-between gap-2">
+                    <div className="min-w-0">
+                      <div className="small text-muted">Row {row.row || '—'} • {label.type}</div>
+                      <div className="fw-semibold text-truncate">{label.name}</div>
+                    </div>
+                    <span className={`badge ${statusOk ? 'text-bg-success' : 'text-bg-danger'}`}>
+                      {statusOk ? 'Ready' : 'Fix'}
+                    </span>
+                  </div>
+
+                  <div className="d-flex flex-wrap gap-2 mt-2 small" style={{ lineHeight: 1.2 }}>
+                    {row.branch_name ? <span className="badge text-bg-light border">Branch: {row.branch_name}</span> : null}
+                    {row.department_name ? <span className="badge text-bg-light border">Department: {row.department_name}</span> : null}
+                    {row.unit_name ? <span className="badge text-bg-light border">Unit: {row.unit_name}</span> : null}
+                    {row.email ? <span className="badge text-bg-light border">Email: {row.email}</span> : null}
+                    {row.state_code ? <span className="badge text-bg-light border">State code: {row.state_code}</span> : null}
+                  </div>
+
+                  {!statusOk && messages.length > 0 && (
+                    <div className="small text-danger mt-2" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                      {messages.join(' • ')}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -2284,14 +2281,9 @@ export default function Dashboard(){
 	    <div className="container-fluid p-0">
       {loadingOverlay && (
         <div className="app-loading-screen" style={{ zIndex: 2000, background: '#fff' }}>
-          <div className="app-loading-card text-center">
+          <div className="app-loading-card text-center" style={{ boxShadow: 'none', border: 0, background: 'transparent' }}>
             <div className="dashboard-loading-icon mx-auto" aria-hidden>
-              <RefreshCw size={24} className="spin-icon" />
-            </div>
-            <div className="app-loading-title mt-3">{loadingOverlay.title || 'Working…'}</div>
-            <p className="text-muted small mb-3">{loadingOverlay.body || 'Please wait.'}</p>
-            <div className="loading-progress" aria-hidden>
-              <div className="loading-progress-bar" />
+              <RefreshCw size={26} className="spin-icon" />
             </div>
           </div>
         </div>
