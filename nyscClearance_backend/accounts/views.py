@@ -1142,22 +1142,26 @@ class LogoutView(APIView):
         logout(request)
         resp = Response({'message': 'Logged out'})
         # Explicitly expire cookies to prevent sticky auth across deployments/browsers.
-        try:
-            resp.delete_cookie(
-                getattr(settings, 'SESSION_COOKIE_NAME', 'sessionid'),
-                path=getattr(settings, 'SESSION_COOKIE_PATH', '/') or '/',
-                domain=getattr(settings, 'SESSION_COOKIE_DOMAIN', None),
-            )
-        except Exception:
-            pass
-        try:
-            resp.delete_cookie(
-                getattr(settings, 'CSRF_COOKIE_NAME', 'csrftoken'),
-                path=getattr(settings, 'CSRF_COOKIE_PATH', '/') or '/',
-                domain=getattr(settings, 'CSRF_COOKIE_DOMAIN', None),
-            )
-        except Exception:
-            pass
+        session_name = getattr(settings, 'SESSION_COOKIE_NAME', 'sessionid')
+        csrf_name = getattr(settings, 'CSRF_COOKIE_NAME', 'csrftoken')
+        session_path = getattr(settings, 'SESSION_COOKIE_PATH', '/') or '/'
+        csrf_path = getattr(settings, 'CSRF_COOKIE_PATH', '/') or '/'
+        session_domain = getattr(settings, 'SESSION_COOKIE_DOMAIN', None)
+        csrf_domain = getattr(settings, 'CSRF_COOKIE_DOMAIN', None)
+        # Delete using both the configured domain/path and "default" (domain=None),
+        # because cookies may be set differently across environments/proxies.
+        for domain in {session_domain, None}:
+            for path in {session_path, '/'}:
+                try:
+                    resp.delete_cookie(session_name, path=path, domain=domain)
+                except Exception:
+                    pass
+        for domain in {csrf_domain, None}:
+            for path in {csrf_path, '/'}:
+                try:
+                    resp.delete_cookie(csrf_name, path=path, domain=domain)
+                except Exception:
+                    pass
         return resp
 
 
