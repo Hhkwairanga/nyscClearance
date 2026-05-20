@@ -65,6 +65,8 @@ class OrganizationUser(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
     is_email_verified = models.BooleanField(default=False)
+    # When true, user must change password before using the app (used for bulk-created admins).
+    force_password_change = models.BooleanField(default=False)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='ORG')
 
     date_joined = models.DateTimeField(auto_now_add=True)

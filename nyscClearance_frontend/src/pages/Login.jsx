@@ -44,6 +44,12 @@ export default function Login() {
       await ensureCsrf()
       const { data } = await api.post('/api/auth/login/', { ...form, role })
       if (data?.token) setToken(data.token, remember)
+      if (data?.must_change_password) {
+        const params = new URLSearchParams(location.search)
+        const next = params.get('next') || (role === 'ORG' ? '/dashboard/org' : role === 'BRANCH' ? '/dashboard/branch' : '/dashboard/corper')
+        navigate(`/change-password?next=${encodeURIComponent(next)}`, { replace: true })
+        return
+      }
       const params = new URLSearchParams(location.search)
       const next = params.get('next') || ''
       const fallbackPath = role === 'ORG' ? '/dashboard/org' : role === 'BRANCH' ? '/dashboard/branch' : '/dashboard/corper'

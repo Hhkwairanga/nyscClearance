@@ -11,6 +11,7 @@ import VerifySuccess from './pages/VerifySuccess'
 import Dashboard from './pages/Dashboard'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
+import ChangePassword from './pages/ChangePassword'
 import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
 import Contact from './pages/Contact'
@@ -36,6 +37,7 @@ async function bootstrap(){
             <Route path="dashboard/corper" element={<Dashboard />} />
             <Route path="forgot-password" element={<ForgotPassword />} />
             <Route path="reset-password" element={<ResetPassword />} />
+            <Route path="change-password" element={<ChangePassword />} />
             <Route path="terms" element={<Terms />} />
             <Route path="privacy" element={<Privacy />} />
             <Route path="contact" element={<Contact />} />

@@ -1103,7 +1103,34 @@ class LoginView(APIView):
             resp['token'] = token
             resp['token_type'] = 'Bearer'
             resp['expires_in'] = 60 * 60 * 24
+        # Force first-login password change for bulk-created admins.
+        if getattr(user, 'force_password_change', False):
+            resp['must_change_password'] = True
+            resp['role'] = getattr(user, 'role', None)
         return Response(resp)
+
+
+class PasswordChangeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        old_password = (request.data.get('old_password') or '').strip()
+        new_password = (request.data.get('new_password') or '').strip()
+        confirm = (request.data.get('new_password_confirm') or '').strip()
+        if not old_password or not new_password:
+            return Response({'detail': 'old_password and new_password are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if confirm and new_password != confirm:
+            return Response({'detail': 'Passwords do not match'}, status=status.HTTP_400_BAD_REQUEST)
+        if not user.check_password(old_password):
+            return Response({'detail': 'Old password is incorrect'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_password) < 8:
+            return Response({'detail': 'Password must be at least 8 characters'}, status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(new_password)
+        if getattr(user, 'force_password_change', False):
+            user.force_password_change = False
+        user.save(update_fields=['password', 'force_password_change'])
+        return Response({'message': 'Password updated successfully'})
 
 
 class LogoutView(APIView):
@@ -1662,6 +1689,7 @@ class StructureImportView(APIView):
                         'is_active': True,
                         'is_email_verified': True,
                         'role': 'BRANCH',
+                        'force_password_change': True,
                     }
                 )
                 if was_created or not admin_user.is_active:
@@ -1669,6 +1697,7 @@ class StructureImportView(APIView):
                     admin_user.is_active = True
                     admin_user.is_email_verified = True
                     admin_user.role = 'BRANCH'
+                    admin_user.force_password_change = True
                     admin_user.set_password(default_password)
                     admin_user.save()
                 branch.admin = admin_user

@@ -2755,14 +2755,8 @@ export default function Dashboard(){
                             ? last7.map((r) => Number(r?.hours || 0))
                             : last7.map((r) => Number(r?.count || 0))
                           const yTitle = hasAnyHours ? 'Hours' : 'Check-ins'
-                          const total7 = seriesData.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0)
                           return (
                             <>
-                              <div className="d-flex flex-wrap gap-2 mb-2">
-                                <span className="badge text-bg-light border">Today: {stats?.attendance?.today ?? 0}</span>
-                                <span className="badge text-bg-light border">This month: {stats?.attendance?.this_month ?? 0}</span>
-                                <span className="badge text-bg-light border">Last 7 days: {hasAnyHours ? `${total7.toFixed(2)}h` : total7}</span>
-                              </div>
                               <Bar
                                 data={{
                                   labels: last7.map(r=> new Date(r.date).toLocaleDateString()),
