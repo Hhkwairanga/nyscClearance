@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
+import logging
 from pathlib import Path
 from rest_framework import serializers
 from django.conf import settings
@@ -11,6 +12,17 @@ from django.core.validators import RegexValidator
 
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
+
+
+def _safe_send_mail(subject: str, message: str, recipients: list[str]) -> bool:
+    """Send email but never raise (SMTP may be disabled in some deployments)."""
+    try:
+        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, recipients)
+        return True
+    except Exception:
+        logger.exception('Email send failed: %s', subject)
+        return False
 
 
 class OrganizationRegisterSerializer(serializers.ModelSerializer):
@@ -55,7 +67,8 @@ class OrganizationRegisterSerializer(serializers.ModelSerializer):
 
         token = generate_email_token(user.id)
         verify_url = self._build_verify_url(token)
-        self._send_verification_email(user.email, user.name, verify_url)
+        self._verify_url = verify_url
+        self._email_sent = self._send_verification_email(user.email, user.name, verify_url)
 
         # Create initial profile with optional coordinates
         OrganizationProfile.objects.get_or_create(
@@ -77,7 +90,7 @@ class OrganizationRegisterSerializer(serializers.ModelSerializer):
         base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', 'http://localhost:5173')).rstrip('/')
         return f"{base}/verify-success?token={token}"
 
-    def _send_verification_email(self, email: str, name: str, url: str) -> None:
+    def _send_verification_email(self, email: str, name: str, url: str) -> bool:
         subject = 'Verify your NYSC Clearance account'
         message = (
             f"Hello {name},\n\n"
@@ -85,7 +98,7 @@ class OrganizationRegisterSerializer(serializers.ModelSerializer):
             f"Click the link below (valid for 24 hours):\n{url}\n\n"
             f"If you didn't request this, you can ignore this email."
         )
-        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
+        return _safe_send_mail(subject, message, [email])
 
 
 class LoginSerializer(serializers.Serializer):
@@ -235,7 +248,7 @@ class BranchOfficeSerializer(serializers.ModelSerializer):
         base = self.context.get('request').build_absolute_uri('/api/auth/verify/')
         return f"{base}?token={token}&role=BRANCH"
 
-    def _send_verification_email(self, email: str, name: str, url: str) -> None:
+    def _send_verification_email(self, email: str, name: str, url: str) -> bool:
         subject = 'You are invited as Branch Admin'
         message = (
             f"Hello {name},\n\n"
@@ -243,7 +256,7 @@ class BranchOfficeSerializer(serializers.ModelSerializer):
             f"Please verify your email to activate your access and set your password:\n{url}\n\n"
             f"If you didn't expect this, you can ignore this email."
         )
-        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
+        return _safe_send_mail(subject, message, [email])
 
     def get_admin_info(self, obj):
         if not obj.admin:
@@ -506,7 +519,7 @@ class CorpMemberSerializer(serializers.ModelSerializer):
         base = self.context.get('request').build_absolute_uri('/api/auth/verify/')
         return f"{base}?token={token}&role=CORPER"
 
-    def _send_verification_email(self, email: str, name: str, url: str) -> None:
+    def _send_verification_email(self, email: str, name: str, url: str) -> bool:
         subject = 'Complete your NYSC Clearance account'
         message = (
             f"Hello {name},\n\n"
@@ -514,7 +527,7 @@ class CorpMemberSerializer(serializers.ModelSerializer):
             f"Please verify your email to activate your account and set your password:\n{url}\n\n"
             f"If you didn't expect this, you can ignore this email."
         )
-        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
+        return _safe_send_mail(subject, message, [email])
 
     def update(self, instance, validated_data):
         # When updating, ensure department/unit belong to organisation.

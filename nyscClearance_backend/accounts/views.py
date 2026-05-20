@@ -845,8 +845,17 @@ class RegisterView(APIView):
         serializer = OrganizationRegisterSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        email_sent = getattr(serializer, '_email_sent', True)
+        verify_url = getattr(serializer, '_verify_url', None)
+        if email_sent:
+            return Response({
+                'message': 'Registration successful. Please check your email to verify your account and set your password.'
+            }, status=status.HTTP_201_CREATED)
+        # SMTP may be disabled in some deployments; do not crash registration.
         return Response({
-            'message': 'Registration successful. Please check your email to verify your account and set your password.'
+            'message': 'Registration successful, but we could not send the verification email right now. Please use the verification link below or contact support.',
+            'verification_link': verify_url,
+            'email_sent': False,
         }, status=status.HTTP_201_CREATED)
 
 
@@ -942,12 +951,20 @@ class PasswordResetRequestView(APIView):
         role = getattr(user, 'role', None)
         reset_url = f"{base}/reset-password?token={token}{f'&role={role}' if role else ''}"
         from django.core.mail import send_mail
-        send_mail(
-            'Reset your NYSC Clearance password',
-            f"Use the link to reset your password:\n{reset_url}",
-            settings.DEFAULT_FROM_EMAIL,
-            [email],
-        )
+        try:
+            send_mail(
+                'Reset your NYSC Clearance password',
+                f"Use the link to reset your password:\n{reset_url}",
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+            )
+        except Exception:
+            # SMTP may be disabled; do not 500.
+            try:
+                import logging
+                logging.getLogger(__name__).exception('Password reset email send failed')
+            except Exception:
+                pass
         return Response({'message': 'If the email exists, a reset link has been sent.'})
 
 
