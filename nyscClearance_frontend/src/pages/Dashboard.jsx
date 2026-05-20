@@ -160,6 +160,18 @@ export default function Dashboard(){
   const [editHoliday, setEditHoliday] = useState(null)
   const [editHolidayForm, setEditHolidayForm] = useState(null)
 
+  // When a full-screen loading overlay is shown (e.g. bulk imports), hide global chrome (top navbar + footer).
+  useEffect(() => {
+    const cls = 'hide-app-chrome'
+    try{
+      if(loadingOverlay) document.body.classList.add(cls)
+      else document.body.classList.remove(cls)
+    }catch(e){}
+    return () => {
+      try{ document.body.classList.remove(cls) }catch(e){}
+    }
+  }, [loadingOverlay])
+
   const [newBranchForm, setNewBranchForm] = useState({
     name: '',
     address: '',
@@ -2205,14 +2217,7 @@ export default function Dashboard(){
       return { type: 'Row', name: '—' }
     }
 
-    // Show a balanced preview (so multi-sheet structure imports always show dept/unit).
-    const byType = (type) => rows.filter((r) => getRowLabel(r).type === type)
-    const firstRows = [
-      ...byType('Branch').slice(0, 6),
-      ...byType('Department').slice(0, 3),
-      ...byType('Unit').slice(0, 3),
-      ...rows.filter((r) => getRowLabel(r).type === 'Corper').slice(0, 12),
-    ].slice(0, 12)
+    const previewRows = rows
     return (
       <div className="mt-3">
         <div className={`alert ${preview.errors_count ? 'alert-warning' : 'alert-success'} py-2 mb-3`}>
@@ -2228,10 +2233,13 @@ export default function Dashboard(){
               </span>
             ))}
           </div>
+          <div className="small text-muted mt-2">
+            Default password for bulk-created accounts: <strong>Password123</strong>
+          </div>
         </div>
-        {firstRows.length > 0 && (
-          <div className="d-grid gap-2">
-            {firstRows.map((row) => {
+        {previewRows.length > 0 && (
+          <div className="d-grid gap-2" style={{ maxHeight: '52vh', overflow: 'auto', paddingRight: 2 }}>
+            {previewRows.map((row) => {
               const label = getRowLabel(row)
               const statusOk = row.status !== 'error'
               const messages = Array.isArray(row.messages) ? row.messages : []
@@ -2277,13 +2285,18 @@ export default function Dashboard(){
     return <DashboardLoadingScreen />
   }
 
-	  return (
-	    <div className="container-fluid p-0">
+  return (
+    <div className="container-fluid p-0">
       {loadingOverlay && (
-        <div className="app-loading-screen" style={{ zIndex: 2000, background: '#fff' }}>
-          <div className="app-loading-card text-center" style={{ boxShadow: 'none', border: 0, background: 'transparent' }}>
+        <div className="app-loading-screen" style={{ position: 'fixed', inset: 0, zIndex: 3000 }}>
+          <div className="app-loading-card text-center">
             <div className="dashboard-loading-icon mx-auto" aria-hidden>
-              <RefreshCw size={26} className="spin-icon" />
+              <RefreshCw size={24} className="spin-icon" />
+            </div>
+            <div className="app-loading-title mt-3">{loadingOverlay.title || 'Working…'}</div>
+            <p className="text-muted small mb-3">{loadingOverlay.body || 'Please wait.'}</p>
+            <div className="loading-progress" aria-hidden>
+              <div className="loading-progress-bar" />
             </div>
           </div>
         </div>

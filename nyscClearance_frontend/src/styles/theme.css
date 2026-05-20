@@ -55,6 +55,10 @@
 
 body{ background-color:#f7f9f6; }
 
+/* Hide global chrome (top navbar + dashboard footer) during full-screen loading overlays */
+body.hide-app-chrome .app-shell > nav.navbar{ display:none !important; }
+body.hide-app-chrome .dash-mini-footer{ display:none !important; }
+
 .app-shell{ min-height: 100vh; display:flex; flex-direction: column; }
 .app-shell > main{ flex: 1 0 auto; }
 
