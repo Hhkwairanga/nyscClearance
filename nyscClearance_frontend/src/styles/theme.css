@@ -441,6 +441,7 @@ body.hide-app-chrome .dash-mini-footer{ display:none !important; }
 .dash-sidebar.collapsed .org-logo-placeholder{ margin: 0 auto; }
 .dash-sidebar.collapsed .org-logo{ max-height: 44px; max-width: 44px; }
 .dash-brand{ display:flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px; border-radius: 14px; background: linear-gradient(135deg,#f4f7ef,#eef2e8); border:1px solid #edf0ea; }
+.dash-brand-main{ flex: 1 1 auto; min-width: 0; }
 .dash-brand-copy{ min-width: 0; }
 .dash-brand-name{
   font-weight: 700;

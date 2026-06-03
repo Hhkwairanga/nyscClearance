@@ -2494,7 +2494,7 @@ export default function Dashboard(){
 	      <div className="dash-shell">
         <aside className={`dash-sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
           <div className="dash-brand">
-            <div className="d-flex align-items-center gap-2">
+            <div className="d-flex align-items-center gap-2 dash-brand-main">
               {logoUrl ? <img src={logoUrl} alt="Organization Logo" className="org-logo"/> : <div className="org-logo-placeholder"/>}
               <div className="min-w-0 dash-brand-copy">
                 <div className="dash-brand-name">{me?.name || 'Dashboard'}</div>

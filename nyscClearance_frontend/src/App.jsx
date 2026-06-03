@@ -26,6 +26,7 @@ export default function App(){
   const location = useLocation()
   const isHome = location.pathname === '/'
   const isDashboard = location.pathname === '/dashboard' || location.pathname.startsWith('/dashboard/')
+  const showLoggedInNav = isDashboard || location.pathname === '/about' || location.pathname === '/contact'
   const [me, setMe] = useState(null)
   useEffect(() => {
     (async()=>{
@@ -80,7 +81,7 @@ export default function App(){
             <img src="/nyscclearance_logo.svg" alt="NYSC Clearance" className="brand-logo"/>
           </Link>
 	          <div className="ms-auto d-flex align-items-center gap-2">
-	            {isAuthed && isDashboard && (
+	            {isAuthed && showLoggedInNav && (
 	            <div className="d-none d-lg-flex align-items-center gap-3 me-3">
 	              <Link className="nav-link px-0 text-white-50" to="/about">About</Link>
 	              <a className="nav-link px-0 text-white-50" href="https://home.sahabs.tech" target="_blank" rel="noreferrer">Services</a>
