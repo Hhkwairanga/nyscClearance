@@ -21,6 +21,24 @@ class HolidayResult:
     title: Optional[str] = None
 
 
+_NG_RENAME_MAP = {
+    "National Day": "Independence Day",
+}
+_NG_EXCLUDED_NAMES = {
+    "National Youth Day",
+}
+
+
+def normalize_nigerian_holiday_name(name: str) -> str:
+    cleaned = str(name or "").strip()
+    return _NG_RENAME_MAP.get(cleaned, cleaned)
+
+
+def is_supported_nigerian_holiday(name: str) -> bool:
+    cleaned = normalize_nigerian_holiday_name(name)
+    return bool(cleaned) and cleaned not in _NG_EXCLUDED_NAMES
+
+
 def is_holiday_for_org(org_user, day: date, country_code: str = "NG") -> HolidayResult:
     """Return whether `day` is a holiday for an org.
 
@@ -112,10 +130,13 @@ def sync_national_holidays(year: int, country_code: str = "NG") -> int:
             d = date.fromisoformat(day)
         except Exception:
             continue
+        normalized_name = normalize_nigerian_holiday_name(name)
+        if not is_supported_nigerian_holiday(normalized_name):
+            continue
         NationalHoliday.objects.update_or_create(
             country_code=country_code,
             date=d,
-            name=name,
+            name=normalized_name,
             defaults={
                 "local_name": local,
                 "raw": row,

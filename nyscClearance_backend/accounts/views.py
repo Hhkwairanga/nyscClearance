@@ -68,7 +68,13 @@ from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMem
 from .models import QueryRecord
 from .models import NationalHoliday
 from .models import SubscriptionPlanSetting, OrganizationSubscription, SubscriptionPayment, ClearanceAccess, SystemSetting, PaystackConfig
-from .services.holidays import ensure_national_holidays, is_holiday_for_org, working_days
+from .services.holidays import (
+    ensure_national_holidays,
+    is_holiday_for_org,
+    is_supported_nigerian_holiday,
+    normalize_nigerian_holiday_name,
+    working_days,
+)
 from django.db.models import Count
 from django.db import models, transaction
 
@@ -2110,17 +2116,21 @@ class AllHolidaysView(APIView):
         year = timezone.localdate().year
         # Ensure we have national holidays (lazy auto-sync)
         ensure_national_holidays(year=year, country_code='NG')
-        ensure_national_holidays(year=year + 1, country_code='NG')
-        # National holidays for current year (and next year for smoother UX)
-        national = NationalHoliday.objects.filter(country_code='NG', date__year__in=[year, year + 1]).order_by('date')
-        manual = PublicHoliday.objects.filter(user=org_user).order_by('start_date') if org_user else PublicHoliday.objects.none()
+        national = NationalHoliday.objects.filter(country_code='NG', date__year=year).order_by('date')
+        manual = (
+            PublicHoliday.objects.filter(user=org_user, start_date__year=year).order_by('start_date')
+            if org_user else PublicHoliday.objects.none()
+        )
 
         out = []
         for h in national:
+            title = normalize_nigerian_holiday_name(h.name)
+            if not is_supported_nigerian_holiday(title):
+                continue
             out.append({
                 'id': f'national:{h.id}',
                 'source': 'NATIONAL',
-                'title': h.name,
+                'title': title,
                 'start_date': h.date.isoformat(),
                 'end_date': h.date.isoformat(),
                 'deletable': False,

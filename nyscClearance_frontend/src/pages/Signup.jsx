@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
 import { Building2, CheckCircle2, Mail, ShieldCheck } from 'lucide-react'
 
+const EMPTY_FORM = {
+  email: '', name: '', address: '', phone_number: ''
+}
+
 export default function Signup(){
-  const [form, setForm] = useState({
-    email: '', name: '', address: '', phone_number: ''
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
   const [status, setStatus] = useState(null)
   const [acceptTerms, setAcceptTerms] = useState(false)
 
@@ -44,6 +46,8 @@ export default function Signup(){
     try {
       await ensureCsrf()
       await api.post('/api/auth/register/', form)
+      setForm(EMPTY_FORM)
+      setAcceptTerms(false)
       setStatus('success')
     } catch(err){
       const msg = err?.response?.data?.detail
@@ -95,6 +99,11 @@ export default function Signup(){
                   <div className="text-muted small">Takes about 2 minutes.</div>
                 </div>
               </div>
+
+              {status === 'success' && (
+                <div className="alert alert-success mb-3">Registration successful. Check your email to verify and set your password.</div>
+              )}
+              {status?.startsWith('error') && <div className="alert alert-danger mb-3">{status.split(':')[1]}</div>}
 
               <form onSubmit={submit}>
                 <div className="row g-3">
@@ -162,10 +171,6 @@ export default function Signup(){
                 </div>
               </form>
 
-              {status === 'success' && (
-                <div className="alert alert-success mt-3">Registration successful. Check your email to verify and set your password.</div>
-              )}
-              {status?.startsWith('error') && <div className="alert alert-danger mt-3">{status.split(':')[1]}</div>}
             </div>
           </div>
         </div>

@@ -516,6 +516,27 @@ body.hide-app-chrome .dash-mini-footer{ display:none !important; }
 thead .dash-action-cell{ z-index: 3; background: #fff; }
 .dash-td-truncate-wide{ max-width: clamp(220px, 32vw, 560px); }
 .dash-table-search{ width: min(360px, 100%); }
+.dash-admin-cell{ min-width: 0; }
+.dash-admin-name{
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: normal;
+  word-break: break-word;
+}
+.dash-admin-meta{
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(110px, 3fr);
+  gap: 8px;
+  margin-top: 4px;
+  font-size: .875rem;
+  color: rgba(0,0,0,.66);
+}
+.dash-admin-email,
+.dash-admin-id{
+  min-width: 0;
+  white-space: normal;
+  word-break: break-word;
+}
 
 /* Organisation profile view */
 .dash-profile{ padding-top: 4px; }

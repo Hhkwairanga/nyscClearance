@@ -24,6 +24,7 @@ from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.conf import settings
 from decimal import Decimal
+from datetime import time
 from django.utils import timezone
 
 
@@ -87,10 +88,10 @@ class OrganizationProfile(models.Model):
     # Director Human Resource signatory details
     signatory_name = models.CharField(max_length=255, blank=True)
     signature = models.ImageField(upload_to='org_signatures/', blank=True, null=True)
-    late_time = models.TimeField(blank=True, null=True)
-    closing_time = models.TimeField(blank=True, null=True)
-    max_days_late = models.PositiveSmallIntegerField(blank=True, null=True)
-    max_days_absent = models.PositiveSmallIntegerField(blank=True, null=True)
+    late_time = models.TimeField(blank=True, null=True, default=time(8, 30))
+    closing_time = models.TimeField(blank=True, null=True, default=time(16, 0))
+    max_days_late = models.PositiveSmallIntegerField(blank=True, null=True, default=5)
+    max_days_absent = models.PositiveSmallIntegerField(blank=True, null=True, default=3)
     location_lat = models.FloatField(blank=True, null=True)
     location_lng = models.FloatField(blank=True, null=True)
 

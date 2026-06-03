@@ -3177,12 +3177,12 @@ export default function Dashboard(){
                           <div className="fw-semibold mb-2">Branches</div>
                           <div className="table-responsive">
                             <table className="table table-sm align-middle dash-table">
-                              <thead><tr><th>Name</th><th>Address</th><th>Admin Email</th><th></th></tr></thead>
+                              <thead><tr><th>Name</th><th>Address</th><th>Admin Details</th><th></th></tr></thead>
                               <tbody>
                                 {(() => {
                                   const q = structSearchOpen ? structQuery.trim().toLowerCase() : ''
                                   let filtered = q
-                                    ? branches.filter((b) => `${b.name} ${b.address || ''} ${b.admin_info?.email || ''}`.toLowerCase().includes(q))
+                                    ? branches.filter((b) => `${b.name} ${b.address || ''} ${b.admin_info?.name || ''} ${b.admin_info?.email || ''} ${b.admin_info?.staff_id || ''}`.toLowerCase().includes(q))
                                     : branches
                                   const cmp = (a, b) => {
                                     const dir = structSortDir === 'desc' ? -1 : 1
@@ -3203,7 +3203,17 @@ export default function Dashboard(){
                                         <tr key={b.id}>
                                           <td className="fw-semibold"><div className="text-truncate dash-td-truncate">{b.name}</div></td>
                                           <td><div className="text-truncate dash-td-truncate">{b.address || '—'}</div></td>
-                                          <td><div className="text-truncate dash-td-truncate">{b.admin_info?.email || '—'}</div></td>
+                                          <td>
+                                            {b.admin_info ? (
+                                              <div className="dash-admin-cell">
+                                                <div className="dash-admin-name">{b.admin_info.name || '—'}</div>
+                                                <div className="dash-admin-meta">
+                                                  <div className="dash-admin-email">{b.admin_info.email || '—'}</div>
+                                                  <div className="dash-admin-id">{b.admin_info.staff_id || '—'}</div>
+                                                </div>
+                                              </div>
+                                            ) : '—'}
+                                          </td>
                                           <td className="text-end">
                                             <div className="btn-group">
                                               <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setEditBranch(b)} aria-label="Edit branch">
@@ -3985,7 +3995,7 @@ export default function Dashboard(){
                                     className={`form-control ${fieldError(profileFormErrors, 'late_time') ? 'is-invalid' : ''}`}
                                     type="time"
                                     name="late_time"
-                                    defaultValue={profile?.late_time || ''}
+                                    defaultValue={profile?.late_time || '08:30'}
                                     onChange={() => clearFieldError(setProfileFormErrors, 'late_time')}
                                   />
                                   {fieldError(profileFormErrors, 'late_time') && (
@@ -3999,7 +4009,7 @@ export default function Dashboard(){
                                     className={`form-control ${fieldError(profileFormErrors, 'closing_time') ? 'is-invalid' : ''}`}
                                     type="time"
                                     name="closing_time"
-                                    defaultValue={profile?.closing_time || ''}
+                                    defaultValue={profile?.closing_time || '16:00'}
                                     onChange={() => clearFieldError(setProfileFormErrors, 'closing_time')}
                                   />
                                   {fieldError(profileFormErrors, 'closing_time') && (
@@ -4015,7 +4025,7 @@ export default function Dashboard(){
                                     min="0"
                                     step="1"
                                     name="max_days_late"
-                                    defaultValue={profile?.max_days_late ?? ''}
+                                    defaultValue={profile?.max_days_late ?? 5}
                                     onChange={() => clearFieldError(setProfileFormErrors, 'max_days_late')}
                                   />
                                   {fieldError(profileFormErrors, 'max_days_late') && (
@@ -4030,7 +4040,7 @@ export default function Dashboard(){
                                     min="0"
                                     step="1"
                                     name="max_days_absent"
-                                    defaultValue={profile?.max_days_absent ?? ''}
+                                    defaultValue={profile?.max_days_absent ?? 3}
                                     onChange={() => clearFieldError(setProfileFormErrors, 'max_days_absent')}
                                   />
                                   {fieldError(profileFormErrors, 'max_days_absent') && (

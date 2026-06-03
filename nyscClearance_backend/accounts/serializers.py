@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
+from datetime import time
 import logging
 from pathlib import Path
 from rest_framework import serializers
@@ -73,7 +74,14 @@ class OrganizationRegisterSerializer(serializers.ModelSerializer):
         # Create initial profile with optional coordinates
         OrganizationProfile.objects.get_or_create(
             user=user,
-            defaults={'location_lat': loc_lat, 'location_lng': loc_lng}
+            defaults={
+                'location_lat': loc_lat,
+                'location_lng': loc_lng,
+                'late_time': time(8, 30),
+                'closing_time': time(16, 0),
+                'max_days_late': 5,
+                'max_days_absent': 3,
+            }
         )
 
         return user
