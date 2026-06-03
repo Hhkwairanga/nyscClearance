@@ -160,6 +160,10 @@ export default function Dashboard(){
   const [editHoliday, setEditHoliday] = useState(null)
   const [editHolidayForm, setEditHolidayForm] = useState(null)
 
+  const branchHeaderInfo = me?.role === 'BRANCH'
+    ? (branches.find((item) => item.admin_info && item.admin_info.email === me?.email) || branches[0] || null)
+    : null
+
   // When a full-screen loading overlay is shown (e.g. bulk imports), hide global chrome (top navbar + footer).
   useEffect(() => {
     const cls = 'hide-app-chrome'
@@ -2492,9 +2496,14 @@ export default function Dashboard(){
           <div className="dash-brand">
             <div className="d-flex align-items-center gap-2">
               {logoUrl ? <img src={logoUrl} alt="Organization Logo" className="org-logo"/> : <div className="org-logo-placeholder"/>}
-              <div className="min-w-0">
-                <div className="fw-semibold small text-truncate">{me?.name || 'Dashboard'}</div>
-                <div className="text-muted small text-truncate">{me?.email}</div>
+              <div className="min-w-0 dash-brand-copy">
+                <div className="dash-brand-name">{me?.name || 'Dashboard'}</div>
+                <div className="dash-brand-email">{me?.email}</div>
+                {me?.role === 'BRANCH' && (
+                  <div className="dash-brand-meta">
+                    <span className="dash-brand-badge">{branchHeaderInfo?.admin_info?.staff_id || 'No ID'}</span>
+                  </div>
+                )}
               </div>
             </div>
             <button className="btn btn-sm btn-outline-secondary d-lg-none" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
