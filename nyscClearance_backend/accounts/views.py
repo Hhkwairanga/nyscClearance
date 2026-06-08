@@ -67,7 +67,7 @@ from .tokens import validate_email_token, generate_email_token
 from .models import OrganizationProfile, BranchOffice, Department, Unit, CorpMember, PublicHoliday, LeaveRequest, Notification, AttendanceLog, WalletAccount, WalletTransaction, ClearanceOverride, TempFaceEncoding
 from .models import QueryRecord
 from .models import NationalHoliday
-from .models import SubscriptionPlanSetting, OrganizationSubscription, SubscriptionPayment, ClearanceAccess, SystemSetting, PaystackConfig
+from .models import SubscriptionPlanSetting, OrganizationSubscription, SubscriptionPayment, ClearanceAccess, SystemSetting, PaystackConfig, GoogleMapsConfig
 from .services.holidays import (
     ensure_national_holidays,
     is_holiday_for_org,
@@ -1010,7 +1010,7 @@ class CSRFView(APIView):
 
 def _admin_config_version():
     timestamps = []
-    for model_cls in (SystemSetting, SubscriptionPlanSetting, PaystackConfig):
+    for model_cls in (SystemSetting, SubscriptionPlanSetting, PaystackConfig, GoogleMapsConfig):
         try:
             latest = model_cls.objects.aggregate(latest=models.Max('updated_at')).get('latest')
             if latest:
@@ -1072,6 +1072,103 @@ class ConfigView(APIView):
             'debug': bool(getattr(settings, 'DEBUG', False)),
         }
         return Response(data)
+
+
+def _active_google_maps_config():
+    return GoogleMapsConfig.active()
+
+
+def _google_maps_server_key(config):
+    if not config:
+        return ''
+    return (config.server_api_key or config.browser_api_key or '').strip()
+
+
+class GoogleMapsConfigView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        config = _active_google_maps_config()
+        browser_key = (getattr(config, 'browser_api_key', '') or '').strip()
+        return Response({
+            'configured': bool(config and browser_key),
+            'browser_api_key': browser_key,
+            'map_id': (getattr(config, 'map_id', '') or '').strip(),
+        })
+
+
+class GoogleMapsGeocodeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        query = (request.query_params.get('q') or '').strip()
+        if len(query) < 3:
+            return Response({'results': []})
+        config = _active_google_maps_config()
+        api_key = _google_maps_server_key(config)
+        if not api_key:
+            return Response({'detail': 'Google Maps credentials are not configured.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            res = requests.get(
+                'https://maps.googleapis.com/maps/api/geocode/json',
+                params={'address': query, 'key': api_key, 'region': 'ng'},
+                timeout=10,
+            )
+            res.raise_for_status()
+            payload = res.json()
+        except Exception:
+            return Response({'detail': 'Unable to reach Google Maps geocoding.'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        if payload.get('status') not in ('OK', 'ZERO_RESULTS'):
+            return Response({'detail': payload.get('error_message') or payload.get('status') or 'Google Maps geocoding failed.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        results = []
+        for item in payload.get('results', [])[:6]:
+            loc = ((item.get('geometry') or {}).get('location') or {})
+            lat = loc.get('lat')
+            lng = loc.get('lng')
+            if lat is None or lng is None:
+                continue
+            results.append({
+                'id': item.get('place_id') or item.get('formatted_address') or f'{lat},{lng}',
+                'label': item.get('formatted_address') or '',
+                'lat': lat,
+                'lng': lng,
+            })
+        return Response({'results': results})
+
+
+class GoogleMapsReverseGeocodeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        lat = request.query_params.get('lat')
+        lng = request.query_params.get('lng')
+        try:
+            lat_f = float(lat)
+            lng_f = float(lng)
+        except Exception:
+            return Response({'detail': 'lat and lng are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        config = _active_google_maps_config()
+        api_key = _google_maps_server_key(config)
+        if not api_key:
+            return Response({'detail': 'Google Maps credentials are not configured.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            res = requests.get(
+                'https://maps.googleapis.com/maps/api/geocode/json',
+                params={'latlng': f'{lat_f},{lng_f}', 'key': api_key},
+                timeout=10,
+            )
+            res.raise_for_status()
+            payload = res.json()
+        except Exception:
+            return Response({'detail': 'Unable to reach Google Maps reverse geocoding.'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        if payload.get('status') not in ('OK', 'ZERO_RESULTS'):
+            return Response({'detail': payload.get('error_message') or payload.get('status') or 'Google Maps reverse geocoding failed.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        first = (payload.get('results') or [{}])[0]
+        return Response({'address': first.get('formatted_address') or ''})
 
 
 class LoginView(APIView):

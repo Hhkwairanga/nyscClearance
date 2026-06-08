@@ -17,6 +17,7 @@ from .models import (
     WalletTransaction,
     SystemSetting,
     PaystackConfig,
+    GoogleMapsConfig,
     SubscriptionPlanSetting,
     OrganizationSubscription,
     SubscriptionPayment,
@@ -180,6 +181,21 @@ class SystemSettingAdmin(admin.ModelAdmin):
 class PaystackConfigAdmin(admin.ModelAdmin):
     list_display = ("public_key", "is_active", "updated_at")
     search_fields = ("public_key",)
+
+
+@admin.register(GoogleMapsConfig)
+class GoogleMapsConfigAdmin(admin.ModelAdmin):
+    list_display = ("name", "is_active", "has_browser_key", "has_server_key", "map_id", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "map_id")
+
+    def has_browser_key(self, obj):
+        return bool(obj.browser_api_key)
+    has_browser_key.boolean = True
+
+    def has_server_key(self, obj):
+        return bool(obj.server_api_key)
+    has_server_key.boolean = True
 
 
 @admin.register(SubscriptionPlanSetting)

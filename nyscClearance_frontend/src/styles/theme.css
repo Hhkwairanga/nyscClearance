@@ -549,7 +549,7 @@ body.hide-app-chrome .dash-mini-footer{ display:none !important; }
 thead .dash-action-cell{ z-index: 3; background: #fff; }
 .dash-td-truncate-wide{ max-width: clamp(220px, 32vw, 560px); }
 .dash-table-search{ width: min(360px, 100%); }
-.dash-admin-cell{ min-width: 0; }
+.dash-admin-cell{ min-width: 260px; }
 .dash-admin-name{
   font-weight: 700;
   line-height: 1.25;
@@ -557,18 +557,19 @@ thead .dash-action-cell{ z-index: 3; background: #fff; }
   word-break: break-word;
 }
 .dash-admin-meta{
-  display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(110px, 3fr);
-  gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-top: 4px;
   font-size: .875rem;
   color: rgba(0,0,0,.66);
+  white-space: nowrap;
 }
 .dash-admin-email,
+.dash-admin-separator,
 .dash-admin-id{
-  min-width: 0;
-  white-space: normal;
-  word-break: break-word;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* Organisation profile view */
@@ -599,6 +600,17 @@ thead .dash-action-cell{ z-index: 3; background: #fff; }
 .dash-form-section .row{ margin-left: 0; margin-right: 0; }
 
 /* Geofence picker */
+.geofence-search-row{
+  display:flex;
+  gap: 8px;
+}
+.geofence-search-row .form-control{
+  min-width: 0;
+}
+.geofence-search-row .btn{
+  flex: 0 0 auto;
+  min-width: 96px;
+}
 .geofence-picker .geofence-suggest{
   position:absolute;
   top: calc(100% + 6px);
@@ -620,7 +632,53 @@ thead .dash-action-cell{ z-index: 3; background: #fff; }
   background:#fff;
 }
 .geofence-picker button.geofence-suggest-item:hover{ background:#f6f8f4; }
-.geofence-map{ border: 1px solid #edf0ea; border-radius: 14px; overflow:hidden; }
+@media (max-width: 575px){
+  .geofence-search-row{
+    flex-direction: column;
+  }
+  .geofence-search-row .btn{
+    width: 100%;
+  }
+}
+.google-map-shell,
+.geofence-map{
+  position: relative;
+  border: 1px solid #edf0ea;
+  border-radius: 14px;
+  overflow:hidden;
+  background:#f7faf7;
+}
+.google-map-canvas{
+  width:100%;
+  height:100%;
+}
+.google-map-empty{
+  height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 18px;
+  color: rgba(0,0,0,.62);
+  text-align:center;
+  font-size: 13px;
+}
+.google-map-locate{
+  position:absolute;
+  top:10px;
+  left:10px;
+  z-index:2;
+  width:36px;
+  height:36px;
+  border:1px solid #d8dfd1;
+  border-radius: 8px;
+  background:#fff;
+  color:#2c3a16;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow: 0 8px 20px rgba(19,28,47,.08);
+}
+.google-map-locate:disabled{ opacity:.65; }
 
 .dash-kpi{
   display:flex;

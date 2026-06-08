@@ -1,94 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
+import { Crosshair } from 'lucide-react'
+import api from '../api/axios'
+import { loadGoogleMaps } from '../utils/googleMaps'
 
-const defaultCenter = { lat: 9.082, lng: 8.6753 } // Nigeria
+const defaultCenter = { lat: 9.082, lng: 8.6753 }
+const minSearchLength = 4
 
-function Recenter({ center, zoom }) {
-  const map = useMap()
-  useEffect(() => {
-    if (!center?.lat || !center?.lng) return
-    map.setView([center.lat, center.lng], zoom)
-  }, [center?.lat, center?.lng, zoom, map])
+function normalizePosition(lat, lng){
+  const la = Number(lat)
+  const lo = Number(lng)
+  if(Number.isFinite(la) && Number.isFinite(lo) && (la !== 0 || lo !== 0)) return { lat: la, lng: lo }
   return null
-}
-
-function MapClick({ onPick }) {
-  useMapEvents({
-    click: (e) => {
-      onPick?.({ lat: e.latlng.lat.toFixed(6), lng: e.latlng.lng.toFixed(6) })
-    },
-  })
-  return null
-}
-
-function LocateControl({ onPick }) {
-  const map = useMap()
-  async function reverseGeocode(lat, lng) {
-    try {
-      const url = new URL('https://nominatim.openstreetmap.org/reverse')
-      url.searchParams.set('lat', String(lat))
-      url.searchParams.set('lon', String(lng))
-      url.searchParams.set('format', 'json')
-      url.searchParams.set('addressdetails', '1')
-      const res = await fetch(url.toString(), { headers: { Accept: 'application/json' } })
-      if (!res.ok) return null
-      const data = await res.json()
-      return data?.display_name || null
-    } catch (e) {
-      return null
-    }
-  }
-
-  useEffect(() => {
-    const control = L.control({ position: 'topleft' })
-    control.onAdd = () => {
-      const container = L.DomUtil.create('div', 'leaflet-bar')
-      const btn = L.DomUtil.create('a', '', container)
-      btn.href = '#'
-      btn.title = 'Use my current location'
-      btn.innerHTML = '📍'
-      btn.style.width = '34px'
-      btn.style.height = '34px'
-      btn.style.lineHeight = '34px'
-      btn.style.textAlign = 'center'
-      btn.style.fontSize = '18px'
-      L.DomEvent.on(btn, 'click', (e) => {
-        L.DomEvent.stopPropagation(e)
-        L.DomEvent.preventDefault(e)
-        if (!navigator.geolocation) return
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            const { latitude, longitude } = pos.coords
-            const next = { lat: latitude.toFixed(6), lng: longitude.toFixed(6) }
-            const addr = await reverseGeocode(latitude, longitude)
-            onPick?.({ ...next, address: addr || null })
-            map.setView([latitude, longitude], 16)
-          },
-          () => {},
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        )
-      })
-      return container
-    }
-    control.addTo(map)
-    return () => {
-      try {
-        control.remove()
-      } catch (e) {}
-    }
-  }, [map, onPick])
-  return null
-}
-
-function useDebounced(value, delayMs) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delayMs)
-    return () => clearTimeout(id)
-  }, [value, delayMs])
-  return debounced
 }
 
 export default function GeofencePicker({
@@ -99,99 +21,181 @@ export default function GeofencePicker({
   onLatLngChange,
   height = 260,
 }) {
-  const markerPos = useMemo(() => {
-    const la = Number(lat)
-    const lo = Number(lng)
-    if (Number.isFinite(la) && Number.isFinite(lo) && (la !== 0 || lo !== 0)) return { lat: la, lng: lo }
-    return null
-  }, [lat, lng])
+  const markerPos = useMemo(() => normalizePosition(lat, lng), [lat, lng])
+  const mapEl = useRef(null)
+  const mapRef = useRef(null)
+  const markerRef = useRef(null)
+  const lastRequestRef = useRef(0)
+  const searchCacheRef = useRef(new Map())
+  const reverseTimeoutRef = useRef(null)
 
   const [open, setOpen] = useState(false)
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
+  const [reverseLoading, setReverseLoading] = useState(false)
   const [error, setError] = useState(null)
-  const lastRequestRef = useRef(0)
+  const [mapError, setMapError] = useState('')
+  const [locating, setLocating] = useState(false)
 
-  const debouncedAddress = useDebounced(address || '', 450)
+  const center = markerPos || defaultCenter
+  const searchQuery = String(address || '').trim()
 
-  const markerIcon = useMemo(
-    () =>
-      new L.Icon({
-        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-      }),
-    []
-  )
+  async function reverseGeocode(next){
+    setReverseLoading(true)
+    try{
+      const res = await api.get('/api/auth/maps/reverse/', { params: next })
+      const label = String(res.data?.address || '').trim()
+      if(label) onAddressChange?.(label)
+    }catch(e){
+      setError(e?.response?.data?.detail || e?.message || 'Could not resolve address for this location.')
+    }finally{
+      setReverseLoading(false)
+    }
+  }
 
-  useEffect(() => {
-    const q = debouncedAddress.trim()
-    if (q.length < 3) {
+  function queueReverseGeocode(next){
+    window.clearTimeout(reverseTimeoutRef.current)
+    reverseTimeoutRef.current = window.setTimeout(() => reverseGeocode(next), 700)
+  }
+
+  function pickPosition(next, shouldReverse = true){
+    const clean = { lat: Number(next.lat).toFixed(6), lng: Number(next.lng).toFixed(6) }
+    onLatLngChange?.(clean)
+    markerRef.current?.setPosition({ lat: Number(clean.lat), lng: Number(clean.lng) })
+    mapRef.current?.setCenter({ lat: Number(clean.lat), lng: Number(clean.lng) })
+    if(shouldReverse) queueReverseGeocode(clean)
+  }
+
+  async function searchAddress(){
+    const q = searchQuery
+    setOpen(true)
+    setError(null)
+
+    if (q.length < minSearchLength) {
       setResults([])
-      setError(null)
+      setError(`Enter at least ${minSearchLength} characters before searching.`)
+      return
+    }
+
+    const cacheKey = q.toLowerCase()
+    if(searchCacheRef.current.has(cacheKey)){
+      setResults(searchCacheRef.current.get(cacheKey))
       return
     }
 
     const reqId = Date.now()
     lastRequestRef.current = reqId
     setLoading(true)
-    setError(null)
 
+    try {
+      const res = await api.get('/api/auth/maps/geocode/', { params: { q } })
+      if (lastRequestRef.current !== reqId) return
+      const nextResults = Array.isArray(res.data?.results) ? res.data.results : []
+      searchCacheRef.current.set(cacheKey, nextResults)
+      setResults(nextResults)
+      if(nextResults.length === 0) setError('No matching address found. Try adding city, state, or landmark.')
+    } catch (e) {
+      if (lastRequestRef.current !== reqId) return
+      setResults([])
+      setError(e?.response?.data?.detail || e?.message || 'Failed to search address.')
+    } finally {
+      if (lastRequestRef.current === reqId) setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
     ;(async () => {
-      try {
-        const url = new URL('https://nominatim.openstreetmap.org/search')
-        url.searchParams.set('q', q)
-        url.searchParams.set('format', 'json')
-        url.searchParams.set('addressdetails', '1')
-        url.searchParams.set('limit', '6')
-
-        const res = await fetch(url.toString(), {
-          headers: {
-            Accept: 'application/json',
-          },
+      try{
+        const maps = await loadGoogleMaps()
+        if(cancelled || !mapEl.current || mapRef.current) return
+        const map = new maps.Map(mapEl.current, {
+          center,
+          zoom: markerPos ? 14 : 6,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
         })
-        if (!res.ok) throw new Error('Failed to fetch suggestions')
-        const data = await res.json()
-        if (lastRequestRef.current !== reqId) return
-        setResults(
-          (Array.isArray(data) ? data : []).map((r) => ({
-            id: `${r.place_id}`,
-            label: r.display_name,
-            lat: Number(r.lat),
-            lng: Number(r.lon),
-          }))
-        )
-      } catch (e) {
-        if (lastRequestRef.current !== reqId) return
-        setError(e?.message || 'Failed to fetch suggestions')
-      } finally {
-        if (lastRequestRef.current === reqId) setLoading(false)
+        const marker = new maps.Marker({
+          map,
+          position: center,
+          draggable: true,
+        })
+        marker.addListener('dragend', () => {
+          const pos = marker.getPosition()
+          if(pos) pickPosition({ lat: pos.lat(), lng: pos.lng() })
+        })
+        map.addListener('click', (event) => {
+          pickPosition({ lat: event.latLng.lat(), lng: event.latLng.lng() })
+        })
+        mapRef.current = map
+        markerRef.current = marker
+      }catch(e){
+        if(!cancelled) setMapError(e?.message || 'Google Maps could not be loaded.')
       }
     })()
-  }, [debouncedAddress])
+    return () => { cancelled = true }
+  }, [])
 
-  const center = markerPos || defaultCenter
+  useEffect(() => {
+    if(!markerPos || !mapRef.current || !markerRef.current) return
+    markerRef.current.setPosition(markerPos)
+    mapRef.current.setCenter(markerPos)
+    if(mapRef.current.getZoom() < 14) mapRef.current.setZoom(14)
+  }, [markerPos?.lat, markerPos?.lng])
+
+  useEffect(() => {
+    return () => window.clearTimeout(reverseTimeoutRef.current)
+  }, [])
+
+  function useCurrentLocation(){
+    if(!navigator.geolocation) return
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const next = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        pickPosition(next)
+        mapRef.current?.setZoom(16)
+        setLocating(false)
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
+  }
 
   return (
     <div className="geofence-picker">
       <label className="form-label">Branch Address</label>
       <div className="position-relative">
-        <input
-          className="form-control"
-          value={address}
-          onChange={(e) => {
-            onAddressChange?.(e.target.value)
-            setOpen(true)
-          }}
-          onFocus={() => setOpen(true)}
-          placeholder="Start typing address…"
-        />
+        <div className="geofence-search-row">
+          <input
+            className="form-control"
+            value={address}
+            onChange={(e) => {
+              onAddressChange?.(e.target.value)
+              setResults([])
+              setError(null)
+              setOpen(false)
+            }}
+            onFocus={() => {
+              if(results.length > 0 || error) setOpen(true)
+            }}
+            onKeyDown={(e) => {
+              if(e.key === 'Enter'){
+                e.preventDefault()
+                searchAddress()
+              }
+            }}
+            placeholder="Enter branch address, city, or landmark"
+          />
+          <button type="button" className="btn btn-primary" onClick={searchAddress} disabled={loading}>
+            {loading ? 'Searching...' : 'Search'}
+          </button>
+        </div>
 
         {open && (loading || results.length > 0 || error) && (
           <div className="geofence-suggest">
-            {loading && <div className="geofence-suggest-item text-muted">Searching…</div>}
+            {loading && <div className="geofence-suggest-item text-muted">Searching...</div>}
             {error && <div className="geofence-suggest-item text-danger">{error}</div>}
             {!loading && !error && results.map((r) => (
               <button
@@ -200,14 +204,14 @@ export default function GeofencePicker({
                 className="geofence-suggest-item"
                 onClick={() => {
                   onAddressChange?.(r.label)
-                  onLatLngChange?.({ lat: r.lat, lng: r.lng })
+                  pickPosition({ lat: r.lat, lng: r.lng }, false)
                   setOpen(false)
                 }}
               >
                 {r.label}
               </button>
             ))}
-            {!loading && !error && results.length === 0 && debouncedAddress.trim().length >= 3 && (
+            {!loading && !error && results.length === 0 && searchQuery.length >= minSearchLength && (
               <div className="geofence-suggest-item text-muted">No matches.</div>
             )}
           </div>
@@ -235,31 +239,21 @@ export default function GeofencePicker({
         </div>
       </div>
 
-      <div className="geofence-map mt-2" style={{ height }}>
-        <MapContainer center={[center.lat, center.lng]} zoom={markerPos ? 14 : 6} style={{ height: '100%', width: '100%' }}>
-          <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          <Recenter center={center} zoom={markerPos ? 14 : 6} />
-          <LocateControl
-            onPick={({ lat, lng, address: addr }) => {
-              onLatLngChange?.({ lat, lng })
-              if (addr) onAddressChange?.(addr)
-            }}
-          />
-          <MapClick onPick={onLatLngChange} />
-          <Marker
-            position={[center.lat, center.lng]}
-            draggable
-            icon={markerIcon}
-            eventHandlers={{
-              dragend: (e) => {
-                const pos = e.target.getLatLng()
-                onLatLngChange?.({ lat: pos.lat.toFixed(6), lng: pos.lng.toFixed(6) })
-              },
-            }}
-          />
-        </MapContainer>
+      <div className="google-map-shell mt-2" style={{ height }}>
+        {mapError ? (
+          <div className="google-map-empty">{mapError}</div>
+        ) : (
+          <>
+            <div ref={mapEl} className="google-map-canvas" />
+            <button className="google-map-locate" type="button" onClick={useCurrentLocation} disabled={locating} title="Use my current location">
+              <Crosshair size={17} />
+            </button>
+          </>
+        )}
       </div>
-      <div className="form-text">Tip: pick a suggestion, click the map, or use the 📍 button.</div>
+      <div className="form-text">
+        {reverseLoading ? 'Resolving address from selected coordinates...' : 'Tip: search once, pick a result, then drag or click the map only if you need to fine-tune.'}
+      </div>
     </div>
   )
 }

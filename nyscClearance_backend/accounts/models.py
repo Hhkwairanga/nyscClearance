@@ -388,6 +388,29 @@ class PaystackConfig(models.Model):
         return f"Paystack ({'active' if self.is_active else 'inactive'})"
 
 
+class GoogleMapsConfig(models.Model):
+    """Google Maps credentials managed from Django admin."""
+
+    name = models.CharField(max_length=120, default='Default Google Maps Config')
+    browser_api_key = models.CharField(max_length=255, blank=True)
+    server_api_key = models.CharField(max_length=255, blank=True)
+    map_id = models.CharField(max_length=120, blank=True)
+    is_active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Google Maps Config'
+        verbose_name_plural = 'Google Maps Config'
+
+    def __str__(self):
+        return f"{self.name} ({'active' if self.is_active else 'inactive'})"
+
+    @classmethod
+    def active(cls):
+        return cls.objects.filter(is_active=True).order_by('-updated_at', '-id').first()
+
+
 class SubscriptionPlanSetting(models.Model):
     PLAN_CHOICES = (
         ('STARTER', 'Starter'),

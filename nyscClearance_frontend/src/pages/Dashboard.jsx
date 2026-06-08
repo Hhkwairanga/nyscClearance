@@ -269,19 +269,15 @@ export default function Dashboard(){
     if(typeof lat !== 'number' || typeof lng !== 'number') return
     if(branchLocationAddressTouched) return
 
-    const ctrl = new AbortController()
     const t = setTimeout(async () => {
       try{
-        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`
-        const res = await fetch(url, { signal: ctrl.signal, headers: { 'Accept': 'application/json' } })
-        if(!res.ok) return
-        const data = await res.json()
-        const label = String(data?.display_name || '').trim()
+        const res = await api.get('/api/auth/maps/reverse/', { params: { lat, lng } })
+        const label = String(res.data?.address || '').trim()
         if(label) setBranchLocationAddress(label)
       }catch(e){}
     }, 500)
 
-    return () => { clearTimeout(t); ctrl.abort() }
+    return () => { clearTimeout(t) }
   }, [showBranchLocation, branchLocationPos?.lat, branchLocationPos?.lng, branchLocationAddressTouched])
 
   useEffect(() => {
@@ -3217,8 +3213,9 @@ export default function Dashboard(){
                                               <div className="dash-admin-cell">
                                                 <div className="dash-admin-name">{b.admin_info.name || '—'}</div>
                                                 <div className="dash-admin-meta">
-                                                  <div className="dash-admin-email">{b.admin_info.email || '—'}</div>
-                                                  <div className="dash-admin-id">{b.admin_info.staff_id || '—'}</div>
+                                                  <span className="dash-admin-email">{b.admin_info.email || '—'}</span>
+                                                  <span className="dash-admin-separator">||</span>
+                                                  <span className="dash-admin-id">{b.admin_info.staff_id || '—'}</span>
                                                 </div>
                                               </div>
                                             ) : '—'}

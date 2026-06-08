@@ -1,82 +1,104 @@
-import React, { useEffect, useRef } from 'react'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import pinUrl from '../assets/location-pin.svg'
+import React, { useEffect, useRef, useState } from 'react'
+import { Crosshair } from 'lucide-react'
+import { loadGoogleMaps } from '../utils/googleMaps'
+
+const defaultCenter = { lat: 9.082, lng: 8.6753 }
+
+function normalizePosition(value){
+  const lat = Number(value?.lat)
+  const lng = Number(value?.lng)
+  if(Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)){
+    return { lat, lng }
+  }
+  return null
+}
 
 export default function MapPicker({ value, onChange, height=280, zoom=6 }){
-  const mapRef = useRef(null)
   const mapEl = useRef(null)
+  const mapRef = useRef(null)
+  const markerRef = useRef(null)
+  const [error, setError] = useState('')
+  const [locating, setLocating] = useState(false)
 
   useEffect(() => {
-    if(!mapEl.current) return
-    if(!mapRef.current){
-      const locIcon = L.icon({
-        iconUrl: pinUrl,
-        iconSize: [32, 48],
-        iconAnchor: [16, 48],
-        popupAnchor: [0, -48],
-      })
-      const center = value?.lat && value?.lng ? [value.lat, value.lng] : [9.0820, 8.6753] // Nigeria center
-      const map = L.map(mapEl.current).setView(center, zoom)
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map)
-      const marker = L.marker(center, { draggable: true, icon: locIcon }).addTo(map)
-      marker.on('dragend', () => {
-        const pos = marker.getLatLng()
-        onChange && onChange({ lat: pos.lat, lng: pos.lng })
-      })
-      map.on('click', (e) => {
-        marker.setLatLng(e.latlng)
-        onChange && onChange({ lat: e.latlng.lat, lng: e.latlng.lng })
-      })
-
-      // Add a "Use my location" control
-      const locateControl = L.control({ position: 'topleft' })
-      locateControl.onAdd = () => {
-        const container = L.DomUtil.create('div', 'leaflet-bar')
-        const btn = L.DomUtil.create('a', '', container)
-        btn.href = '#'
-        btn.title = 'Use my current location'
-        btn.innerHTML = '📍'
-        btn.style.width = '34px'
-        btn.style.height = '34px'
-        btn.style.lineHeight = '34px'
-        btn.style.textAlign = 'center'
-        btn.style.fontSize = '18px'
-        L.DomEvent.on(btn, 'click', (e) => {
-          L.DomEvent.stopPropagation(e)
-          L.DomEvent.preventDefault(e)
-          if(!navigator.geolocation){
-            console.warn('Geolocation not supported')
-            return
-          }
-          navigator.geolocation.getCurrentPosition((pos) => {
-            const { latitude, longitude } = pos.coords
-            const latlng = [latitude, longitude]
-            marker.setLatLng(latlng)
-            map.setView(latlng, 16)
-            onChange && onChange({ lat: latitude, lng: longitude })
-          }, (err) => {
-            console.warn('Geolocation error:', err?.message || err)
-          }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 })
+    let cancelled = false
+    ;(async () => {
+      try{
+        const maps = await loadGoogleMaps()
+        if(cancelled || !mapEl.current || mapRef.current) return
+        const center = normalizePosition(value) || defaultCenter
+        const map = new maps.Map(mapEl.current, {
+          center,
+          zoom: normalizePosition(value) ? Math.max(zoom, 14) : zoom,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
         })
-        return container
+        const marker = new maps.Marker({
+          map,
+          position: center,
+          draggable: true,
+        })
+        marker.addListener('dragend', () => {
+          const pos = marker.getPosition()
+          if(pos) onChange?.({ lat: pos.lat(), lng: pos.lng() })
+        })
+        map.addListener('click', (event) => {
+          const next = { lat: event.latLng.lat(), lng: event.latLng.lng() }
+          marker.setPosition(next)
+          onChange?.(next)
+        })
+        mapRef.current = map
+        markerRef.current = marker
+      }catch(e){
+        if(!cancelled) setError(e?.message || 'Google Maps could not be loaded.')
       }
-      locateControl.addTo(map)
-      mapRef.current = { map, marker }
-    } else if(value?.lat && value?.lng){
-      mapRef.current.marker.setLatLng([value.lat, value.lng])
-      mapRef.current.map.setView([value.lat, value.lng], mapRef.current.map.getZoom())
-    }
-  }, [value])
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    const next = normalizePosition(value)
+    if(!next || !mapRef.current || !markerRef.current) return
+    markerRef.current.setPosition(next)
+    mapRef.current.setCenter(next)
+  }, [value?.lat, value?.lng])
+
+  function useCurrentLocation(){
+    if(!navigator.geolocation) return
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const next = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        markerRef.current?.setPosition(next)
+        mapRef.current?.setCenter(next)
+        mapRef.current?.setZoom(16)
+        onChange?.(next)
+        setLocating(false)
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
+  }
 
   return (
     <div>
-      <div ref={mapEl} style={{height}} />
+      <div className="google-map-shell" style={{height}}>
+        {error ? (
+          <div className="google-map-empty">{error}</div>
+        ) : (
+          <>
+            <div ref={mapEl} className="google-map-canvas" />
+            <button className="google-map-locate" type="button" onClick={useCurrentLocation} disabled={locating} title="Use my current location">
+              <Crosshair size={17} />
+            </button>
+          </>
+        )}
+      </div>
       <div className="form-text mt-1">
-        Click the 📍 button on the map and grant browser permission to use your current location.
+        Use the location button and grant browser permission to select your current location.
       </div>
     </div>
   )
 }
+
