@@ -1,6 +1,8 @@
 // Centralized API/frontend base + URL helpers
-// API base: use `VITE_API_BASE` in production. Leave empty in local dev to rely on Vite proxy.
-export const API_BASE = (import.meta.env?.VITE_API_BASE || '').replace(/\/$/, '')
+import { defaultApiBase } from '../utils/domain'
+
+// API base: use `VITE_API_BASE` when set. On nyscclearance.com/subdomains, default to api.nyscclearance.com.
+export const API_BASE = (import.meta.env?.VITE_API_BASE || defaultApiBase()).replace(/\/$/, '')
 // Frontend base: explicit `VITE_FRONTEND_URL`, else fall back to current origin
 export const FRONTEND_BASE = (import.meta.env?.VITE_FRONTEND_URL || window.location.origin || '').replace(/\/$/, '')
 

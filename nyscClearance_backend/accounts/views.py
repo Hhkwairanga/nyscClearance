@@ -49,6 +49,7 @@ import hashlib
 import json
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
+from urllib.parse import urlparse
 
 from .serializers import (
     OrganizationRegisterSerializer,
@@ -83,6 +84,33 @@ User = get_user_model()
 
 # In-memory capture state per corper_id
 _CAPTURE_STATE = {}
+
+
+def _frontend_origin_allowed(origin):
+    if not origin:
+        return False
+    try:
+        allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
+    except Exception:
+        allowed = set()
+    if origin in allowed:
+        return True
+    try:
+        parsed = urlparse(origin)
+        root_domain = getattr(settings, 'ROOT_DOMAIN', 'nyscclearance.com')
+        host = (parsed.hostname or '').lower()
+        return parsed.scheme == 'https' and root_domain and (host == root_domain or host.endswith(f'.{root_domain}'))
+    except Exception:
+        return False
+
+
+def _frontend_base_for_request(request):
+    request_origin = request.headers.get('Origin')
+    if _frontend_origin_allowed(request_origin):
+        return request_origin.rstrip('/')
+    return getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')).rstrip('/')
+
+
 _ATTENDANCE_STATE = {}
 
 def _ensure_rgb_uint8(arr):
@@ -402,13 +430,8 @@ def capture_page(request, corper_id: int):
         raise PermissionDenied('Not allowed')
 
     _reset_capture_state(corper_id)
-    # Prefer request Origin if it matches configured FRONTEND_ORIGINS
-    request_origin = request.headers.get('Origin')
-    try:
-        allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
-    except Exception:
-        allowed = set()
-    frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
+    # Prefer request Origin when it matches configured or wildcard frontend domains.
+    frontend_base = _frontend_base_for_request(request)
 
     # Ensure CSRF cookie is set for subsequent POSTs from the page
     try:
@@ -540,13 +563,8 @@ def attendance_page(request):
 
     _reset_attendance_state(cm.id)
 
-    # Prefer request Origin if it matches configured FRONTEND_ORIGINS
-    request_origin = request.headers.get('Origin')
-    try:
-        allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
-    except Exception:
-        allowed = set()
-    frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
+    # Prefer request Origin when it matches configured or wildcard frontend domains.
+    frontend_base = _frontend_base_for_request(request)
 
     # Ensure CSRF cookie is set for JS POSTs from this page
     try:
@@ -894,12 +912,7 @@ class VerifyEmailView(APIView):
 
         # Redirect to frontend page. If user has no usable password, include token for password setup
         # Prefer request Origin if it matches configured FRONTEND_ORIGINS for better DX (5173/5174)
-        request_origin = request.headers.get('Origin')
-        try:
-            allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
-        except Exception:
-            allowed = set()
-        base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
+        base = _frontend_base_for_request(request)
         # If the user has no password (invited admin/corper), send to password set page with token
         role = request.query_params.get('role') or getattr(user, 'role', None)
         # For invited roles (branch admin, corper), always allow setting password on first verify
@@ -1055,6 +1068,7 @@ class ConfigView(APIView):
         data = {
             'api_base': getattr(settings, 'API_BASE_URL', ''),
             'frontend_base': getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', '')),
+            'root_domain': getattr(settings, 'ROOT_DOMAIN', 'nyscclearance.com'),
             'paystack_webhook_url': f"{getattr(settings, 'API_BASE_URL', '').rstrip('/')}/api/auth/paystack/webhook/",
             'csrf_cookie_name': getattr(settings, 'CSRF_COOKIE_NAME', 'csrftoken'),
             'session_cookie_name': getattr(settings, 'SESSION_COOKIE_NAME', 'sessionid'),
@@ -2591,12 +2605,7 @@ def performance_clearance_page(request):
         )
         if exceeded_absent or exceeded_late:
             # Compute frontend base for links
-            request_origin = request.headers.get('Origin')
-            try:
-                allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
-            except Exception:
-                allowed = set()
-            frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
+            frontend_base = _frontend_base_for_request(request)
 
             return render(request, 'clearance_restriction.html', {
                 'month': start.strftime('%B %Y'),
@@ -2624,12 +2633,7 @@ def performance_clearance_page(request):
     if not charged:
         # Deny access nicely with a prompt to fund wallet
         # Compute frontend base for links
-        request_origin = request.headers.get('Origin')
-        try:
-            allowed = set(getattr(settings, 'FRONTEND_ORIGINS', []))
-        except Exception:
-            allowed = set()
-        frontend_base = (request_origin if request_origin in allowed else getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', 'http://localhost:5173'))).rstrip('/')
+        frontend_base = _frontend_base_for_request(request)
 
         return render(request, 'clearance_payment_required.html', {
             'reason': charge_reason,
@@ -4439,7 +4443,7 @@ class PaystackWebhookView(APIView):
     """Paystack webhook handler.
 
     Configure Paystack webhook URL to:
-    - https://api.sahabs.tech/api/auth/paystack/webhook/
+    - https://api.nyscclearance.com/api/auth/paystack/webhook/
     """
 
     authentication_classes = []

@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import api, { ensureCsrf } from '../api/axios'
 import { apiHref } from '../api/urls'
+import { currentEnterpriseSubdomain, enterpriseUrl } from '../utils/domain'
 import { CONFIG_REFRESH_MS, fetchAdminConfigVersion } from '../api/configFreshness'
 import MapPicker from '../components/MapPicker'
 import GeofencePicker from '../components/GeofencePicker'
@@ -90,6 +91,7 @@ export default function Dashboard(){
   const [status, setStatus] = useState(null)
   const [dashboardLoading, setDashboardLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  const activeHostSubdomain = currentEnterpriseSubdomain()
 
   const [reportStart, setReportStart] = useState('')
   const [reportEnd, setReportEnd] = useState('')
@@ -1328,6 +1330,7 @@ export default function Dashboard(){
     const plans = Array.isArray(subscriptionInfo?.plans) ? subscriptionInfo.plans : []
     const current = subscriptionInfo?.current || null
     const payments = Array.isArray(subscriptionInfo?.payments) ? subscriptionInfo.payments : []
+    const enterpriseSubdomainUrl = current?.subdomain ? enterpriseUrl(current.subdomain, '/dashboard/org') : ''
     const hasCurrentPayment = current?.reference && payments.some((payment) => payment.reference === current.reference)
     const subscriptionRows = current?.reference && !hasCurrentPayment
       ? [
@@ -1406,7 +1409,17 @@ export default function Dashboard(){
                       <div className="small text-muted mt-1">
                         {current.reference && <span>Reference: {current.reference}</span>}
                         {current.reference && current.subdomain && <span> · </span>}
-                        {current.subdomain && <span>Subdomain: {current.subdomain}.nyscclearance.com</span>}
+                        {current.subdomain && (
+                          <span>
+                            Subdomain:{' '}
+                            <a href={enterpriseSubdomainUrl || '#'} className="auth-link" target="_blank" rel="noreferrer">
+                              {enterpriseSubdomainUrl.replace(/^https?:\/\//, '')}
+                            </a>
+                          </span>
+                        )}
+                        {activeHostSubdomain && current.subdomain === activeHostSubdomain && (
+                          <span className="badge bg-success ms-2">Current domain</span>
+                        )}
                       </div>
                     )}
                   </>
@@ -1512,7 +1525,19 @@ export default function Dashboard(){
                         <td>{formatDateTime(payment.created_at)}</td>
                         <td>
                           <div>{payment.plan_name}</div>
-                          {payment.admin_managed && <div className="small text-muted">Admin managed{payment.subdomain ? ` · ${payment.subdomain}.nyscclearance.com` : ''}</div>}
+                          {payment.admin_managed && (
+                            <div className="small text-muted">
+                              Admin managed
+                              {payment.subdomain && (
+                                <>
+                                  {' · '}
+                                  <a href={enterpriseUrl(payment.subdomain, '/dashboard/org')} className="auth-link" target="_blank" rel="noreferrer">
+                                    {enterpriseUrl(payment.subdomain).replace(/^https?:\/\//, '')}
+                                  </a>
+                                </>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td>{payment.billing_cycle}</td>
                         <td>

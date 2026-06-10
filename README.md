@@ -56,15 +56,18 @@ Configuration (URLs)
 --------------------
 
 - Frontend → Backend API base:
-  - Set `VITE_API_BASE` (e.g., `https://api.example.com`) for production.
+  - Production on `nyscclearance.com` automatically uses `https://api.nyscclearance.com`.
+  - Set `VITE_API_BASE` only if you need to override this default.
   - Leave it empty in local dev to use the Vite proxy.
+  - Set `VITE_ROOT_DOMAIN=nyscclearance.com` when building for the new primary domain.
   - All API calls and anchor links use helpers in `src/api/urls.js` to resolve against this base.
   - Set `VITE_APP_VERSION` for each production release. If omitted, the Vite build timestamp is used.
 
 - Backend → Frontend origins:
-  - `FRONTEND_ORIGINS` (comma-separated) for CORS/CSRF allowlist.
+  - Production defaults trust `https://nyscclearance.com`, `https://www.nyscclearance.com`, and wildcard enterprise subdomains.
+  - `FRONTEND_ORIGINS` (comma-separated) for extra CORS/CSRF allowlist entries.
   - `FRONTEND_ORIGIN` for server-generated links back to the SPA (e.g., email links).
-  - Change these two to repoint the backend to your deployed frontend domain(s).
+  - `APP_ROOT_DOMAIN=nyscclearance.com` and `APP_API_HOSTNAME=api.nyscclearance.com` control backend host/domain defaults.
 
 Admin Configuration
 -------------------
@@ -155,6 +158,7 @@ Deployment
 - Set secure `DJANGO_SECRET_KEY`, proper `ALLOWED_HOSTS`, and SMTP credentials if used.
 - Create System Settings and Paystack Config in admin.
 - Configure CORS/CSRF to allow your frontend domain(s).
+- For enterprise subdomains, keep wildcard DNS and TLS enabled for `*.nyscclearance.com`; production settings share cookies on `.nyscclearance.com`.
 - Run migrations, then optionally force a major deployment logout:
 
     python manage.py force_logout

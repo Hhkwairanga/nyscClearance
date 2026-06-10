@@ -78,7 +78,11 @@ def _read_deploy_version_file():
     return ''
 
 DEPLOYMENT_VERSION = (os.getenv('DEPLOYMENT_VERSION', '').strip() or _read_deploy_version_file())
-ALLOWED_HOSTS = _csv_env('DJANGO_ALLOWED_HOSTS', ['*'] if DEBUG else [])
+ROOT_DOMAIN = os.getenv('APP_ROOT_DOMAIN', 'nyscclearance.com').strip().strip('.')
+API_HOSTNAME = os.getenv('APP_API_HOSTNAME', f'api.{ROOT_DOMAIN}').strip()
+ROOT_DOMAIN_REGEX = ROOT_DOMAIN.replace('.', r'\.')
+PRODUCTION_ALLOWED_HOSTS = [ROOT_DOMAIN, f'.{ROOT_DOMAIN}', API_HOSTNAME]
+ALLOWED_HOSTS = _csv_env('DJANGO_ALLOWED_HOSTS', ['*'] if DEBUG else PRODUCTION_ALLOWED_HOSTS)
 # If still empty in development (e.g., empty env var), use standard dev hosts
 if DEBUG and not ALLOWED_HOSTS:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]']
@@ -181,21 +185,25 @@ if DEBUG and os.getenv('DJANGO_EMAIL_BACKEND') is None:
 
 # CORS / CSRF
 # Primary frontend URL and API base, plus optional multiple origins for local DX
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
-API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8000').rstrip('/')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173' if DEBUG else f'https://{ROOT_DOMAIN}').rstrip('/')
+API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8000' if DEBUG else f'https://{API_HOSTNAME}').rstrip('/')
 
 FRONTEND_ORIGINS = _csv_env('FRONTEND_ORIGINS', [
     FRONTEND_URL,
+    f'https://www.{ROOT_DOMAIN}',
     'http://localhost:5174',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
 ])
 
 CORS_ALLOWED_ORIGINS = FRONTEND_ORIGINS
+CORS_ALLOWED_ORIGIN_REGEXES = _csv_env('DJANGO_CORS_ALLOWED_ORIGIN_REGEXES', [
+    rf'^https://([a-z0-9-]+\.)?{ROOT_DOMAIN_REGEX}$',
+] if not DEBUG and ROOT_DOMAIN else [])
 
 # CSRF trusted origins come from env (comma-separated). If not provided, trust FRONTEND_URL and
 # local dev variants. In production, set DJANGO_CSRF_TRUSTED_ORIGINS explicitly with https:// URLs.
-CSRF_TRUSTED_ORIGINS = _csv_env('DJANGO_CSRF_TRUSTED_ORIGINS', FRONTEND_ORIGINS)
+CSRF_TRUSTED_ORIGINS = _csv_env('DJANGO_CSRF_TRUSTED_ORIGINS', FRONTEND_ORIGINS + ([f'https://*.{ROOT_DOMAIN}'] if not DEBUG and ROOT_DOMAIN else []))
 CORS_ALLOW_HEADERS = list(default_headers) + [
     'x-csrftoken',
     'cache-control',
@@ -253,9 +261,10 @@ CSRF_COOKIE_HTTPONLY = _bool_env('DJANGO_CSRF_COOKIE_HTTPONLY', False)
 SESSION_COOKIE_SECURE = _bool_env('DJANGO_SESSION_COOKIE_SECURE', not DEBUG)
 CSRF_COOKIE_SECURE = _bool_env('DJANGO_CSRF_COOKIE_SECURE', not DEBUG)
 
-# Optional cookie domains (typically not required). Set if you need a parent domain like .sahabs.tech
-SESSION_COOKIE_DOMAIN = os.getenv('DJANGO_SESSION_COOKIE_DOMAIN') or None
-CSRF_COOKIE_DOMAIN = os.getenv('DJANGO_CSRF_COOKIE_DOMAIN') or None
+# Optional cookie domains. Default to the parent nyscclearance.com domain in production so
+# login/session state can work across enterprise wildcard subdomains and api.nyscclearance.com.
+SESSION_COOKIE_DOMAIN = os.getenv('DJANGO_SESSION_COOKIE_DOMAIN') or (None if DEBUG else f'.{ROOT_DOMAIN}')
+CSRF_COOKIE_DOMAIN = os.getenv('DJANGO_CSRF_COOKIE_DOMAIN') or (None if DEBUG else f'.{ROOT_DOMAIN}')
 
 # Security headers / HTTPS
 SECURE_SSL_REDIRECT = _bool_env('DJANGO_SECURE_SSL_REDIRECT', not DEBUG)

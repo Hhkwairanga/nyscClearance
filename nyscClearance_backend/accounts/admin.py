@@ -251,8 +251,9 @@ class OrganizationSubscriptionAdmin(admin.ModelAdmin):
         org_email = getattr(subscription.org, "email", None)
         if not org_email:
             return
+        root_domain = getattr(settings, 'ROOT_DOMAIN', 'nyscclearance.com')
         subdomain_line = (
-            f"\nOrganization subdomain: {subscription.subdomain}.nyscclearance.com"
+            f"\nOrganization subdomain: https://{subscription.subdomain}.{root_domain}"
             if subscription.subdomain
             else ""
         )

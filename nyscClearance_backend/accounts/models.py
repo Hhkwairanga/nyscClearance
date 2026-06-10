@@ -467,6 +467,13 @@ class OrganizationSubscription(models.Model):
 
     class Meta:
         ordering = ('-updated_at',)
+        constraints = [
+            models.UniqueConstraint(
+                fields=['subdomain'],
+                condition=~models.Q(subdomain=''),
+                name='unique_enterprise_subscription_subdomain',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.org.email} - {self.plan_name} ({self.status})"
