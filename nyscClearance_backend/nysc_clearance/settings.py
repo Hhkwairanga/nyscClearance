@@ -48,6 +48,20 @@ def _load_env_file():
 
 _load_env_file()
 
+
+def _parent_cookie_domain_from_url(url):
+    try:
+        host = urlparse(url).hostname or ''
+    except Exception:
+        host = ''
+    host = host.lower().strip('.')
+    if not host or host in ('localhost', '127.0.0.1', '::1') or host.startswith('127.'):
+        return None
+    parts = host.split('.')
+    if len(parts) < 2:
+        return None
+    return f".{'.'.join(parts[-2:])}"
+
 def _csv_env(name, default_list=None):
     val = os.getenv(name)
     if val is None or not str(val).strip():
@@ -264,10 +278,11 @@ CSRF_COOKIE_HTTPONLY = _bool_env('DJANGO_CSRF_COOKIE_HTTPONLY', False)
 SESSION_COOKIE_SECURE = _bool_env('DJANGO_SESSION_COOKIE_SECURE', not DEBUG)
 CSRF_COOKIE_SECURE = _bool_env('DJANGO_CSRF_COOKIE_SECURE', not DEBUG)
 
-# Optional cookie domains. Default to the parent nyscclearance.com domain in production so
-# login/session state can work across enterprise wildcard subdomains and api.nyscclearance.com.
-SESSION_COOKIE_DOMAIN = os.getenv('DJANGO_SESSION_COOKIE_DOMAIN') or (None if DEBUG else f'.{ROOT_DOMAIN}')
-CSRF_COOKIE_DOMAIN = os.getenv('DJANGO_CSRF_COOKIE_DOMAIN') or (None if DEBUG else f'.{ROOT_DOMAIN}')
+# Optional cookie domains. In production, default to the parent domain of FRONTEND_URL so
+# staging on sahabs.tech uses .sahabs.tech and production uses .nyscclearance.com.
+_DEFAULT_COOKIE_DOMAIN = None if DEBUG else _parent_cookie_domain_from_url(FRONTEND_URL)
+SESSION_COOKIE_DOMAIN = os.getenv('DJANGO_SESSION_COOKIE_DOMAIN') or _DEFAULT_COOKIE_DOMAIN
+CSRF_COOKIE_DOMAIN = os.getenv('DJANGO_CSRF_COOKIE_DOMAIN') or _DEFAULT_COOKIE_DOMAIN
 
 # Security headers / HTTPS
 SECURE_SSL_REDIRECT = _bool_env('DJANGO_SECURE_SSL_REDIRECT', not DEBUG)
