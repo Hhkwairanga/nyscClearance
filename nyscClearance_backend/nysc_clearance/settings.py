@@ -81,7 +81,9 @@ DEPLOYMENT_VERSION = (os.getenv('DEPLOYMENT_VERSION', '').strip() or _read_deplo
 ROOT_DOMAIN = os.getenv('APP_ROOT_DOMAIN', 'nyscclearance.com').strip().strip('.')
 API_HOSTNAME = os.getenv('APP_API_HOSTNAME', f'api.{ROOT_DOMAIN}').strip()
 ROOT_DOMAIN_REGEX = ROOT_DOMAIN.replace('.', r'\.')
-PRODUCTION_ALLOWED_HOSTS = [ROOT_DOMAIN, f'.{ROOT_DOMAIN}', API_HOSTNAME]
+LEGACY_FRONTEND_HOSTNAME = os.getenv('APP_LEGACY_FRONTEND_HOSTNAME', 'nyscclearance.sahabs.tech').strip()
+LEGACY_API_HOSTNAME = os.getenv('APP_LEGACY_API_HOSTNAME', 'api.sahabs.tech').strip()
+PRODUCTION_ALLOWED_HOSTS = [ROOT_DOMAIN, f'.{ROOT_DOMAIN}', API_HOSTNAME, LEGACY_API_HOSTNAME]
 ALLOWED_HOSTS = _csv_env('DJANGO_ALLOWED_HOSTS', ['*'] if DEBUG else PRODUCTION_ALLOWED_HOSTS)
 # If still empty in development (e.g., empty env var), use standard dev hosts
 if DEBUG and not ALLOWED_HOSTS:
@@ -191,6 +193,7 @@ API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8000' if DEBUG else f
 FRONTEND_ORIGINS = _csv_env('FRONTEND_ORIGINS', [
     FRONTEND_URL,
     f'https://www.{ROOT_DOMAIN}',
+    f'https://{LEGACY_FRONTEND_HOSTNAME}',
     'http://localhost:5174',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',

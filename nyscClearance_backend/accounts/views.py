@@ -98,8 +98,12 @@ def _frontend_origin_allowed(origin):
     try:
         parsed = urlparse(origin)
         root_domain = getattr(settings, 'ROOT_DOMAIN', 'nyscclearance.com')
+        legacy_frontend = getattr(settings, 'LEGACY_FRONTEND_HOSTNAME', 'nyscclearance.sahabs.tech')
         host = (parsed.hostname or '').lower()
-        return parsed.scheme == 'https' and root_domain and (host == root_domain or host.endswith(f'.{root_domain}'))
+        return parsed.scheme == 'https' and (
+            (root_domain and (host == root_domain or host.endswith(f'.{root_domain}'))) or
+            (legacy_frontend and host == legacy_frontend)
+        )
     except Exception:
         return False
 
@@ -1069,6 +1073,8 @@ class ConfigView(APIView):
             'api_base': getattr(settings, 'API_BASE_URL', ''),
             'frontend_base': getattr(settings, 'FRONTEND_ORIGIN', getattr(settings, 'FRONTEND_URL', '')),
             'root_domain': getattr(settings, 'ROOT_DOMAIN', 'nyscclearance.com'),
+            'legacy_frontend_host': getattr(settings, 'LEGACY_FRONTEND_HOSTNAME', ''),
+            'legacy_api_host': getattr(settings, 'LEGACY_API_HOSTNAME', ''),
             'paystack_webhook_url': f"{getattr(settings, 'API_BASE_URL', '').rstrip('/')}/api/auth/paystack/webhook/",
             'csrf_cookie_name': getattr(settings, 'CSRF_COOKIE_NAME', 'csrftoken'),
             'session_cookie_name': getattr(settings, 'SESSION_COOKIE_NAME', 'sessionid'),

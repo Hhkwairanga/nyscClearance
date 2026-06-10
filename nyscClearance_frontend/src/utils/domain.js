@@ -1,5 +1,7 @@
 const ROOT_DOMAIN = (import.meta.env?.VITE_ROOT_DOMAIN || 'nyscclearance.com').replace(/^\.+|\.+$/g, '')
 const API_SUBDOMAIN = import.meta.env?.VITE_API_SUBDOMAIN || 'api'
+const LEGACY_FRONTEND_HOST = (import.meta.env?.VITE_LEGACY_FRONTEND_HOST || 'nyscclearance.sahabs.tech').toLowerCase()
+const LEGACY_API_BASE = (import.meta.env?.VITE_LEGACY_API_BASE || 'https://api.sahabs.tech').replace(/\/$/, '')
 
 function currentHost(){
   try{ return window.location.hostname.toLowerCase() }catch{ return '' }
@@ -7,6 +9,10 @@ function currentHost(){
 
 export function isProductionDomain(host = currentHost()){
   return host === ROOT_DOMAIN || host.endsWith(`.${ROOT_DOMAIN}`)
+}
+
+export function isLegacyProductionDomain(host = currentHost()){
+  return Boolean(LEGACY_FRONTEND_HOST) && host === LEGACY_FRONTEND_HOST
 }
 
 export function isReservedSubdomain(subdomain){
@@ -29,6 +35,7 @@ export function enterpriseUrl(subdomain, path = '/'){
 }
 
 export function defaultApiBase(){
+  if(isLegacyProductionDomain()) return LEGACY_API_BASE
   if(!isProductionDomain()) return ''
   return `https://${API_SUBDOMAIN}.${ROOT_DOMAIN}`
 }

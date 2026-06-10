@@ -57,17 +57,21 @@ Configuration (URLs)
 
 - Frontend → Backend API base:
   - Production on `nyscclearance.com` automatically uses `https://api.nyscclearance.com`.
+  - Temporary legacy support keeps `https://nyscclearance.sahabs.tech` pointed at `https://api.sahabs.tech`.
   - Set `VITE_API_BASE` only if you need to override this default.
   - Leave it empty in local dev to use the Vite proxy.
   - Set `VITE_ROOT_DOMAIN=nyscclearance.com` when building for the new primary domain.
+  - Optional legacy overrides: `VITE_LEGACY_FRONTEND_HOST=nyscclearance.sahabs.tech`, `VITE_LEGACY_API_BASE=https://api.sahabs.tech`.
   - All API calls and anchor links use helpers in `src/api/urls.js` to resolve against this base.
   - Set `VITE_APP_VERSION` for each production release. If omitted, the Vite build timestamp is used.
 
 - Backend → Frontend origins:
   - Production defaults trust `https://nyscclearance.com`, `https://www.nyscclearance.com`, and wildcard enterprise subdomains.
+  - Legacy defaults also trust `https://nyscclearance.sahabs.tech` and allow `api.sahabs.tech`.
   - `FRONTEND_ORIGINS` (comma-separated) for extra CORS/CSRF allowlist entries.
   - `FRONTEND_ORIGIN` for server-generated links back to the SPA (e.g., email links).
   - `APP_ROOT_DOMAIN=nyscclearance.com` and `APP_API_HOSTNAME=api.nyscclearance.com` control backend host/domain defaults.
+  - Optional legacy overrides: `APP_LEGACY_FRONTEND_HOSTNAME=nyscclearance.sahabs.tech`, `APP_LEGACY_API_HOSTNAME=api.sahabs.tech`.
 
 Admin Configuration
 -------------------
@@ -159,6 +163,7 @@ Deployment
 - Create System Settings and Paystack Config in admin.
 - Configure CORS/CSRF to allow your frontend domain(s).
 - For enterprise subdomains, keep wildcard DNS and TLS enabled for `*.nyscclearance.com`; production settings share cookies on `.nyscclearance.com`.
+- During migration, old `sahabs.tech` and new `nyscclearance.com` users may need separate logins because browsers cannot share cookies across different parent domains.
 - Run migrations, then optionally force a major deployment logout:
 
     python manage.py force_logout
