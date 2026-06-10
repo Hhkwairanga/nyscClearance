@@ -26,6 +26,7 @@ from django.conf import settings
 from decimal import Decimal
 from datetime import time
 from django.utils import timezone
+import uuid
 
 
 class OrganizationUserManager(BaseUserManager):
@@ -453,11 +454,13 @@ class OrganizationSubscription(models.Model):
 
     org = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='subscription')
     plan = models.ForeignKey(SubscriptionPlanSetting, on_delete=models.PROTECT, related_name='subscriptions')
-    plan_code = models.CharField(max_length=20)
-    plan_name = models.CharField(max_length=80)
+    plan_code = models.CharField(max_length=20, blank=True)
+    plan_name = models.CharField(max_length=80, blank=True)
     billing_cycle = models.CharField(max_length=10, choices=BILLING_CHOICES, default='MONTHLY')
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='ACTIVE')
     amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    reference = models.CharField(max_length=64, unique=True, blank=True)
+    subdomain = models.SlugField(max_length=63, blank=True, help_text='Enterprise organization subdomain, for example "acme" for acme.nyscclearance.com')
     starts_at = models.DateTimeField()
     expires_at = models.DateTimeField()
     updated_at = models.DateTimeField(auto_now=True)
@@ -467,6 +470,16 @@ class OrganizationSubscription(models.Model):
 
     def __str__(self):
         return f"{self.org.email} - {self.plan_name} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        if self.plan:
+            self.plan_code = self.plan.code
+            self.plan_name = self.plan.name
+        if not self.reference:
+            self.reference = f"SUB-ADMIN-{uuid.uuid4().hex[:18]}".upper()
+        if self.subdomain:
+            self.subdomain = self.subdomain.strip().lower()
+        super().save(*args, **kwargs)
 
 
 class SubscriptionPayment(models.Model):

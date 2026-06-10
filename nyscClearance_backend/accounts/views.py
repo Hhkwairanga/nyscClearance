@@ -4091,6 +4091,8 @@ def _subscription_payload(subscription):
         'billing_cycle': subscription.billing_cycle,
         'status': subscription.status,
         'amount_paid': str(subscription.amount_paid),
+        'reference': subscription.reference,
+        'subdomain': subscription.subdomain,
         'starts_at': subscription.starts_at.isoformat() if subscription.starts_at else None,
         'expires_at': subscription.expires_at.isoformat() if subscription.expires_at else None,
     }
@@ -4176,6 +4178,8 @@ class SubscriptionInitializeView(APIView):
         plan = SubscriptionPlanSetting.objects.filter(code=plan_code, is_active=True).first()
         if not plan:
             return Response({'detail': 'Subscription plan not found'}, status=404)
+        if str(plan.code or '').upper() == 'ENTERPRISE':
+            return Response({'detail': 'Enterprise subscriptions are configured by Sahabs support. Please contact us to activate this plan.'}, status=400)
 
         original, discount_amount, charged = _discounted_subscription_amount(plan, billing_cycle)
         if str(plan.code or '').upper() == 'ENTERPRISE' and original <= 0:

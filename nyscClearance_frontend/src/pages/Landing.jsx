@@ -36,6 +36,7 @@ function isEnterpriseCustomPrice(plan, original){
 }
 
 function isEnterpriseCustomPlan(plan){
+  if(String(plan?.code || '').toUpperCase() === 'ENTERPRISE') return true
   return (
     Boolean(plan?.custom_pricing) ||
     isEnterpriseCustomPrice(plan, plan?.original_monthly_price ?? plan?.monthly_price) ||
@@ -49,7 +50,7 @@ function planItems(plan){
   if(code === 'STARTER') return [...common, 'Best for up to 10 corpers']
   if(code === 'BASIC') return [...common, 'Branch management', 'Email support']
   if(code === 'PRO') return [...common, 'Leave & holiday management', 'Role-based dashboard', 'Priority support']
-  return [...common, 'Dedicated onboarding', 'Custom support', 'Scale-ready access']
+  return [...common, 'Dedicated onboarding', 'Organization-specific subdomain', 'Custom support', 'Scale-ready access']
 }
 
 function PriceLine({ label, amount, original }) {

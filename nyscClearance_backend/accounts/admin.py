@@ -1,5 +1,8 @@
 from django.contrib import admin
+from django.contrib import messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.conf import settings
+from django.core.mail import send_mail
 from .models import (
     OrganizationUser,
     OrganizationProfile,
@@ -219,9 +222,56 @@ class SubscriptionPlanSettingAdmin(admin.ModelAdmin):
 
 @admin.register(OrganizationSubscription)
 class OrganizationSubscriptionAdmin(admin.ModelAdmin):
-    list_display = ("org", "plan_name", "billing_cycle", "status", "amount_paid", "starts_at", "expires_at")
+    list_display = ("org", "plan_name", "billing_cycle", "status", "amount_paid", "reference", "subdomain", "starts_at", "expires_at")
     list_filter = ("status", "billing_cycle", "plan_code")
-    search_fields = ("org__email", "org__name", "plan_name")
+    search_fields = ("org__email", "org__name", "plan_name", "reference", "subdomain")
+    readonly_fields = ("reference", "plan_code", "plan_name", "updated_at")
+    fields = (
+        "org",
+        "plan",
+        "plan_code",
+        "plan_name",
+        "billing_cycle",
+        "status",
+        "amount_paid",
+        "reference",
+        "subdomain",
+        "starts_at",
+        "expires_at",
+        "updated_at",
+    )
+
+    def save_model(self, request, obj, form, change):
+        created = not change
+        super().save_model(request, obj, form, change)
+        if created:
+            self._send_subscription_email(request, obj)
+
+    def _send_subscription_email(self, request, subscription):
+        org_email = getattr(subscription.org, "email", None)
+        if not org_email:
+            return
+        subdomain_line = (
+            f"\nOrganization subdomain: {subscription.subdomain}.nyscclearance.com"
+            if subscription.subdomain
+            else ""
+        )
+        subject = "Your NYSC Clearance enterprise subscription is active"
+        message = (
+            f"Hello {subscription.org.name or 'there'},\n\n"
+            f"Your {subscription.plan_name} subscription has been added successfully.\n"
+            f"Reference: {subscription.reference}\n"
+            f"Billing cycle: {subscription.billing_cycle.title()}\n"
+            f"Status: {subscription.status.title()}\n"
+            f"Valid until: {subscription.expires_at:%d %b %Y}"
+            f"{subdomain_line}\n\n"
+            "You can now continue managing your organization from the NYSC Clearance dashboard."
+        )
+        sent = send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [org_email], fail_silently=True)
+        if sent:
+            self.message_user(request, f"Subscription email sent to {org_email}.", messages.SUCCESS)
+        else:
+            self.message_user(request, f"Subscription was saved, but email could not be sent to {org_email}.", messages.WARNING)
 
 
 @admin.register(SubscriptionPayment)

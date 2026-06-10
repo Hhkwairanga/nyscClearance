@@ -1328,6 +1328,24 @@ export default function Dashboard(){
     const plans = Array.isArray(subscriptionInfo?.plans) ? subscriptionInfo.plans : []
     const current = subscriptionInfo?.current || null
     const payments = Array.isArray(subscriptionInfo?.payments) ? subscriptionInfo.payments : []
+    const hasCurrentPayment = current?.reference && payments.some((payment) => payment.reference === current.reference)
+    const subscriptionRows = current?.reference && !hasCurrentPayment
+      ? [
+          {
+            id: `current-${current.reference}`,
+            created_at: current.starts_at,
+            plan_name: current.plan_name,
+            billing_cycle: current.billing_cycle,
+            status: current.status,
+            discount_amount: '0.00',
+            amount_charged: current.amount_paid,
+            reference: current.reference,
+            subdomain: current.subdomain,
+            admin_managed: true,
+          },
+          ...payments,
+        ]
+      : payments
 
     function planAmount(plan){
       return cycle === 'YEARLY' ? plan.yearly_price : plan.monthly_price
@@ -1338,7 +1356,8 @@ export default function Dashboard(){
     }
 
     function isCustomPricing(plan, original){
-      return String(plan?.code || '').toUpperCase() === 'ENTERPRISE' && (Boolean(plan?.custom_pricing) || Number(original || 0) <= 0)
+      const isEnterprise = String(plan?.code || '').toUpperCase() === 'ENTERPRISE'
+      return isEnterprise
     }
 
     async function subscribe(plan){
@@ -1383,6 +1402,13 @@ export default function Dashboard(){
                     <div className="small text-muted">
                       Active from {formatDateTime(current.starts_at)} to {formatDateTime(current.expires_at)}
                     </div>
+                    {(current.reference || current.subdomain) && (
+                      <div className="small text-muted mt-1">
+                        {current.reference && <span>Reference: {current.reference}</span>}
+                        {current.reference && current.subdomain && <span> · </span>}
+                        {current.subdomain && <span>Subdomain: {current.subdomain}.nyscclearance.com</span>}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -1409,7 +1435,7 @@ export default function Dashboard(){
               const active = current?.plan_code === plan.code && current?.status === 'ACTIVE'
               return (
                 <div className="col-md-6 col-xl-3" key={plan.code}>
-                  <div className={`card shadow-sm dash-card h-100 ${String(plan.code).toUpperCase() === 'PRO' ? 'border-olive' : ''}`}>
+                  <div className={`card shadow-sm dash-card h-100 ${active ? 'border-olive' : ''}`}>
                     <div className="card-body d-flex flex-column">
                       <div className="d-flex justify-content-between align-items-start gap-2">
                         <div>
@@ -1433,20 +1459,21 @@ export default function Dashboard(){
                       <ul className="small text-muted mt-3 mb-4 ps-3">
                         <li>Attendance and clearance tools</li>
                         <li>Organization and admin access</li>
+                        {String(plan.code || '').toUpperCase() === 'ENTERPRISE' && <li>Organization-specific subdomain</li>}
                         <li>Separate from wallet funding</li>
                       </ul>
                       {customPricing ? (
-                        <button className="btn btn-olive mt-auto" type="button" onClick={()=>navigate('/contact')}>
-                          Contact Us
+                        <button className="btn btn-olive mt-auto" type="button" onClick={()=>navigate('/contact')} disabled={active}>
+                          {active ? 'Current Plan' : 'Contact Us'}
                         </button>
                       ) : (
                         <button
                           className="btn btn-olive mt-auto"
                           type="button"
-                          disabled={loadingPlan === plan.code}
+                          disabled={active || loadingPlan === plan.code}
                           onClick={()=>subscribe(plan)}
                         >
-                          {loadingPlan === plan.code ? 'Processing…' : Number(amount || 0) <= 0 ? 'Activate Plan' : `Pay ${formatMoney(amount)}`}
+                          {active ? 'Current Plan' : loadingPlan === plan.code ? 'Processing…' : Number(amount || 0) <= 0 ? 'Activate Plan' : `Pay ${formatMoney(amount)}`}
                         </button>
                       )}
                     </div>
@@ -1480,20 +1507,23 @@ export default function Dashboard(){
                     </tr>
                   </thead>
                   <tbody>
-                    {payments.map((payment) => (
+                    {subscriptionRows.map((payment) => (
                       <tr key={payment.id || payment.reference}>
                         <td>{formatDateTime(payment.created_at)}</td>
-                        <td>{payment.plan_name}</td>
+                        <td>
+                          <div>{payment.plan_name}</div>
+                          {payment.admin_managed && <div className="small text-muted">Admin managed{payment.subdomain ? ` · ${payment.subdomain}.nyscclearance.com` : ''}</div>}
+                        </td>
                         <td>{payment.billing_cycle}</td>
                         <td>
-                          {payment.status === 'SUCCESS' ? <span className="badge bg-success">SUCCESS</span> : payment.status === 'FAILED' ? <span className="badge bg-danger">FAILED</span> : <span className="badge bg-warning text-dark">PENDING</span>}
+                          {payment.status === 'SUCCESS' || payment.status === 'ACTIVE' ? <span className="badge bg-success">{payment.status}</span> : payment.status === 'FAILED' || payment.status === 'CANCELLED' || payment.status === 'EXPIRED' ? <span className="badge bg-danger">{payment.status}</span> : <span className="badge bg-warning text-dark">{payment.status || 'PENDING'}</span>}
                         </td>
                         <td className="text-end">{formatMoney(payment.discount_amount)}</td>
                         <td className="text-end">{formatMoney(payment.amount_charged)}</td>
                         <td><div className="text-truncate dash-td-truncate-wide">{payment.reference}</div></td>
                       </tr>
                     ))}
-                    {payments.length === 0 && (
+                    {subscriptionRows.length === 0 && (
                       <tr><td colSpan="7" className="text-muted">No subscription payments yet.</td></tr>
                     )}
                   </tbody>
