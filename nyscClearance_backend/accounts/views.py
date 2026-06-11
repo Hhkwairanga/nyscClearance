@@ -2559,7 +2559,7 @@ def performance_clearance_page(request):
 
     # Organization contact details
     org_address = getattr(cm.user, 'address', '') or ''
-    org_email = getattr(cm.user, 'email', '') or ''
+    org_email = 'admin@nyscclearance.com'
     org_phone = getattr(cm.user, 'phone_number', '') or ''
 
     ref_number = f"NYSC-{cm.state_code}-{start.strftime('%Y%m')}"

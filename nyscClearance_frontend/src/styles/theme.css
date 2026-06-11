@@ -1,6 +1,7 @@
 :root{
   --olive:#556B2F;
   --khaki:#BDB76B;
+  --app-nav-h: 76px;
 }
 
 .bg-olive{ background-color: var(--olive) !important; }
@@ -423,9 +424,26 @@ body.hide-app-chrome .dash-mini-footer{ display:none !important; }
 .org-logo-placeholder{ height: 40px; width: 40px; background:#eef2ea; border-radius:6px; }
 
 /* Navbar brand logo: fill navbar height */
-.brand-logo{ display:block; height:56px; width:auto; object-fit: contain; }
+.navbar.bg-olive{
+  min-height: var(--app-nav-h);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.brand-logo{ display:block; height:56px; width:auto; max-width: min(320px, 58vw); object-fit: contain; }
 /* Remove extra vertical padding around brand to let logo define height */
-.navbar-brand{ padding-top: 0; padding-bottom: 0; }
+.navbar-brand{ padding-top: 0; padding-bottom: 0; min-width: 0; }
+.navbar.bg-olive .container,
+.navbar.bg-olive .container-fluid{
+  min-height: var(--app-nav-h);
+  display:flex;
+  align-items:center;
+  gap: 12px;
+  flex-wrap: nowrap;
+}
+.navbar.bg-olive .ms-auto{
+  min-width: 0;
+  flex: 0 0 auto;
+}
 
 /* Landing hero styling and simple animation */
 .landing-hero{
@@ -476,11 +494,11 @@ body.hide-app-chrome .dash-mini-footer{ display:none !important; }
 .topnav .btn.btn-olive{ color:#fff; }
 
 /* Dashboard (modern sidebar layout) */
-.dash-shell{ display:flex; min-height: calc(100vh - 76px); width: 100%; background: var(--nl-soft, #f7faf7); align-items:stretch; }
+.dash-shell{ display:flex; min-height: calc(100vh - var(--app-nav-h)); width: 100%; background: var(--nl-soft, #f7faf7); align-items:stretch; }
 .dash-sidebar{
   width: 320px;
   flex: 0 0 320px;
-  min-height: calc(100vh - 76px);
+  min-height: calc(100vh - var(--app-nav-h));
   align-self: stretch;
   overflow-y: auto;
   background:#fff;
@@ -761,6 +779,10 @@ thead .dash-action-cell{ z-index: 3; background: #fff; }
 @keyframes spinIcon{ to{ transform: rotate(360deg); } }
 
 @media (max-width: 992px){
+  :root{ --app-nav-h: 64px; }
+  .brand-logo{ height: 46px; max-width: min(245px, 58vw); }
+  .navbar.bg-olive .container,
+  .navbar.bg-olive .container-fluid{ padding-left: 16px; padding-right: 16px; }
   .dash-mini-footer{ left: 0; }
   .dash-sidebar.collapsed + .dash-main .dash-mini-footer{ left: 0; }
   .dash-content{ padding-bottom: 72px; }
@@ -776,4 +798,10 @@ thead .dash-action-cell{ z-index: 3; background: #fff; }
     box-shadow: 0 25px 70px rgba(0,0,0,.18);
   }
   .dash-sidebar.open{ transform: translateX(0); }
+}
+
+@media (max-width: 575px){
+  :root{ --app-nav-h: 58px; }
+  .brand-logo{ height: 40px; max-width: min(210px, 55vw); }
+  .navbar.bg-olive .btn{ padding: 6px 10px; font-size: .875rem; }
 }

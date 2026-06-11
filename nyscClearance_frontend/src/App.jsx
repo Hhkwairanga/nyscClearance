@@ -27,6 +27,7 @@ export default function App(){
   const isHome = location.pathname === '/'
   const isDashboard = location.pathname === '/dashboard' || location.pathname.startsWith('/dashboard/')
   const showLoggedInNav = isDashboard || location.pathname === '/about' || location.pathname === '/contact'
+  const navContainerClass = isDashboard ? 'container-fluid px-3 px-lg-4' : 'container'
   const [me, setMe] = useState(null)
   useEffect(() => {
     (async()=>{
@@ -76,7 +77,7 @@ export default function App(){
   return (
     <div className="app-shell">
       <nav className="navbar navbar-expand-lg navbar-dark bg-olive">
-        <div className="container">
+        <div className={navContainerClass}>
           <Link to={dashPath} className="navbar-brand d-flex align-items-center">
             <img src="/nyscclearance_logo.svg" alt="NYSC Clearance" className="brand-logo"/>
           </Link>
