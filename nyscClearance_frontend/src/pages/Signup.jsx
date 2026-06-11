@@ -7,9 +7,16 @@ const EMPTY_FORM = {
   email: '', name: '', address: '', phone_number: ''
 }
 
+const DEFAULT_SUCCESS = {
+  message: 'Registration successful. Check your email to verify and set your password.',
+  verificationLink: '',
+  emailSent: true,
+}
+
 export default function Signup(){
   const [form, setForm] = useState(EMPTY_FORM)
   const [status, setStatus] = useState(null)
+  const [successInfo, setSuccessInfo] = useState(DEFAULT_SUCCESS)
   const [acceptTerms, setAcceptTerms] = useState(false)
 
   const perks = useMemo(
@@ -45,9 +52,15 @@ export default function Signup(){
     setStatus('pending')
     try {
       await ensureCsrf()
-      await api.post('/api/auth/register/', form)
+      const response = await api.post('/api/auth/register/', form)
+      const data = response?.data || {}
       setForm(EMPTY_FORM)
       setAcceptTerms(false)
+      setSuccessInfo({
+        message: data.message || DEFAULT_SUCCESS.message,
+        verificationLink: data.verification_link || '',
+        emailSent: data.email_sent !== false,
+      })
       setStatus('success')
     } catch(err){
       const msg = err?.response?.data?.detail
@@ -101,7 +114,16 @@ export default function Signup(){
               </div>
 
               {status === 'success' && (
-                <div className="alert alert-success mb-3">Registration successful. Check your email to verify and set your password.</div>
+                <div className={`alert ${successInfo.emailSent ? 'alert-success' : 'alert-warning'} mb-3`}>
+                  <div>{successInfo.message}</div>
+                  {successInfo.verificationLink && (
+                    <div className="mt-2">
+                      <a className="alert-link" href={successInfo.verificationLink}>
+                        Open verification link
+                      </a>
+                    </div>
+                  )}
+                </div>
               )}
               {status?.startsWith('error') && <div className="alert alert-danger mb-3">{status.split(':')[1]}</div>}
 
