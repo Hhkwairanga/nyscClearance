@@ -101,6 +101,27 @@ function isPublicAuthRoute(){
   }
 }
 
+function isNetworkFailure(error){
+  if(error?.response) return false
+  const code = String(error?.code || '').toUpperCase()
+  const message = String(error?.message || '').toLowerCase()
+  return (
+    code === 'ERR_NETWORK' ||
+    code === 'ECONNABORTED' ||
+    message.includes('network error') ||
+    message.includes('failed to fetch') ||
+    typeof navigator !== 'undefined' && navigator.onLine === false
+  )
+}
+
+function isNetworkErrorRoute(){
+  try{
+    return window.location.pathname.startsWith('/network-error')
+  }catch(e){
+    return false
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -111,6 +132,16 @@ api.interceptors.response.use(
         const loginUrl = next && next !== '/' ? `/login?next=${encodeURIComponent(next)}` : '/login'
         window.location.assign(loginUrl)
       }catch(e){}
+    }else if(isNetworkFailure(error) && !isNetworkErrorRoute()){
+      try{
+        const reason = navigator.onLine === false
+          ? 'Your device appears to be offline. Reconnect and try again.'
+          : 'NYSC Clearance could not connect to the server. Please try again shortly.'
+        window.history.replaceState({ reason }, '', '/network-error')
+        window.dispatchEvent(new PopStateEvent('popstate', { state: { reason } }))
+      }catch(e){
+        try{ window.location.assign('/network-error') }catch(_e){}
+      }
     }
     return Promise.reject(error)
   }

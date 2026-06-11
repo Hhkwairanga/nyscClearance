@@ -200,6 +200,61 @@ body.hide-app-chrome .dash-mini-footer{ display:none !important; }
 .contact-option small{ display:block; }
 .contact-option small{ color: rgba(0,0,0,.58); }
 
+/* App-specific error and network failure pages */
+.app-error-page{
+  min-height: calc(100vh - 76px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 32px 16px;
+  background: radial-gradient(1000px 520px at 10% 10%, rgba(189,183,107,.18), transparent),
+              radial-gradient(900px 460px at 90% 15%, rgba(85,107,47,.14), transparent),
+              #f7f9f6;
+}
+.app-error-card{
+  width: min(620px, 100%);
+  background: rgba(255,255,255,.96);
+  border: 1px solid #edf0ea;
+  border-radius: 26px;
+  box-shadow: 0 28px 80px rgba(19,28,47,.12);
+  padding: clamp(28px, 5vw, 48px);
+}
+.app-error-icon{
+  width: 68px;
+  height: 68px;
+  border-radius: 22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#fff;
+  background: var(--olive);
+  box-shadow: 0 16px 40px rgba(85,107,47,.24);
+}
+.app-error-code{
+  margin-top: 18px;
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--khaki);
+}
+.app-error-card h1{
+  color: var(--olive);
+  font-weight: 900;
+  letter-spacing: -.04em;
+  font-size: clamp(2rem, 5vw, 3rem);
+}
+.app-error-help{
+  display:inline-block;
+  padding: 12px 16px;
+  border-radius: 999px;
+  background:#f2f5ed;
+  color: rgba(0,0,0,.72);
+  font-size: .92rem;
+}
+.app-error-help a{ color: var(--olive); font-weight: 800; text-decoration:none; }
+.app-error-help a:hover{ text-decoration:underline; }
+
 /* Landing (CAMS-inspired) */
 .nl-page{
   --nl-green: var(--olive);

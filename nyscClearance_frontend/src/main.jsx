@@ -16,6 +16,7 @@ import Terms from './pages/Terms'
 import Privacy from './pages/Privacy'
 import Contact from './pages/Contact'
 import About from './pages/About'
+import { AppErrorBoundary, NetworkFailurePage, NotFoundPage } from './pages/AppError'
 import { refreshForDeploymentVersion } from './deploymentVersion'
 
 async function bootstrap(){
@@ -24,27 +25,31 @@ async function bootstrap(){
 
   createRoot(document.getElementById('root')).render(
     <React.StrictMode>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<App />}>
-            <Route index element={<Landing />} />
-            <Route path="signup" element={<Signup />} />
-            <Route path="login" element={<Login />} />
-            <Route path="verify-success" element={<VerifySuccess />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="dashboard/org" element={<Dashboard />} />
-            <Route path="dashboard/branch" element={<Dashboard />} />
-            <Route path="dashboard/corper" element={<Dashboard />} />
-            <Route path="forgot-password" element={<ForgotPassword />} />
-            <Route path="reset-password" element={<ResetPassword />} />
-            <Route path="change-password" element={<ChangePassword />} />
-            <Route path="terms" element={<Terms />} />
-            <Route path="privacy" element={<Privacy />} />
-            <Route path="contact" element={<Contact />} />
-            <Route path="about" element={<About />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <AppErrorBoundary>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<App />}>
+              <Route index element={<Landing />} />
+              <Route path="signup" element={<Signup />} />
+              <Route path="login" element={<Login />} />
+              <Route path="verify-success" element={<VerifySuccess />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="dashboard/org" element={<Dashboard />} />
+              <Route path="dashboard/branch" element={<Dashboard />} />
+              <Route path="dashboard/corper" element={<Dashboard />} />
+              <Route path="forgot-password" element={<ForgotPassword />} />
+              <Route path="reset-password" element={<ResetPassword />} />
+              <Route path="change-password" element={<ChangePassword />} />
+              <Route path="terms" element={<Terms />} />
+              <Route path="privacy" element={<Privacy />} />
+              <Route path="contact" element={<Contact />} />
+              <Route path="about" element={<About />} />
+              <Route path="network-error" element={<NetworkFailurePage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </AppErrorBoundary>
     </React.StrictMode>
   )
 }
