@@ -1314,16 +1314,16 @@ class ProfileView(APIView):
             except Exception:
                 pass
         profile, _ = OrganizationProfile.objects.get_or_create(user=org_user)
-        return Response(OrganizationProfileSerializer(profile).data)
+        return Response(OrganizationProfileSerializer(profile, context={'request': request}).data)
 
     def put(self, request):
         if getattr(request.user, 'role', None) != 'ORG':
             raise PermissionDenied('Only organization can update profile')
         profile, _ = OrganizationProfile.objects.get_or_create(user=request.user)
-        serializer = OrganizationProfileSerializer(profile, data=request.data, partial=True)
+        serializer = OrganizationProfileSerializer(profile, data=request.data, partial=True, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(serializer.data)
+        return Response(OrganizationProfileSerializer(profile, context={'request': request}).data)
 
 
 STRUCTURE_IMPORT_COLUMNS = [
