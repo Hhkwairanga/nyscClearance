@@ -2576,6 +2576,7 @@ export default function Dashboard(){
               >
                 <Icon size={18} aria-hidden />
                 <span>{label}</span>
+                <span className="dash-nav-tooltip" role="tooltip">{label}</span>
                 {badge ? <span className="dash-badge">{badge}</span> : null}
               </button>
             ))}
