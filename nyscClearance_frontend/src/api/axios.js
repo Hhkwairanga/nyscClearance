@@ -137,8 +137,10 @@ api.interceptors.response.use(
         const reason = navigator.onLine === false
           ? 'Your device appears to be offline. Reconnect and try again.'
           : 'NYSC Clearance could not connect to the server. Please try again shortly.'
-        window.history.replaceState({ reason }, '', '/network-error')
-        window.dispatchEvent(new PopStateEvent('popstate', { state: { reason } }))
+        const retryTo = `${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`
+        const networkUrl = `/network-error?next=${encodeURIComponent(retryTo)}`
+        window.history.replaceState({ reason, retryTo }, '', networkUrl)
+        window.dispatchEvent(new PopStateEvent('popstate', { state: { reason, retryTo } }))
       }catch(e){
         try{ window.location.assign('/network-error') }catch(_e){}
       }

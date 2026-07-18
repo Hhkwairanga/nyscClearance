@@ -1,12 +1,12 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { AlertTriangle, Home, RefreshCw, WifiOff } from 'lucide-react'
 
-function SupportActions({ showRetry = true }){
+function SupportActions({ showRetry = true, onRetry }){
   return (
     <div className="d-flex flex-wrap justify-content-center gap-2 mt-4">
       {showRetry && (
-        <button className="btn btn-olive" onClick={() => window.location.reload()}>
+        <button className="btn btn-olive" onClick={onRetry || (() => window.location.reload())}>
           <RefreshCw size={16} className="me-2" />
           Try again
         </button>
@@ -28,6 +28,7 @@ export function AppErrorPage({
   message = 'NYSC Clearance ran into an unexpected issue. Please refresh the page or contact support if it continues.',
   icon = 'error',
   showRetry = true,
+  onRetry,
 }){
   const Icon = icon === 'network' ? WifiOff : AlertTriangle
   return (
@@ -39,7 +40,7 @@ export function AppErrorPage({
         <p className="app-error-code mb-2">{code}</p>
         <h1>{title}</h1>
         <p className="text-muted mb-0">{message}</p>
-        <SupportActions showRetry={showRetry} />
+        <SupportActions showRetry={showRetry} onRetry={onRetry} />
         <div className="app-error-help mt-4">
           <strong>Need help?</strong> Email <a href="mailto:admin@sahabs.tech">admin@sahabs.tech</a> or call{' '}
           <a href="tel:+2347082505053">+2347082505053</a>.
@@ -62,13 +63,22 @@ export function NotFoundPage(){
 
 export function NetworkFailurePage(){
   const location = useLocation()
-  const reason = location.state?.reason || ''
+  const params = useMemo(() => new URLSearchParams(location.search), [location.search])
+  const reason = location.state?.reason || params.get('reason') || ''
+  const retryTo = location.state?.retryTo || params.get('next') || '/'
+  const handleRetry = () => {
+    const safePath = retryTo && retryTo.startsWith('/') && !retryTo.startsWith('/network-error')
+      ? retryTo
+      : '/'
+    window.location.assign(safePath)
+  }
   return (
     <AppErrorPage
       code="Network connection"
       title="We could not reach NYSC Clearance"
       message={reason || 'Please check your internet connection and try again. If your network is fine, the API may be temporarily unavailable.'}
       icon="network"
+      onRetry={handleRetry}
     />
   )
 }
