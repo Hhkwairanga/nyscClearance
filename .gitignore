@@ -23,3 +23,11 @@ nyscClearance_frontend/node_modules/
 .idea/
 .vscode/
 .DS_Store
+email_send_log.csv
+email_list.xlsx
+email_campaign.sqlite3
+email_campaign.sqlite3-*
+email_campaign_cron.log
+email_suppression_list.txt
+__pycache__/
+*.py[cod]

@@ -122,6 +122,14 @@ function isNetworkErrorRoute(){
   }
 }
 
+function shouldShowNetworkErrorPage(error){
+  try{
+    return error?.config?.showNetworkErrorPage === true
+  }catch(e){
+    return false
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -132,7 +140,7 @@ api.interceptors.response.use(
         const loginUrl = next && next !== '/' ? `/login?next=${encodeURIComponent(next)}` : '/login'
         window.location.assign(loginUrl)
       }catch(e){}
-    }else if(isNetworkFailure(error) && !isNetworkErrorRoute()){
+    }else if(shouldShowNetworkErrorPage(error) && isNetworkFailure(error) && !isNetworkErrorRoute()){
       try{
         const reason = navigator.onLine === false
           ? 'Your device appears to be offline. Reconnect and try again.'

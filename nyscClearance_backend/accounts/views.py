@@ -49,7 +49,7 @@ import hashlib
 import json
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from .serializers import (
     OrganizationRegisterSerializer,
@@ -2563,7 +2563,7 @@ def performance_clearance_page(request):
     org_phone = getattr(cm.user, 'phone_number', '') or ''
 
     ref_number = f"NYSC-{cm.state_code}-{start.strftime('%Y%m')}"
-    verification_url = request.build_absolute_uri(f'/verify/?ref={ref_number}')
+    verification_url = request.build_absolute_uri(f'/api/auth/clearance/verify/?{urlencode({"ref": ref_number})}')
 
     # Eligibility check: previous month lateness/absence vs org thresholds
     # Skip this check if it's the corper's first clearance (no prior clearance debits found)
